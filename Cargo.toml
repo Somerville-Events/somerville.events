@@ -7,6 +7,9 @@ edition = "2021"
 actix-rt = "2"            # async runtime for Actix
 awc = { version = "3", features = ["rustls"] }  # Actix HTTP client with TLS support
 serde_json = "1"
+serde = { version = "1", features = ["derive"] }  # Serialization/deserialization
+schemars = { version = "0.8", features = ["derive"] }  # JSON Schema generation
+chrono = { version = "0.4", features = ["serde"] }  # DateTime handling with serde support
 base64 = "0.22"
 mime_guess = "2"
 anyhow = "1"
