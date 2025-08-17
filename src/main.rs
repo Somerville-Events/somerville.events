@@ -9,6 +9,7 @@ use serde_json::json;
 use schemars::{schema_for, JsonSchema};
 
 
+
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
 struct EventExtraction {
     /// The name of the event
@@ -16,10 +17,12 @@ struct EventExtraction {
     /// The full description of the event or content
     full_description: String,
     /// The date and time of the event (ISO 8601 format: YYYY-MM-DDTHH:MM:SSZ)
-    date: Option<Vec<String>>,
+    start_date: Option<Vec<String>>,
+    /// The end date of the event (ISO 8601 format: YYYY-MM-DDTHH:MM:SSZ)
+    end_date: Option<Vec<String>>,
     /// The location of the event
     location: Option<String>,
-    /// Type of event (e.g., "yard sale", "craft fair", "art show", "dance", "music", "food", "other")
+    /// Type of event (e.g., "YardSale", "Art", "Dance", "Performance", "Food", "PersonalService", "CivicEvent", "Other")
     event_type: Option<String>,
     /// Any additional relevant details
     additional_details: Option<Vec<String>>,
@@ -182,8 +185,11 @@ async fn async_main() -> Result<()> {
     println!("=== Event Information Extraction ===");
     println!("Name: {}", event_result.name);
     println!("Full Description: {}", event_result.full_description);
-    if let Some(date) = &event_result.date {
-        println!("Date: {}", date.join(", "));
+    if let Some(start_date) = &event_result.start_date {
+        println!("Start Date: {}", start_date.join(", "));
+    }
+    if let Some(end_date) = &event_result.end_date {
+        println!("End Date: {}", end_date.join(", "));
     }
     if let Some(location) = &event_result.location {
         println!("Location: {}", location);
