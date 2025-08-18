@@ -7,14 +7,18 @@ use actix_web::{
     App, HttpResponse, HttpServer,
 };
 use anyhow::{anyhow, Result};
-use awc::Connector;
+use awc::{Client, Connector};
 use base64::{engine::general_purpose::STANDARD as b64, Engine as _};
 use dotenvy::dotenv;
 use rustls;
 use schemars::{schema_for, JsonSchema};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use std::{env, fs, path::Path, sync::Arc};
+use std::{
+    env, fs,
+    path::Path,
+    sync::{Arc, OnceLock},
+};
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
 struct Event {
@@ -41,18 +45,58 @@ struct Upload {
     image: TempFile,
 }
 
+#[derive(Clone)]
+struct AppState {
+    api_key: String,
+    client: Client,
+}
+
+static TLS_CONFIG: OnceLock<Arc<rustls::ClientConfig>> = OnceLock::new();
+
+fn init_tls_once() -> Arc<rustls::ClientConfig> {
+    // Install the crypto provider at most once per process.
+    use rustls_platform_verifier::ConfigVerifierExt as _;
+
+    rustls::crypto::aws_lc_rs::default_provider()
+        .install_default()
+        .unwrap();
+
+    // The benefits of the platform verifier are clear; see:
+    // https://github.com/rustls/rustls-platform-verifier#readme
+    let client_config = rustls::ClientConfig::with_platform_verifier()
+        .expect("Failed to create TLS client config.");
+    Arc::new(client_config)
+}
+
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
     // Load .env file if present
     dotenv().ok();
     env_logger::init_from_env(env_logger::Env::new().default_filter_or("info"));
 
+    // Read env once
+    let api_key: String =
+        env::var("OPENAI_API_KEY").expect("You must set the OPENAI_API_KEY env var");
+
+    // TLS config once
+    let tls_config = TLS_CONFIG.get_or_init(init_tls_once).clone();
+
     log::info!("Starting server at http://localhost:8080");
-    HttpServer::new(|| {
-        let api_key = env::var("OPENAI_API_KEY").expect("You must set the OPENAI_API_KEY env var");
+    HttpServer::new(move || {
+        // Build a single client per worker with shared TLS config
+        let client: Client = awc::ClientBuilder::new()
+            .timeout(std::time::Duration::from_secs(120))
+            .connector(Connector::new().rustls_0_23(tls_config.clone()))
+            .finish();
+
+        let state = AppState {
+            api_key: api_key.clone(),
+            client,
+        };
+
         App::new()
             .wrap(middleware::Logger::default())
-            .app_data(Data::new(api_key))
+            .app_data(Data::new(state))
             .route("/upload", web::post().to(upload))
             .route("/", web::get().to(index))
     })
@@ -72,14 +116,17 @@ async fn index() -> HttpResponse {
     )
 }
 
-async fn upload(api_key: Data<String>, MultipartForm(req): MultipartForm<Upload>) -> HttpResponse {
-    match parse_image(req.image.file.path(), &api_key).await {
+async fn upload(state: Data<AppState>, MultipartForm(req): MultipartForm<Upload>) -> HttpResponse {
+    match parse_image(req.image.file.path(), &state).await {
         Ok(event) => HttpResponse::Ok().json(event),
-        Err(_) => HttpResponse::InternalServerError().body("Parsing failed"),
+        Err(e) => {
+            log::error!("parse_image failed: {e:#}");
+            HttpResponse::InternalServerError().body("Parsing failed")
+        }
     }
 }
 
-async fn parse_image(image_path: &Path, api_key: &str) -> Result<Event> {
+async fn parse_image(image_path: &Path, state: &AppState) -> Result<Event> {
     // Read file
     let bytes =
         fs::read(image_path).map_err(|e| anyhow!("Failed to read file: {image_path:?} - {e}"))?;
@@ -130,16 +177,11 @@ async fn parse_image(image_path: &Path, api_key: &str) -> Result<Event> {
         ]
     });
 
-    let tls_config = rustls_config().map_err(|e| anyhow!("Failed to get TLS certs: {}", e))?;
-
-    // Send request with Actix awc client (with longer timeout)
-    let client = awc::ClientBuilder::new()
-        .timeout(std::time::Duration::from_secs(120)) // 2 minute timeout
-        .connector(Connector::new().rustls_0_23(Arc::new(tls_config)))
-        .finish();
-    let mut resp = client
+    // Send request with the shared Actix client
+    let mut resp = state
+        .client
         .post("https://api.openai.com/v1/chat/completions")
-        .insert_header(("Authorization", format!("Bearer {}", api_key)))
+        .insert_header(("Authorization", format!("Bearer {}", state.api_key)))
         .insert_header(("Content-Type", "application/json"))
         .send_json(&payload)
         .await
@@ -187,7 +229,8 @@ fn parse_and_validate_response(content: &str) -> Result<Event> {
     let allowed_fields = [
         "name",
         "full_description",
-        "date",
+        "start_date",
+        "end_date",
         "location",
         "event_type",
         "additional_details",
@@ -229,27 +272,25 @@ fn parse_and_validate_response(content: &str) -> Result<Event> {
     serde_json::from_value(json).map_err(|e| anyhow!("Failed to parse cleaned response: {}", e))
 }
 
-/// Create simple `rustls` client config.
-fn rustls_config() -> Result<rustls::ClientConfig, rustls::Error> {
-    use rustls_platform_verifier::ConfigVerifierExt as _;
-
-    rustls::crypto::aws_lc_rs::default_provider()
-        .install_default()
-        .unwrap();
-
-    // The benefits of the platform verifier are clear; see:
-    // https://github.com/rustls/rustls-platform-verifier#readme
-    rustls::ClientConfig::with_platform_verifier()
-}
-
 #[actix_web::test]
 async fn test_parse_image() -> Result<()> {
     // Load .env file if present
     dotenv().ok();
     let api_key = env::var("OPENAI_API_KEY")?;
 
+    // Ensure TLS is initialized for the test too
+    let tls_config = TLS_CONFIG.get_or_init(init_tls_once).clone();
+
+    // Build a client for the test context
+    let client: Client = awc::ClientBuilder::new()
+        .timeout(std::time::Duration::from_secs(120))
+        .connector(Connector::new().rustls_0_23(tls_config))
+        .finish();
+
+    let state = AppState { api_key, client };
+
     // Actix runtime entrypoint
-    let event = parse_image(Path::new("examples/dance_flyer.jpg"), &api_key).await?;
+    let event = parse_image(Path::new("examples/dance_flyer.jpg"), &state).await?;
     assert_eq!(event.name, "Dance Therapy");
     Ok(())
 }
