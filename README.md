@@ -2,7 +2,6 @@
 
 An event website for Somerville, MA.
 
-
 ## Setup
 
 ```
