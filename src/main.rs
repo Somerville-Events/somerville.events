@@ -125,9 +125,9 @@ async fn main() -> Result<()> {
             .app_data(Data::new(state))
             .wrap(middleware::Logger::default())
             .service(
-                web::scope("")
+                web::resource("/upload")
                     .wrap(auth_middleware)
-                    .route("/upload", web::post().to(upload)),
+                    .route(web::post().to(upload)),
             )
             .route("/", web::get().to(index))
     })
