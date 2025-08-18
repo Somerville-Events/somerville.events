@@ -17,7 +17,7 @@ use serde_json::json;
 use std::{env, fs, path::Path, sync::Arc};
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
-struct EventExtraction {
+struct Event {
     /// The name of the event
     name: String,
     /// The full description of the event or content
@@ -74,12 +74,12 @@ async fn index() -> HttpResponse {
 
 async fn upload(api_key: Data<String>, MultipartForm(req): MultipartForm<Upload>) -> HttpResponse {
     match parse_image(req.image.file.path(), &api_key).await {
-        Ok(_) => HttpResponse::Ok().body("Upload succeeded"),
-        Err(_) => HttpResponse::InternalServerError().body("Upload failed"),
+        Ok(event) => HttpResponse::Ok().json(event),
+        Err(_) => HttpResponse::InternalServerError().body("Parsing failed"),
     }
 }
 
-async fn parse_image(image_path: &Path, api_key: &str) -> Result<()> {
+async fn parse_image(image_path: &Path, api_key: &str) -> Result<Event> {
     // Read file
     let bytes =
         fs::read(image_path).map_err(|e| anyhow!("Failed to read file: {image_path:?} - {e}"))?;
@@ -94,9 +94,9 @@ async fn parse_image(image_path: &Path, api_key: &str) -> Result<()> {
     let b64_data = b64.encode(&bytes);
     let data_url = format!("data:{mime_type};base64,{b64_data}");
 
-    let schema = schema_for!(EventExtraction);
+    let schema = schema_for!(Event);
     let schema_str = serde_json::to_string_pretty(&schema).unwrap();
-    println!("{schema_str}");
+    log::debug!("{schema_str}");
 
     // Build Chat Completions payload with instructor format
     let payload = json!({
@@ -167,39 +167,15 @@ async fn parse_image(image_path: &Path, api_key: &str) -> Result<()> {
         .trim()
         .to_string();
 
-    println!("Debug: Extracted content: {}", content);
-
+    log::debug!("Debug: Extracted content: {}", content);
     // Parse and validate the structured response
-    let event_result = parse_and_validate_response(&content)?;
-
-    // Display the structured output
-    println!("=== Event Information Extraction ===");
-    println!("Name: {}", event_result.name);
-    println!("Full Description: {}", event_result.full_description);
-    if let Some(start_date) = &event_result.start_date {
-        println!("Start Date: {}", start_date.join(", "));
-    }
-    if let Some(end_date) = &event_result.end_date {
-        println!("End Date: {}", end_date.join(", "));
-    }
-    if let Some(location) = &event_result.location {
-        println!("Location: {}", location);
-    }
-    if let Some(event_type) = &event_result.event_type {
-        println!("Event Type: {}", event_type);
-    }
-    if let Some(details) = &event_result.additional_details {
-        println!("Additional Details: {}", details.join(", "));
-    }
-    println!("Confidence: {:.1}%", event_result.confidence * 100.0);
-    println!("===================================");
-
-    Ok(())
+    let event = parse_and_validate_response(&content)?;
+    Ok(event)
 }
 
-fn parse_and_validate_response(content: &str) -> Result<EventExtraction> {
+fn parse_and_validate_response(content: &str) -> Result<Event> {
     // First try to parse as the exact struct
-    if let Ok(result) = serde_json::from_str::<EventExtraction>(content) {
+    if let Ok(result) = serde_json::from_str::<Event>(content) {
         return Ok(result);
     }
 
@@ -266,16 +242,14 @@ fn rustls_config() -> Result<rustls::ClientConfig, rustls::Error> {
     rustls::ClientConfig::with_platform_verifier()
 }
 
-#[test]
-fn test_parse_image() -> Result<()> {
-    use actix_rt::System;
-
+#[actix_web::test]
+async fn test_parse_image() -> Result<()> {
     // Load .env file if present
     dotenv().ok();
-
-    let api_key = env::var("OPENAI_API_KEY")
-        .map_err(|_| anyhow!("Set OPENAI_API_KEY in your .env file or environment"))?;
+    let api_key = env::var("OPENAI_API_KEY")?;
 
     // Actix runtime entrypoint
-    System::new().block_on(parse_image(Path::new("examples/dance_flyer.jpg"), &api_key))
+    let event = parse_image(Path::new("examples/dance_flyer.jpg"), &api_key).await?;
+    assert_eq!(event.name, "Dance Therapy");
+    Ok(())
 }
