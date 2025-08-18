@@ -1,11 +1,14 @@
 use actix_multipart::form::tempfile::TempFile;
 use actix_multipart::form::MultipartForm;
 use actix_web::{
+    dev::ServiceRequest,
+    error::ErrorUnauthorized,
     http::header::ContentType,
     middleware,
     web::{self, Data},
-    App, HttpResponse, HttpServer,
+    App, Error, HttpResponse, HttpServer,
 };
+use actix_web_httpauth::{extractors::basic::BasicAuth, middleware::HttpAuthentication};
 use anyhow::{anyhow, Result};
 use awc::{Client, Connector};
 use base64::{engine::general_purpose::STANDARD as b64, Engine as _};
@@ -49,12 +52,13 @@ struct Upload {
 struct AppState {
     api_key: String,
     client: Client,
+    username: String,
+    password: String,
 }
 
 static TLS_CONFIG: OnceLock<Arc<rustls::ClientConfig>> = OnceLock::new();
 
 fn init_tls_once() -> Arc<rustls::ClientConfig> {
-    // Install the crypto provider at most once per process.
     use rustls_platform_verifier::ConfigVerifierExt as _;
 
     rustls::crypto::aws_lc_rs::default_provider()
@@ -68,15 +72,34 @@ fn init_tls_once() -> Arc<rustls::ClientConfig> {
     Arc::new(client_config)
 }
 
+async fn basic_auth_validator(
+    req: ServiceRequest,
+    credentials: BasicAuth,
+) -> Result<ServiceRequest, (Error, ServiceRequest)> {
+    let state = req
+        .app_data::<Data<AppState>>()
+        .expect("AppState missing; did you register .app_data(Data::new(AppState{...}))?");
+
+    let username = credentials.user_id();
+    let password = credentials.password().unwrap_or_default();
+
+    if username == state.username && password == state.password {
+        Ok(req)
+    } else {
+        Err((ErrorUnauthorized("Invalid credentials"), req))
+    }
+}
+
 #[actix_web::main]
-async fn main() -> std::io::Result<()> {
+async fn main() -> Result<()> {
     // Load .env file if present
     dotenv().ok();
     env_logger::init_from_env(env_logger::Env::new().default_filter_or("info"));
 
     // Read env once
-    let api_key: String =
-        env::var("OPENAI_API_KEY").expect("You must set the OPENAI_API_KEY env var");
+    let api_key: String = env::var("OPENAI_API_KEY").expect("Set env var: OPENAI_API_KEY");
+    let username = env::var("BASIC_AUTH_USER").expect("Set env var: BASIC_AUTH_USER");
+    let password = env::var("BASIC_AUTH_PASS").expect("Set env var: BASIC_AUTH_PASS");
 
     // TLS config once
     let tls_config = TLS_CONFIG.get_or_init(init_tls_once).clone();
@@ -91,18 +114,27 @@ async fn main() -> std::io::Result<()> {
 
         let state = AppState {
             api_key: api_key.clone(),
+            username: username.clone(),
+            password: password.clone(),
             client,
         };
 
+        let auth_middleware = HttpAuthentication::basic(basic_auth_validator);
+
         App::new()
-            .wrap(middleware::Logger::default())
             .app_data(Data::new(state))
-            .route("/upload", web::post().to(upload))
+            .wrap(middleware::Logger::default())
+            .service(
+                web::scope("")
+                    .wrap(auth_middleware)
+                    .route("/upload", web::post().to(upload)),
+            )
             .route("/", web::get().to(index))
     })
     .bind(("127.0.0.1", 8080))?
     .run()
-    .await
+    .await?;
+    Ok(())
 }
 
 async fn index() -> HttpResponse {
@@ -117,7 +149,7 @@ async fn index() -> HttpResponse {
 }
 
 async fn upload(state: Data<AppState>, MultipartForm(req): MultipartForm<Upload>) -> HttpResponse {
-    match parse_image(req.image.file.path(), &state).await {
+    match parse_image(req.image.file.path(), &state.client, &state.api_key).await {
         Ok(event) => HttpResponse::Ok().json(event),
         Err(e) => {
             log::error!("parse_image failed: {e:#}");
@@ -126,7 +158,7 @@ async fn upload(state: Data<AppState>, MultipartForm(req): MultipartForm<Upload>
     }
 }
 
-async fn parse_image(image_path: &Path, state: &AppState) -> Result<Event> {
+async fn parse_image(image_path: &Path, client: &Client, api_key: &str) -> Result<Event> {
     // Read file
     let bytes =
         fs::read(image_path).map_err(|e| anyhow!("Failed to read file: {image_path:?} - {e}"))?;
@@ -159,7 +191,7 @@ async fn parse_image(image_path: &Path, state: &AppState) -> Result<Event> {
                     {schema:#?}
                     The text field should contain all readable text from the image. 
                     The confidence should be a number between 0.0 and 1.0 indicating how confident you are in the extraction. 
-                    Focus on extracting event-related information like the name, date, time, location, and description. 
+                    Focus on extracting event-related information like the name, date, time, location, and description.
                     Never return multiple locations.
                     Never return multiple event types.
                     Be thorough but accurate. Return only valid JSON.
@@ -178,19 +210,18 @@ async fn parse_image(image_path: &Path, state: &AppState) -> Result<Event> {
     });
 
     // Send request with the shared Actix client
-    let mut resp = state
-        .client
+    let mut resp = client
         .post("https://api.openai.com/v1/chat/completions")
-        .insert_header(("Authorization", format!("Bearer {}", state.api_key)))
+        .insert_header(("Authorization", format!("Bearer {api_key}")))
         .insert_header(("Content-Type", "application/json"))
         .send_json(&payload)
         .await
-        .map_err(|e| anyhow!("HTTP request failed: {}", e))?;
+        .map_err(|e| anyhow!("HTTP request failed: {e}"))?;
 
     let body = resp
         .body()
         .await
-        .map_err(|e| anyhow!("Failed to read response body: {}", e))?;
+        .map_err(|e| anyhow!("Failed to read response body: {e}"))?;
 
     if !resp.status().is_success() {
         return Err(anyhow!(
@@ -287,10 +318,20 @@ async fn test_parse_image() -> Result<()> {
         .connector(Connector::new().rustls_0_23(tls_config))
         .finish();
 
-    let state = AppState { api_key, client };
+    let state = AppState {
+        api_key,
+        client,
+        password: "password".to_string(),
+        username: "username".to_string(),
+    };
 
     // Actix runtime entrypoint
-    let event = parse_image(Path::new("examples/dance_flyer.jpg"), &state).await?;
+    let event = parse_image(
+        Path::new("examples/dance_flyer.jpg"),
+        &state.client,
+        &state.api_key,
+    )
+    .await?;
     assert_eq!(event.name, "Dance Therapy");
     Ok(())
 }

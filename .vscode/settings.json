@@ -4,6 +4,7 @@
     "chrono",
     "dotenv",
     "dotenvy",
+    "httpauth",
     "rustls",
     "schemars",
     "serde",
