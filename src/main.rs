@@ -1,9 +1,15 @@
-use actix_rt::System;
+use actix_multipart::form::tempfile::TempFile;
+use actix_multipart::form::MultipartForm;
+use actix_web::{
+    http::header::ContentType,
+    middleware,
+    web::{self, Data},
+    App, HttpResponse, HttpServer,
+};
 use anyhow::{anyhow, Result};
 use awc::Connector;
 use base64::{engine::general_purpose::STANDARD as b64, Engine as _};
-use dotenv::dotenv;
-use mime_guess::MimeGuess;
+use dotenvy::dotenv;
 use rustls;
 use schemars::{schema_for, JsonSchema};
 use serde::{Deserialize, Serialize};
@@ -30,88 +36,63 @@ struct EventExtraction {
     confidence: f64,
 }
 
-fn parse_and_validate_response(content: &str) -> Result<EventExtraction> {
-    // First try to parse as the exact struct
-    if let Ok(result) = serde_json::from_str::<EventExtraction>(content) {
-        return Ok(result);
-    }
-
-    // If that fails, parse as generic JSON and clean it up
-    let mut json: serde_json::Value =
-        serde_json::from_str(content).map_err(|e| anyhow!("Failed to parse JSON: {}", e))?;
-
-    // Remove any extra fields not in our struct
-    let allowed_fields = [
-        "name",
-        "full_description",
-        "date",
-        "location",
-        "event_type",
-        "additional_details",
-        "confidence",
-    ];
-
-    if let Some(obj) = json.as_object_mut() {
-        // Keep only allowed fields
-        let keys: Vec<String> = obj.keys().cloned().collect();
-        for key in keys {
-            if !allowed_fields.contains(&key.as_str()) {
-                obj.remove(&key);
-            }
-        }
-
-        // Convert lists to single values where appropriate
-        if let Some(location) = obj.get("location") {
-            if location.is_array() {
-                if let Some(arr) = location.as_array() {
-                    if !arr.is_empty() {
-                        obj.insert("location".to_string(), arr[0].clone());
-                    }
-                }
-            }
-        }
-
-        if let Some(event_type) = obj.get("event_type") {
-            if event_type.is_array() {
-                if let Some(arr) = event_type.as_array() {
-                    if !arr.is_empty() {
-                        obj.insert("event_type".to_string(), arr[0].clone());
-                    }
-                }
-            }
-        }
-    }
-
-    // Now try to parse the cleaned JSON
-    serde_json::from_value(json).map_err(|e| anyhow!("Failed to parse cleaned response: {}", e))
+#[derive(Debug, MultipartForm)]
+struct Upload {
+    image: TempFile,
 }
 
-fn main() -> Result<()> {
+#[actix_web::main]
+async fn main() -> std::io::Result<()> {
     // Load .env file if present
     dotenv().ok();
+    env_logger::init_from_env(env_logger::Env::new().default_filter_or("info"));
 
-    // Actix runtime entrypoint
-    System::new().block_on(async_main())
+    log::info!("Starting server at http://localhost:8080");
+    HttpServer::new(|| {
+        let api_key = env::var("OPENAI_API_KEY").expect("You must set the OPENAI_API_KEY env var");
+        App::new()
+            .wrap(middleware::Logger::default())
+            .app_data(Data::new(api_key))
+            .route("/upload", web::post().to(upload))
+            .route("/", web::get().to(index))
+    })
+    .bind(("127.0.0.1", 8080))?
+    .run()
+    .await
 }
 
-async fn async_main() -> Result<()> {
-    let image_path = env::args()
-        .nth(1)
-        .ok_or_else(|| anyhow!("Usage: somerville-events <image-file.(png|jpg|jpeg|webp|gif)>"))?;
+async fn index() -> HttpResponse {
+    HttpResponse::Ok().content_type(ContentType::html()).body(
+        r#"<!doctype html>
+        <html lang="en">
+        <meta name="color-scheme" content="light dark">
+        <meta name="viewport" content="width=device-width, minimum-scale=1, initial-scale=1">
+        <title>Somerville Events</title>
+        <h1>Somerville Events</h1>"#,
+    )
+}
 
-    let api_key = env::var("OPENAI_API_KEY")
-        .map_err(|_| anyhow!("Set OPENAI_API_KEY in your .env file or environment"))?;
+async fn upload(api_key: Data<String>, MultipartForm(req): MultipartForm<Upload>) -> HttpResponse {
+    match parse_image(req.image.file.path(), &api_key).await {
+        Ok(_) => HttpResponse::Ok().body("Upload succeeded"),
+        Err(_) => HttpResponse::InternalServerError().body("Upload failed"),
+    }
+}
 
+async fn parse_image(image_path: &Path, api_key: &str) -> Result<()> {
     // Read file
-    let bytes = fs::read(&image_path)
-        .map_err(|e| anyhow!("Failed to read file: {} - {}", image_path, e))?;
+    let bytes =
+        fs::read(image_path).map_err(|e| anyhow!("Failed to read file: {image_path:?} - {e}"))?;
 
     // Guess MIME type
-    let mime = guess_mime(&image_path).unwrap_or_else(|| "image/png".to_string());
+    let mime_type = mime_guess::from_path(&image_path)
+        .first_raw()
+        .map(|m| m.to_string())
+        .unwrap_or_else(|| "image/png".to_string());
 
     // Base64 encode -> data URL
     let b64_data = b64.encode(&bytes);
-    let data_url = format!("data:{mime};base64,{b64_data}");
+    let data_url = format!("data:{mime_type};base64,{b64_data}");
 
     let schema = schema_for!(EventExtraction);
     let schema_str = serde_json::to_string_pretty(&schema).unwrap();
@@ -216,11 +197,60 @@ async fn async_main() -> Result<()> {
     Ok(())
 }
 
-// Helpers
+fn parse_and_validate_response(content: &str) -> Result<EventExtraction> {
+    // First try to parse as the exact struct
+    if let Ok(result) = serde_json::from_str::<EventExtraction>(content) {
+        return Ok(result);
+    }
 
-fn guess_mime<P: AsRef<Path>>(p: P) -> Option<String> {
-    let guess: MimeGuess = mime_guess::from_path(p);
-    guess.first_raw().map(|m| m.to_string())
+    // If that fails, parse as generic JSON and clean it up
+    let mut json: serde_json::Value =
+        serde_json::from_str(content).map_err(|e| anyhow!("Failed to parse JSON: {}", e))?;
+
+    // Remove any extra fields not in our struct
+    let allowed_fields = [
+        "name",
+        "full_description",
+        "date",
+        "location",
+        "event_type",
+        "additional_details",
+        "confidence",
+    ];
+
+    if let Some(obj) = json.as_object_mut() {
+        // Keep only allowed fields
+        let keys: Vec<String> = obj.keys().cloned().collect();
+        for key in keys {
+            if !allowed_fields.contains(&key.as_str()) {
+                obj.remove(&key);
+            }
+        }
+
+        // Convert lists to single values where appropriate
+        if let Some(location) = obj.get("location") {
+            if location.is_array() {
+                if let Some(arr) = location.as_array() {
+                    if !arr.is_empty() {
+                        obj.insert("location".to_string(), arr[0].clone());
+                    }
+                }
+            }
+        }
+
+        if let Some(event_type) = obj.get("event_type") {
+            if event_type.is_array() {
+                if let Some(arr) = event_type.as_array() {
+                    if !arr.is_empty() {
+                        obj.insert("event_type".to_string(), arr[0].clone());
+                    }
+                }
+            }
+        }
+    }
+
+    // Now try to parse the cleaned JSON
+    serde_json::from_value(json).map_err(|e| anyhow!("Failed to parse cleaned response: {}", e))
 }
 
 /// Create simple `rustls` client config.
@@ -234,4 +264,18 @@ fn rustls_config() -> Result<rustls::ClientConfig, rustls::Error> {
     // The benefits of the platform verifier are clear; see:
     // https://github.com/rustls/rustls-platform-verifier#readme
     rustls::ClientConfig::with_platform_verifier()
+}
+
+#[test]
+fn test_parse_image() -> Result<()> {
+    use actix_rt::System;
+
+    // Load .env file if present
+    dotenv().ok();
+
+    let api_key = env::var("OPENAI_API_KEY")
+        .map_err(|_| anyhow!("Set OPENAI_API_KEY in your .env file or environment"))?;
+
+    // Actix runtime entrypoint
+    System::new().block_on(parse_image(Path::new("examples/dance_flyer.jpg"), &api_key))
 }

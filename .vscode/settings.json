@@ -3,6 +3,7 @@
     "actix",
     "chrono",
     "dotenv",
+    "dotenvy",
     "rustls",
     "schemars",
     "serde",
