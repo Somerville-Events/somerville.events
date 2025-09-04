@@ -124,12 +124,13 @@ async fn main() -> Result<()> {
         App::new()
             .app_data(Data::new(state))
             .wrap(middleware::Logger::default())
+            .route("/", web::get().to(index))
             .service(
                 web::resource("/upload")
                     .wrap(auth_middleware)
+                    .route(web::get().to(upload_ui))
                     .route(web::post().to(upload)),
             )
-            .route("/", web::get().to(index))
     })
     .bind(("127.0.0.1", 8080))?
     .run()
@@ -145,6 +146,40 @@ async fn index() -> HttpResponse {
         <meta name="viewport" content="width=device-width, minimum-scale=1, initial-scale=1">
         <title>Somerville Events</title>
         <h1>Somerville Events</h1>"#,
+    )
+}
+
+async fn upload_ui() -> HttpResponse {
+    HttpResponse::Ok().content_type(ContentType::html()).body(
+        r#"<!doctype html>
+        <html lang="en">
+        <meta name="color-scheme" content="light dark">
+        <meta name="viewport" content="width=device-width, minimum-scale=1, initial-scale=1">
+        <title>Somerville Events Upload</title>
+        <style>
+        html, body {
+            height: 100%;
+            margin: 0;
+        }
+        form {
+            display: flex;
+            flex-direction: column;
+            height: 100%;
+        }
+        input[type=file] {
+            flex: 1;
+            border: none;
+        }
+        button {
+            flex: 0;
+        }
+        </style>
+
+        <form action="/upload" method="post" enctype="multipart/form-data">
+        <input type="file" name="image" accept="image/*" required>
+        <button>Upload</button>
+        </form>
+        "#,
     )
 }
 

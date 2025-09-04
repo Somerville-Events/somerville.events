@@ -4,6 +4,7 @@
     "chrono",
     "dotenv",
     "dotenvy",
+    "enctype",
     "httpauth",
     "rustls",
     "schemars",
