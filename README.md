@@ -4,11 +4,19 @@ An event website for Somerville, MA.
 
 ## Setup
 
+Install postgresql
+
+https://www.postgresql.org/download/
+
 ```
 cp .env.sample .env
 ```
 
 Set the values in your `.env`
+
+```
+./reset_database.sh
+```
 
 ## Run
 

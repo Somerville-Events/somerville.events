@@ -5,10 +5,13 @@
     "dotenv",
     "dotenvy",
     "enctype",
+    "getenv",
     "httpauth",
+    "psql",
     "rustls",
     "schemars",
     "serde",
+    "SUPERDB",
     "webpki"
   ]
 }
