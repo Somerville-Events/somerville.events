@@ -12,6 +12,7 @@ use actix_web_httpauth::{extractors::basic::BasicAuth, middleware::HttpAuthentic
 use anyhow::{anyhow, Result};
 use awc::{Client, Connector};
 use base64::{engine::general_purpose::STANDARD as b64, Engine as _};
+use chrono::{DateTime, Utc};
 use dotenvy::dotenv;
 use rustls;
 use schemars::{schema_for, JsonSchema};
@@ -29,10 +30,10 @@ struct Event {
     name: String,
     /// The full description of the event or content
     full_description: String,
-    /// The date and time of the event (ISO 8601 format: YYYY-MM-DDTHH:MM:SSZ)
-    start_date: Option<Vec<String>>,
-    /// The end date of the event (ISO 8601 format: YYYY-MM-DDTHH:MM:SSZ)
-    end_date: Option<Vec<String>>,
+    /// The date and time of the event
+    start_date: Option<DateTime<Utc>>,
+    /// The end date of the event
+    end_date: Option<DateTime<Utc>>,
     /// The location of the event
     location: Option<String>,
     /// Type of event (e.g., "YardSale", "Art", "Dance", "Performance", "Food", "PersonalService", "CivicEvent", "Other")
@@ -210,7 +211,8 @@ async fn parse_image(image_path: &Path, client: &Client, api_key: &str) -> Resul
 
     let schema = schema_for!(Event);
     let schema_str = serde_json::to_string_pretty(&schema).unwrap();
-    log::debug!("{schema_str}");
+    let now = Utc::now();
+    let now_str = now.to_rfc3339();
 
     // Build Chat Completions payload with instructor format
     let payload = json!({
@@ -223,12 +225,17 @@ async fn parse_image(image_path: &Path, client: &Client, api_key: &str) -> Resul
                 "content": format!(
                     r#"You are an expert at extracting event information from images.
                     You must respond with a JSON object that matches this exact schema:
-                    {schema:#?}
-                    The text field should contain all readable text from the image. 
-                    The confidence should be a number between 0.0 and 1.0 indicating how confident you are in the extraction. 
+                    {schema_str}
+                    The text field should contain all readable text from the image.
+                    The confidence should be a number between 0.0 and 1.0 indicating how confident you are in the extraction.
                     Focus on extracting event-related information like the name, date, time, location, and description.
                     Never return multiple locations.
                     Never return multiple event types.
+                    Today's date is {now_str}.
+                    The start_date and end_date must be RFC 3339 formatted date and time strings.
+                    Assume the event is in the future unless the text clearly indicates it is in the past.
+                    Assume the event is in the timezone of the location if provided.
+                    Assume the event is nearest to today's date if the date is ambiguous in any way.
                     Be thorough but accurate. Return only valid JSON.
                     Do not return the schema in your response.
                     "#
