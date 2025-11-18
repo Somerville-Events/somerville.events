@@ -4,6 +4,10 @@ An event website for Somerville, MA.
 
 ## Setup
 
+```
+cargo install sqlx-cli
+```
+
 Install postgresql
 
 https://www.postgresql.org/download/
