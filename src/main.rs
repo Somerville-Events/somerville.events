@@ -1,3 +1,4 @@
+use actix_files::Files;
 use actix_multipart::form::tempfile::TempFile;
 use actix_multipart::form::MultipartForm;
 use actix_web::{
@@ -44,6 +45,14 @@ struct Event {
     additional_details: Option<Vec<String>>,
     /// Confidence level of the extraction (0.0 to 1.0)
     confidence: f64,
+    /// Path to the event flyer image
+    // schemars(skip): Do not include this field in the JSON schema sent to the LLM.
+    // The LLM should not attempt to extract or invent a file path.
+    #[schemars(skip)]
+    // serde(default): When parsing the LLM's JSON response (which won't have this field),
+    // automatically fill it with the default value (String::new() i.e., "") instead of erroring.
+    #[serde(default)]
+    image_path: String,
     /// Database ID (optional)
     #[serde(skip, default)]
     #[schemars(skip)]
@@ -146,6 +155,7 @@ async fn main() -> Result<()> {
             .route("/", web::get().to(index))
             .route("/event/{id}.html", web::get().to(event_details))
             .route("/event/{id}.ical", web::get().to(event_ical))
+            .service(Files::new("/static", "./static").show_files_listing())
             .service(
                 web::resource("/upload")
                     .wrap(auth_middleware)
@@ -172,7 +182,8 @@ async fn index(state: Data<AppState>) -> HttpResponse {
             location,
             event_type,
             additional_details,
-            confidence
+            confidence,
+            image_path
         FROM app.events
         ORDER BY start_date ASC NULLS LAST
         "#
@@ -191,6 +202,7 @@ async fn index(state: Data<AppState>) -> HttpResponse {
                         <p><strong>Date:</strong> {}</p>
                         <p><strong>Location:</strong> {}</p>
                         <p>{}</p>
+                        {}
                         <p><a href="/event/{}.ical">📅 Add to Calendar</a></p>
                     </div>
                     <hr>
@@ -204,6 +216,10 @@ async fn index(state: Data<AppState>) -> HttpResponse {
                         .unwrap_or_else(|| "TBD".to_string()),
                     html_escape::encode_text(&event.location.unwrap_or_default()),
                     html_escape::encode_text(&event.full_description),
+                    format!(
+                        r#"<a href="{}"><img src="{}" alt="Event Flyer" style="max-width: 100%; max-height: 300px; display: block; margin: 1rem 0;"></a>"#,
+                        event.image_path, event.image_path
+                    ),
                     event.id.unwrap_or_default()
                 ));
             }
@@ -253,7 +269,8 @@ async fn event_details(state: Data<AppState>, path: web::Path<i64>) -> HttpRespo
             location,
             event_type,
             additional_details,
-            confidence
+            confidence,
+            image_path
         FROM app.events
         WHERE id = $1
         "#,
@@ -283,6 +300,7 @@ async fn event_details(state: Data<AppState>, path: web::Path<i64>) -> HttpRespo
                     <p><strong>Date:</strong> {}</p>
                     <p><strong>Location:</strong> {}</p>
                     <p>{}</p>
+                    {}
                     <p>
                         <a href="/event/{}.ical" class="ical-link">Add to Calendar (.ics)</a>
                     </p>
@@ -296,6 +314,10 @@ async fn event_details(state: Data<AppState>, path: web::Path<i64>) -> HttpRespo
                     .unwrap_or_else(|| "TBD".to_string()),
                 html_escape::encode_text(&event.location.unwrap_or_default()),
                 html_escape::encode_text(&event.full_description),
+                format!(
+                    r#"<a href="{}"><img src="{}" alt="Event Flyer" style="max-width: 100%; display: block; margin: 2rem 0;"></a>"#,
+                    event.image_path, event.image_path
+                ),
                 id
             ))
         }
@@ -321,7 +343,8 @@ async fn event_ical(state: Data<AppState>, path: web::Path<i64>) -> HttpResponse
             location,
             event_type,
             additional_details,
-            confidence
+            confidence,
+            image_path
         FROM app.events
         WHERE id = $1
         "#,
@@ -430,17 +453,42 @@ async fn upload_ui() -> HttpResponse {
 }
 
 async fn upload(state: Data<AppState>, MultipartForm(req): MultipartForm<Upload>) -> HttpResponse {
-    match parse_image(req.image.file.path(), &state.client, &state.api_key).await {
-        Ok(event) => match save_event_to_db(&state.db_connection_pool, &event).await {
-            Ok(id) => {
-                log::info!("Saved event to database with id: {}", id);
-                HttpResponse::Ok().json(event)
+    let temp_path = req.image.file.path().to_owned();
+    match parse_image(&temp_path, &state.client, &state.api_key).await {
+        Ok(mut event) => {
+            // Generate a unique filename
+            let extension = req
+                .image
+                .file_name
+                .as_ref()
+                .and_then(|n| Path::new(n).extension())
+                .and_then(|e| e.to_str())
+                .unwrap_or("jpg");
+            let new_filename = format!("{}.{}", Utc::now().timestamp_micros(), extension);
+            let new_path = Path::new("static/images").join(&new_filename);
+
+            // Save the file
+            if let Err(e) = fs::copy(&temp_path, &new_path) {
+                log::error!("Failed to save image: {}", e);
+                return HttpResponse::InternalServerError().body("Failed to save image");
             }
-            Err(e) => {
-                log::error!("Failed to save event to database: {e:#}");
-                HttpResponse::InternalServerError().body("Failed to save event to database")
+
+            event.image_path = format!("/static/images/{}", new_filename);
+
+            match save_event_to_db(&state.db_connection_pool, &event).await {
+                Ok(id) => {
+                    log::info!("Saved event to database with id: {}", id);
+                    // Update the returned event with the ID
+                    let mut returned_event = event.clone();
+                    returned_event.id = Some(id);
+                    HttpResponse::Ok().json(returned_event)
+                }
+                Err(e) => {
+                    log::error!("Failed to save event to database: {e:#}");
+                    HttpResponse::InternalServerError().body("Failed to save event to database")
+                }
             }
-        },
+        }
         Err(e) => {
             log::error!("parse_image failed: {e:#}");
             HttpResponse::InternalServerError().body("Parsing failed")
@@ -462,9 +510,10 @@ where
             location,
             event_type,
             additional_details,
-            confidence
+            confidence,
+            image_path
         )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
         RETURNING id
         "#,
         event.name,
@@ -474,7 +523,8 @@ where
         event.location,
         event.event_type,
         event.additional_details.as_deref(),
-        event.confidence
+        event.confidence,
+        event.image_path
     )
     .fetch_one(executor)
     .await
@@ -695,7 +745,8 @@ async fn test_parse_image() -> Result<()> {
             location,
             event_type,
             additional_details,
-            confidence
+            confidence,
+            image_path
         FROM app.events
         WHERE id = $1
         "#,

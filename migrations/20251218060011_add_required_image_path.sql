@@ -1,0 +1,1 @@
+ALTER TABLE app.events ADD COLUMN image_path TEXT NOT NULL DEFAULT '';

@@ -35,3 +35,4 @@ futures-util = "0.3"
 dotenvy = "0.15.7" # Environment variable loading
 html-escape = "0.2.13"
 icalendar = "0.17.6"
+actix-files = "0.6.9"
