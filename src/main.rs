@@ -14,6 +14,7 @@ use awc::{Client, Connector};
 use base64::{engine::general_purpose::STANDARD as b64, Engine as _};
 use chrono::{DateTime, Utc};
 use dotenvy::dotenv;
+use icalendar::{Calendar, Component, Event as IcalEvent, EventLike};
 use rustls;
 use schemars::{schema_for, JsonSchema};
 use serde::{Deserialize, Serialize};
@@ -25,7 +26,7 @@ use std::{
     sync::{Arc, OnceLock},
 };
 
-#[derive(Debug, Serialize, Deserialize, JsonSchema, PartialEq)]
+#[derive(Debug, Serialize, Deserialize, JsonSchema, PartialEq, Clone)]
 struct Event {
     /// The name of the event
     name: String,
@@ -43,6 +44,10 @@ struct Event {
     additional_details: Option<Vec<String>>,
     /// Confidence level of the extraction (0.0 to 1.0)
     confidence: f64,
+    /// Database ID (optional)
+    #[serde(skip, default)]
+    #[schemars(skip)]
+    id: Option<i64>,
 }
 
 #[derive(Debug, MultipartForm)]
@@ -139,6 +144,8 @@ async fn main() -> Result<()> {
             .app_data(Data::new(state))
             .wrap(middleware::Logger::default())
             .route("/", web::get().to(index))
+            .route("/event/{id}.html", web::get().to(event_details))
+            .route("/event/{id}.ical", web::get().to(event_ical))
             .service(
                 web::resource("/upload")
                     .wrap(auth_middleware)
@@ -157,6 +164,7 @@ async fn index(state: Data<AppState>) -> HttpResponse {
         Event,
         r#"
         SELECT
+            id,
             name,
             full_description,
             start_date,
@@ -179,20 +187,24 @@ async fn index(state: Data<AppState>) -> HttpResponse {
                 events_html.push_str(&format!(
                     r#"
                     <div class="event">
-                        <h2>{}</h2>
+                        <h2><a href="/event/{}.html">{}</a></h2>
                         <p><strong>Date:</strong> {}</p>
                         <p><strong>Location:</strong> {}</p>
                         <p>{}</p>
+                        <p><a href="/event/{}.ical">📅 Add to Calendar</a></p>
                     </div>
                     <hr>
                     "#,
+                    // Use unwrap_or_default for ID, though it should exist from DB
+                    event.id.unwrap_or_default(),
                     html_escape::encode_text(&event.name),
                     event
                         .start_date
                         .map(|d| d.format("%A, %B %d, %Y at %I:%M %p").to_string())
                         .unwrap_or_else(|| "TBD".to_string()),
                     html_escape::encode_text(&event.location.unwrap_or_default()),
-                    html_escape::encode_text(&event.full_description)
+                    html_escape::encode_text(&event.full_description),
+                    event.id.unwrap_or_default()
                 ));
             }
 
@@ -223,6 +235,136 @@ async fn index(state: Data<AppState>) -> HttpResponse {
         Err(e) => {
             log::error!("Failed to fetch events: {e}");
             HttpResponse::InternalServerError().body("Failed to fetch events")
+        }
+    }
+}
+
+async fn event_details(state: Data<AppState>, path: web::Path<i64>) -> HttpResponse {
+    let id = path.into_inner();
+    let event = sqlx::query_as!(
+        Event,
+        r#"
+        SELECT
+            id,
+            name,
+            full_description,
+            start_date,
+            end_date,
+            location,
+            event_type,
+            additional_details,
+            confidence
+        FROM app.events
+        WHERE id = $1
+        "#,
+        id
+    )
+    .fetch_optional(&state.db_connection_pool)
+    .await;
+
+    match event {
+        Ok(Some(event)) => {
+            HttpResponse::Ok().content_type(ContentType::html()).body(format!(
+                r#"<!doctype html>
+                <html lang="en">
+                <head>
+                    <meta name="color-scheme" content="light dark">
+                    <meta name="viewport" content="width=device-width, minimum-scale=1, initial-scale=1">
+                    <title>{} - Somerville Events</title>
+                    <style>
+                        body {{ font-family: system-ui, sans-serif; max-width: 800px; margin: 0 auto; padding: 1rem; line-height: 1.5; }}
+                        a {{ display: inline-block; margin-bottom: 2rem; }}
+                        .ical-link {{ margin-left: 1rem; }}
+                    </style>
+                </head>
+                <body>
+                    <a href="/">&larr; Back to Events</a>
+                    <h1>{}</h1>
+                    <p><strong>Date:</strong> {}</p>
+                    <p><strong>Location:</strong> {}</p>
+                    <p>{}</p>
+                    <p>
+                        <a href="/event/{}.ical" class="ical-link">Add to Calendar (.ics)</a>
+                    </p>
+                </body>
+                </html>"#,
+                html_escape::encode_text(&event.name),
+                html_escape::encode_text(&event.name),
+                event
+                    .start_date
+                    .map(|d| d.format("%A, %B %d, %Y at %I:%M %p").to_string())
+                    .unwrap_or_else(|| "TBD".to_string()),
+                html_escape::encode_text(&event.location.unwrap_or_default()),
+                html_escape::encode_text(&event.full_description),
+                id
+            ))
+        }
+        Ok(None) => HttpResponse::NotFound().body("Event not found"),
+        Err(e) => {
+            log::error!("Failed to fetch event: {e}");
+            HttpResponse::InternalServerError().body("Failed to fetch event")
+        }
+    }
+}
+
+async fn event_ical(state: Data<AppState>, path: web::Path<i64>) -> HttpResponse {
+    let id = path.into_inner();
+    let event_res = sqlx::query_as!(
+        Event,
+        r#"
+        SELECT
+            id,
+            name,
+            full_description,
+            start_date,
+            end_date,
+            location,
+            event_type,
+            additional_details,
+            confidence
+        FROM app.events
+        WHERE id = $1
+        "#,
+        id
+    )
+    .fetch_optional(&state.db_connection_pool)
+    .await;
+
+    match event_res {
+        Ok(Some(event)) => {
+            let mut ical_event = IcalEvent::new();
+            ical_event
+                .summary(&event.name)
+                .description(&event.full_description);
+
+            if let Some(location) = event.location {
+                ical_event.location(&location);
+            }
+
+            if let Some(start) = event.start_date {
+                ical_event.starts(start);
+                if let Some(end) = event.end_date {
+                    ical_event.ends(end);
+                } else {
+                    // Default to 1 hour duration if no end date
+                    ical_event.ends(start + chrono::Duration::hours(1));
+                }
+            }
+
+            let calendar = Calendar::new().push(ical_event).done();
+
+            HttpResponse::Ok()
+                .content_type("text/calendar")
+                .insert_header((
+                    "Content-Disposition",
+                    format!("attachment; filename=\"event-{}.ics\"", id),
+                ))
+                .body(calendar.to_string())
+        }
+        Ok(None) => HttpResponse::NotFound().body("Event not found"),
+        Err(e) => {
+            log::error!("Failed to fetch event: {e}");
+            HttpResponse::InternalServerError().body("Failed to fetch event")
         }
     }
 }
@@ -545,6 +687,7 @@ async fn test_parse_image() -> Result<()> {
         Event,
         r#"
         SELECT
+            id,
             name,
             full_description,
             start_date,
@@ -561,7 +704,9 @@ async fn test_parse_image() -> Result<()> {
     .fetch_one(&mut *tx)
     .await?;
 
-    assert_eq!(saved_event, event);
+    let mut expected_event = event.clone();
+    expected_event.id = Some(id);
+    assert_eq!(saved_event, expected_event);
 
     // Rollback the transaction so we don't pollute the database
     tx.rollback().await?;

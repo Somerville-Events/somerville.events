@@ -1,45 +1,50 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n        SELECT\n            name,\n            full_description,\n            start_date,\n            end_date,\n            location,\n            event_type,\n            additional_details,\n            confidence\n        FROM app.events\n        ORDER BY start_date ASC NULLS LAST\n        ",
+  "query": "\n        SELECT\n            id,\n            name,\n            full_description,\n            start_date,\n            end_date,\n            location,\n            event_type,\n            additional_details,\n            confidence\n        FROM app.events\n        ORDER BY start_date ASC NULLS LAST\n        ",
   "describe": {
     "columns": [
       {
         "ordinal": 0,
+        "name": "id",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 1,
         "name": "name",
         "type_info": "Text"
       },
       {
-        "ordinal": 1,
+        "ordinal": 2,
         "name": "full_description",
         "type_info": "Text"
       },
       {
-        "ordinal": 2,
+        "ordinal": 3,
         "name": "start_date",
         "type_info": "Timestamptz"
       },
       {
-        "ordinal": 3,
+        "ordinal": 4,
         "name": "end_date",
         "type_info": "Timestamptz"
       },
       {
-        "ordinal": 4,
+        "ordinal": 5,
         "name": "location",
         "type_info": "Text"
       },
       {
-        "ordinal": 5,
+        "ordinal": 6,
         "name": "event_type",
         "type_info": "Text"
       },
       {
-        "ordinal": 6,
+        "ordinal": 7,
         "name": "additional_details",
         "type_info": "TextArray"
       },
       {
-        "ordinal": 7,
+        "ordinal": 8,
         "name": "confidence",
         "type_info": "Float8"
       }
@@ -50,6 +55,7 @@
     "nullable": [
       false,
       false,
+      false,
       true,
       true,
       true,
@@ -58,5 +64,5 @@
       false
     ]
   },
-  "hash": "d47a8c0bdb51ff6bb998df17d801d1e67a2a010157a314bc9399bc7e201971bb"
+  "hash": "961b9c68b2f131ea89489afc883ed5078a63045473d33905db9d85e5a1b2f93a"
 }
