@@ -152,15 +152,79 @@ async fn main() -> Result<()> {
     Ok(())
 }
 
-async fn index() -> HttpResponse {
-    HttpResponse::Ok().content_type(ContentType::html()).body(
-        r#"<!doctype html>
-        <html lang="en">
-        <meta name="color-scheme" content="light dark">
-        <meta name="viewport" content="width=device-width, minimum-scale=1, initial-scale=1">
-        <title>Somerville Events</title>
-        <h1>Somerville Events</h1>"#,
+async fn index(state: Data<AppState>) -> HttpResponse {
+    let events = sqlx::query_as!(
+        Event,
+        r#"
+        SELECT
+            name,
+            full_description,
+            start_date,
+            end_date,
+            location,
+            event_type,
+            additional_details,
+            confidence
+        FROM app.events
+        ORDER BY start_date ASC NULLS LAST
+        "#
     )
+    .fetch_all(&state.db_connection_pool)
+    .await;
+
+    match events {
+        Ok(events) => {
+            let mut events_html = String::new();
+            for event in events {
+                events_html.push_str(&format!(
+                    r#"
+                    <div class="event">
+                        <h2>{}</h2>
+                        <p><strong>Date:</strong> {}</p>
+                        <p><strong>Location:</strong> {}</p>
+                        <p>{}</p>
+                    </div>
+                    <hr>
+                    "#,
+                    html_escape::encode_text(&event.name),
+                    event
+                        .start_date
+                        .map(|d| d.format("%A, %B %d, %Y at %I:%M %p").to_string())
+                        .unwrap_or_else(|| "TBD".to_string()),
+                    html_escape::encode_text(&event.location.unwrap_or_default()),
+                    html_escape::encode_text(&event.full_description)
+                ));
+            }
+
+            HttpResponse::Ok().content_type(ContentType::html()).body(format!(
+                r#"<!doctype html>
+                <html lang="en">
+                <head>
+                    <meta name="color-scheme" content="light dark">
+                    <meta name="viewport" content="width=device-width, minimum-scale=1, initial-scale=1">
+                    <title>Somerville Events</title>
+                    <style>
+                        body {{ font-family: system-ui, sans-serif; max-width: 800px; margin: 0 auto; padding: 1rem; line-height: 1.5; }}
+                        .event {{ margin-bottom: 2rem; }}
+                        h1 {{ margin-bottom: 1rem; }}
+                        a {{ display: inline-block; margin-bottom: 2rem; }}
+                    </style>
+                </head>
+                <body>
+                    <h1>Somerville Events</h1>
+                    <a href="/upload">Upload New Event</a>
+                    <hr>
+                    {}
+                </body>
+                </html>"#,
+                events_html
+            ))
+        }
+        Err(e) => {
+            log::error!("Failed to fetch events: {e}");
+            HttpResponse::InternalServerError().body("Failed to fetch events")
+        }
+    }
 }
 
 async fn upload_ui() -> HttpResponse {
@@ -475,6 +539,41 @@ async fn test_parse_image() -> Result<()> {
 
     // Rollback the transaction so we don't pollute the database
     tx.rollback().await?;
+
+    Ok(())
+}
+
+#[actix_web::test]
+async fn test_index() -> Result<()> {
+    dotenv().ok();
+
+    let db_user = env::var("DB_APP_USER").expect("DB_APP_USER");
+    let db_password = env::var("DB_APP_USER_PASS").expect("DB_APP_USER_PASS");
+    let db_name = env::var("DB_NAME").expect("DB_NAME");
+    let db_url = format!("postgres://{db_user}:{db_password}@localhost/{db_name}");
+
+    let db_connection_pool = PgPoolOptions::new().connect(&db_url).await?;
+
+    // Dummy client since index doesn't use it
+    let client = awc::Client::default();
+
+    let state = AppState {
+        api_key: "dummy".to_string(),
+        client,
+        username: "user".to_string(),
+        password: "pass".to_string(),
+        db_connection_pool,
+    };
+
+    let resp = index(Data::new(state)).await;
+    assert_eq!(resp.status(), actix_web::http::StatusCode::OK);
+
+    use actix_web::body::to_bytes;
+    let body = to_bytes(resp.into_body())
+        .await
+        .map_err(|e| anyhow!("Error reading body: {}", e))?;
+    let body_str = std::str::from_utf8(&body)?;
+    assert!(body_str.contains("Somerville Events"));
 
     Ok(())
 }
