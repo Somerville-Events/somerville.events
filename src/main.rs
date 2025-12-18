@@ -18,13 +18,14 @@ use rustls;
 use schemars::{schema_for, JsonSchema};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
+use sqlx::postgres::PgPoolOptions;
 use std::{
     env, fs,
     path::Path,
     sync::{Arc, OnceLock},
 };
 
-#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Serialize, Deserialize, JsonSchema, PartialEq)]
 struct Event {
     /// The name of the event
     name: String,
@@ -55,6 +56,7 @@ struct AppState {
     client: Client,
     username: String,
     password: String,
+    db_connection_pool: sqlx::Pool<sqlx::Postgres>,
 }
 
 static TLS_CONFIG: OnceLock<Arc<rustls::ClientConfig>> = OnceLock::new();
@@ -98,12 +100,22 @@ async fn main() -> Result<()> {
     env_logger::init_from_env(env_logger::Env::new().default_filter_or("info"));
 
     // Read env once
-    let api_key: String = env::var("OPENAI_API_KEY").expect("Set env var: OPENAI_API_KEY");
-    let username = env::var("BASIC_AUTH_USER").expect("Set env var: BASIC_AUTH_USER");
-    let password = env::var("BASIC_AUTH_PASS").expect("Set env var: BASIC_AUTH_PASS");
+    let api_key: String = env::var("OPENAI_API_KEY").expect("OPENAI_API_KEY");
+    let username = env::var("BASIC_AUTH_USER").expect("BASIC_AUTH_USER");
+    let password = env::var("BASIC_AUTH_PASS").expect("BASIC_AUTH_PASS");
+    let db_user = env::var("DB_APP_USER").expect("DB_APP_USER");
+    let db_password = env::var("DB_APP_USER_PASS").expect("DB_APP_USER_PASS");
+    let db_name = env::var("DB_NAME").expect("DB_NAME");
 
     // TLS config once
     let tls_config = TLS_CONFIG.get_or_init(init_tls_once).clone();
+
+    // Create the database connection pool once
+    let db_url = format!("postgres://{db_user}:{db_password}@localhost/{db_name}");
+    let db_connection_pool = PgPoolOptions::new()
+        .max_connections(5)
+        .connect(db_url.as_str())
+        .await?;
 
     log::info!("Starting server at http://localhost:8080");
     HttpServer::new(move || {
@@ -117,6 +129,7 @@ async fn main() -> Result<()> {
             api_key: api_key.clone(),
             username: username.clone(),
             password: password.clone(),
+            db_connection_pool: db_connection_pool.clone(),
             client,
         };
 
@@ -139,15 +152,79 @@ async fn main() -> Result<()> {
     Ok(())
 }
 
-async fn index() -> HttpResponse {
-    HttpResponse::Ok().content_type(ContentType::html()).body(
-        r#"<!doctype html>
-        <html lang="en">
-        <meta name="color-scheme" content="light dark">
-        <meta name="viewport" content="width=device-width, minimum-scale=1, initial-scale=1">
-        <title>Somerville Events</title>
-        <h1>Somerville Events</h1>"#,
+async fn index(state: Data<AppState>) -> HttpResponse {
+    let events = sqlx::query_as!(
+        Event,
+        r#"
+        SELECT
+            name,
+            full_description,
+            start_date,
+            end_date,
+            location,
+            event_type,
+            additional_details,
+            confidence
+        FROM app.events
+        ORDER BY start_date ASC NULLS LAST
+        "#
     )
+    .fetch_all(&state.db_connection_pool)
+    .await;
+
+    match events {
+        Ok(events) => {
+            let mut events_html = String::new();
+            for event in events {
+                events_html.push_str(&format!(
+                    r#"
+                    <div class="event">
+                        <h2>{}</h2>
+                        <p><strong>Date:</strong> {}</p>
+                        <p><strong>Location:</strong> {}</p>
+                        <p>{}</p>
+                    </div>
+                    <hr>
+                    "#,
+                    html_escape::encode_text(&event.name),
+                    event
+                        .start_date
+                        .map(|d| d.format("%A, %B %d, %Y at %I:%M %p").to_string())
+                        .unwrap_or_else(|| "TBD".to_string()),
+                    html_escape::encode_text(&event.location.unwrap_or_default()),
+                    html_escape::encode_text(&event.full_description)
+                ));
+            }
+
+            HttpResponse::Ok().content_type(ContentType::html()).body(format!(
+                r#"<!doctype html>
+                <html lang="en">
+                <head>
+                    <meta name="color-scheme" content="light dark">
+                    <meta name="viewport" content="width=device-width, minimum-scale=1, initial-scale=1">
+                    <title>Somerville Events</title>
+                    <style>
+                        body {{ font-family: system-ui, sans-serif; max-width: 800px; margin: 0 auto; padding: 1rem; line-height: 1.5; }}
+                        .event {{ margin-bottom: 2rem; }}
+                        h1 {{ margin-bottom: 1rem; }}
+                        a {{ display: inline-block; margin-bottom: 2rem; }}
+                    </style>
+                </head>
+                <body>
+                    <h1>Somerville Events</h1>
+                    <a href="/upload">Upload New Event</a>
+                    <hr>
+                    {}
+                </body>
+                </html>"#,
+                events_html
+            ))
+        }
+        Err(e) => {
+            log::error!("Failed to fetch events: {e}");
+            HttpResponse::InternalServerError().body("Failed to fetch events")
+        }
+    }
 }
 
 async fn upload_ui() -> HttpResponse {
@@ -186,12 +263,56 @@ async fn upload_ui() -> HttpResponse {
 
 async fn upload(state: Data<AppState>, MultipartForm(req): MultipartForm<Upload>) -> HttpResponse {
     match parse_image(req.image.file.path(), &state.client, &state.api_key).await {
-        Ok(event) => HttpResponse::Ok().json(event),
+        Ok(event) => match save_event_to_db(&state.db_connection_pool, &event).await {
+            Ok(id) => {
+                log::info!("Saved event to database with id: {}", id);
+                HttpResponse::Ok().json(event)
+            }
+            Err(e) => {
+                log::error!("Failed to save event to database: {e:#}");
+                HttpResponse::InternalServerError().body("Failed to save event to database")
+            }
+        },
         Err(e) => {
             log::error!("parse_image failed: {e:#}");
             HttpResponse::InternalServerError().body("Parsing failed")
         }
     }
+}
+
+async fn save_event_to_db<'e, E>(executor: E, event: &Event) -> Result<i64>
+where
+    E: sqlx::PgExecutor<'e>,
+{
+    let id = sqlx::query_scalar!(
+        r#"
+        INSERT INTO app.events (
+            name,
+            full_description,
+            start_date,
+            end_date,
+            location,
+            event_type,
+            additional_details,
+            confidence
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+        RETURNING id
+        "#,
+        event.name,
+        event.full_description,
+        event.start_date,
+        event.end_date,
+        event.location,
+        event.event_type,
+        event.additional_details.as_deref(),
+        event.confidence
+    )
+    .fetch_one(executor)
+    .await
+    .map_err(|e| anyhow!("Database insert failed: {e}"))?;
+
+    Ok(id)
 }
 
 async fn parse_image(image_path: &Path, client: &Client, api_key: &str) -> Result<Event> {
@@ -360,11 +481,23 @@ async fn test_parse_image() -> Result<()> {
         .connector(Connector::new().rustls_0_23(tls_config))
         .finish();
 
+    // Create the database connection pool for testing
+    let db_user = env::var("DB_APP_USER").expect("DB_APP_USER");
+    let db_password = env::var("DB_APP_USER_PASS").expect("DB_APP_USER_PASS");
+    let db_name = env::var("DB_NAME").expect("DB_NAME");
+    let db_url = format!("postgres://{db_user}:{db_password}@localhost/{db_name}");
+
+    let db_connection_pool = PgPoolOptions::new()
+        .max_connections(5)
+        .connect(&db_url)
+        .await?;
+
     let state = AppState {
         api_key,
         client,
         password: "password".to_string(),
         username: "username".to_string(),
+        db_connection_pool,
     };
 
     // Actix runtime entrypoint
@@ -375,5 +508,72 @@ async fn test_parse_image() -> Result<()> {
     )
     .await?;
     assert_eq!(event.name, "Dance Therapy");
+
+    // Test saving to the database using a transaction
+    let mut tx = state.db_connection_pool.begin().await?;
+    let id = save_event_to_db(&mut *tx, &event).await?;
+    log::info!("Test saved event with id: {}", id);
+
+    // Verify the save worked
+    let saved_event = sqlx::query_as!(
+        Event,
+        r#"
+        SELECT
+            name,
+            full_description,
+            start_date,
+            end_date,
+            location,
+            event_type,
+            additional_details,
+            confidence
+        FROM app.events
+        WHERE id = $1
+        "#,
+        id
+    )
+    .fetch_one(&mut *tx)
+    .await?;
+
+    assert_eq!(saved_event, event);
+
+    // Rollback the transaction so we don't pollute the database
+    tx.rollback().await?;
+
+    Ok(())
+}
+
+#[actix_web::test]
+async fn test_index() -> Result<()> {
+    dotenv().ok();
+
+    let db_user = env::var("DB_APP_USER").expect("DB_APP_USER");
+    let db_password = env::var("DB_APP_USER_PASS").expect("DB_APP_USER_PASS");
+    let db_name = env::var("DB_NAME").expect("DB_NAME");
+    let db_url = format!("postgres://{db_user}:{db_password}@localhost/{db_name}");
+
+    let db_connection_pool = PgPoolOptions::new().connect(&db_url).await?;
+
+    // Dummy client since index doesn't use it
+    let client = awc::Client::default();
+
+    let state = AppState {
+        api_key: "dummy".to_string(),
+        client,
+        username: "user".to_string(),
+        password: "pass".to_string(),
+        db_connection_pool,
+    };
+
+    let resp = index(Data::new(state)).await;
+    assert_eq!(resp.status(), actix_web::http::StatusCode::OK);
+
+    use actix_web::body::to_bytes;
+    let body = to_bytes(resp.into_body())
+        .await
+        .map_err(|e| anyhow!("Error reading body: {}", e))?;
+    let body_str = std::str::from_utf8(&body)?;
+    assert!(body_str.contains("Somerville Events"));
+
     Ok(())
 }
