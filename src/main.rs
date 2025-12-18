@@ -18,6 +18,7 @@ use rustls;
 use schemars::{schema_for, JsonSchema};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
+use sqlx::postgres::PgPoolOptions;
 use std::{
     env, fs,
     path::Path,
@@ -55,6 +56,7 @@ struct AppState {
     client: Client,
     username: String,
     password: String,
+    db_connection_pool: sqlx::Pool<sqlx::Postgres>,
 }
 
 static TLS_CONFIG: OnceLock<Arc<rustls::ClientConfig>> = OnceLock::new();
@@ -98,12 +100,22 @@ async fn main() -> Result<()> {
     env_logger::init_from_env(env_logger::Env::new().default_filter_or("info"));
 
     // Read env once
-    let api_key: String = env::var("OPENAI_API_KEY").expect("Set env var: OPENAI_API_KEY");
-    let username = env::var("BASIC_AUTH_USER").expect("Set env var: BASIC_AUTH_USER");
-    let password = env::var("BASIC_AUTH_PASS").expect("Set env var: BASIC_AUTH_PASS");
+    let api_key: String = env::var("OPENAI_API_KEY").expect("OPENAI_API_KEY");
+    let username = env::var("BASIC_AUTH_USER").expect("BASIC_AUTH_USER");
+    let password = env::var("BASIC_AUTH_PASS").expect("BASIC_AUTH_PASS");
+    let db_user = env::var("DB_APP_USER").expect("DB_APP_USER");
+    let db_password = env::var("DB_APP_USER_PASS").expect("DB_APP_USER_PASS");
+    let db_name = env::var("DB_NAME").expect("DB_NAME");
 
     // TLS config once
     let tls_config = TLS_CONFIG.get_or_init(init_tls_once).clone();
+
+    // Create the database connection pool once
+    let db_url = format!("postgres://{db_user}:{db_password}@localhost/{db_name}");
+    let db_connection_pool = PgPoolOptions::new()
+        .max_connections(5)
+        .connect(db_url.as_str())
+        .await?;
 
     log::info!("Starting server at http://localhost:8080");
     HttpServer::new(move || {
@@ -117,6 +129,7 @@ async fn main() -> Result<()> {
             api_key: api_key.clone(),
             username: username.clone(),
             password: password.clone(),
+            db_connection_pool: db_connection_pool.clone(),
             client,
         };
 
@@ -186,12 +199,53 @@ async fn upload_ui() -> HttpResponse {
 
 async fn upload(state: Data<AppState>, MultipartForm(req): MultipartForm<Upload>) -> HttpResponse {
     match parse_image(req.image.file.path(), &state.client, &state.api_key).await {
-        Ok(event) => HttpResponse::Ok().json(event),
+        Ok(event) => match save_event_to_db(&state.db_connection_pool, &event).await {
+            Ok(id) => {
+                log::info!("Saved event to database with id: {}", id);
+                HttpResponse::Ok().json(event)
+            }
+            Err(e) => {
+                log::error!("Failed to save event to database: {e:#}");
+                HttpResponse::InternalServerError().body("Failed to save event to database")
+            }
+        },
         Err(e) => {
             log::error!("parse_image failed: {e:#}");
             HttpResponse::InternalServerError().body("Parsing failed")
         }
     }
+}
+
+async fn save_event_to_db(pool: &sqlx::Pool<sqlx::Postgres>, event: &Event) -> Result<i64> {
+    let id = sqlx::query_scalar!(
+        r#"
+        INSERT INTO app.events (
+            name,
+            full_description,
+            start_date,
+            end_date,
+            location,
+            event_type,
+            additional_details,
+            confidence
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+        RETURNING id
+        "#,
+        event.name,
+        event.full_description,
+        event.start_date,
+        event.end_date,
+        event.location,
+        event.event_type,
+        event.additional_details.as_deref(),
+        event.confidence
+    )
+    .fetch_one(pool)
+    .await
+    .map_err(|e| anyhow!("Database insert failed: {e}"))?;
+
+    Ok(id)
 }
 
 async fn parse_image(image_path: &Path, client: &Client, api_key: &str) -> Result<Event> {
@@ -360,11 +414,17 @@ async fn test_parse_image() -> Result<()> {
         .connector(Connector::new().rustls_0_23(tls_config))
         .finish();
 
+    // Create a dummy pool for testing (not actually used in this test)
+    let db_connection_pool = PgPoolOptions::new()
+        .connect_lazy("postgres://localhost/test")
+        .map_err(|e| anyhow!("Failed to create test pool: {e}"))?;
+
     let state = AppState {
         api_key,
         client,
         password: "password".to_string(),
         username: "username".to_string(),
+        db_connection_pool,
     };
 
     // Actix runtime entrypoint
