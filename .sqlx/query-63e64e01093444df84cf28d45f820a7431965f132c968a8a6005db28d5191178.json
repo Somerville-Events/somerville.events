@@ -1,0 +1,64 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT\n            name,\n            full_description,\n            start_date,\n            end_date,\n            location,\n            event_type,\n            additional_details,\n            confidence\n        FROM app.events\n        WHERE id = $1\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "name",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 1,
+        "name": "full_description",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 2,
+        "name": "start_date",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 3,
+        "name": "end_date",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 4,
+        "name": "location",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 5,
+        "name": "event_type",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 6,
+        "name": "additional_details",
+        "type_info": "TextArray"
+      },
+      {
+        "ordinal": 7,
+        "name": "confidence",
+        "type_info": "Float8"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Int8"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      true,
+      true,
+      true,
+      true,
+      true,
+      false
+    ]
+  },
+  "hash": "63e64e01093444df84cf28d45f820a7431965f132c968a8a6005db28d5191178"
+}

@@ -25,7 +25,7 @@ use std::{
     sync::{Arc, OnceLock},
 };
 
-#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Serialize, Deserialize, JsonSchema, PartialEq)]
 struct Event {
     /// The name of the event
     name: String,
@@ -216,7 +216,10 @@ async fn upload(state: Data<AppState>, MultipartForm(req): MultipartForm<Upload>
     }
 }
 
-async fn save_event_to_db(pool: &sqlx::Pool<sqlx::Postgres>, event: &Event) -> Result<i64> {
+async fn save_event_to_db<'e, E>(executor: E, event: &Event) -> Result<i64>
+where
+    E: sqlx::PgExecutor<'e>,
+{
     let id = sqlx::query_scalar!(
         r#"
         INSERT INTO app.events (
@@ -241,7 +244,7 @@ async fn save_event_to_db(pool: &sqlx::Pool<sqlx::Postgres>, event: &Event) -> R
         event.additional_details.as_deref(),
         event.confidence
     )
-    .fetch_one(pool)
+    .fetch_one(executor)
     .await
     .map_err(|e| anyhow!("Database insert failed: {e}"))?;
 
@@ -414,10 +417,16 @@ async fn test_parse_image() -> Result<()> {
         .connector(Connector::new().rustls_0_23(tls_config))
         .finish();
 
-    // Create a dummy pool for testing (not actually used in this test)
+    // Create the database connection pool for testing
+    let db_user = env::var("DB_APP_USER").expect("DB_APP_USER");
+    let db_password = env::var("DB_APP_USER_PASS").expect("DB_APP_USER_PASS");
+    let db_name = env::var("DB_NAME").expect("DB_NAME");
+    let db_url = format!("postgres://{db_user}:{db_password}@localhost/{db_name}");
+
     let db_connection_pool = PgPoolOptions::new()
-        .connect_lazy("postgres://localhost/test")
-        .map_err(|e| anyhow!("Failed to create test pool: {e}"))?;
+        .max_connections(5)
+        .connect(&db_url)
+        .await?;
 
     let state = AppState {
         api_key,
@@ -435,5 +444,37 @@ async fn test_parse_image() -> Result<()> {
     )
     .await?;
     assert_eq!(event.name, "Dance Therapy");
+
+    // Test saving to the database using a transaction
+    let mut tx = state.db_connection_pool.begin().await?;
+    let id = save_event_to_db(&mut *tx, &event).await?;
+    log::info!("Test saved event with id: {}", id);
+
+    // Verify the save worked
+    let saved_event = sqlx::query_as!(
+        Event,
+        r#"
+        SELECT
+            name,
+            full_description,
+            start_date,
+            end_date,
+            location,
+            event_type,
+            additional_details,
+            confidence
+        FROM app.events
+        WHERE id = $1
+        "#,
+        id
+    )
+    .fetch_one(&mut *tx)
+    .await?;
+
+    assert_eq!(saved_event, event);
+
+    // Rollback the transaction so we don't pollute the database
+    tx.rollback().await?;
+
     Ok(())
 }
