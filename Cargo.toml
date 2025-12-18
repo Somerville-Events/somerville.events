@@ -34,3 +34,4 @@ anyhow = "1"
 futures-util = "0.3"
 dotenvy = "0.15.7" # Environment variable loading
 html-escape = "0.2.13"
+icalendar = "0.17.6"
