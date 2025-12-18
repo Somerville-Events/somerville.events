@@ -231,33 +231,59 @@ async fn upload_ui() -> HttpResponse {
     HttpResponse::Ok().content_type(ContentType::html()).body(
         r#"<!doctype html>
         <html lang="en">
-        <meta name="color-scheme" content="light dark">
-        <meta name="viewport" content="width=device-width, minimum-scale=1, initial-scale=1">
-        <title>Somerville Events Upload</title>
-        <style>
-        html, body {
-            height: 100%;
-            margin: 0;
-        }
-        form {
-            display: flex;
-            flex-direction: column;
-            height: 100%;
-        }
-        input[type=file] {
-            flex: 1;
-            border: none;
-        }
-        button {
-            flex: 0;
-        }
-        </style>
-
-        <form action="/upload" method="post" enctype="multipart/form-data">
-        <input type="file" name="image" accept="image/*" required>
-        <button>Upload</button>
-        </form>
-        "#,
+        <head>
+            <meta name="color-scheme" content="light dark">
+            <meta name="viewport" content="width=device-width, minimum-scale=1, initial-scale=1">
+            <title>Somerville Events Upload</title>
+            <style>
+                body {
+                    font-family: system-ui, sans-serif;
+                    max-width: 800px;
+                    margin: 0 auto;
+                    padding: 1rem;
+                    line-height: 1.5;
+                }
+                form {
+                    display: flex;
+                    flex-direction: column;
+                    gap: 1rem;
+                    border: 1px solid #ccc;
+                    padding: 2rem;
+                    border-radius: 8px;
+                }
+                input[type=file] {
+                    font-size: 1rem;
+                }
+                button {
+                    padding: 0.75rem;
+                    font-size: 1rem;
+                    background-color: #007bff;
+                    color: white;
+                    border: none;
+                    border-radius: 4px;
+                    cursor: pointer;
+                }
+                button:hover {
+                    background-color: #0056b3;
+                }
+                a {
+                    display: inline-block;
+                    margin-bottom: 1rem;
+                }
+            </style>
+        </head>
+        <body>
+            <a href="/">&larr; Back to Events</a>
+            <h1>Upload Event Flyer</h1>
+            <p>Upload an image of a flyer or event poster. We'll extract the details automatically.</p>
+            
+            <form action="/upload" method="post" enctype="multipart/form-data">
+                <label for="image">Take Photo or Choose File</label>
+                <input type="file" id="image" name="image" accept="image/*" capture="environment" required>
+                <button type="submit">Upload and Process</button>
+            </form>
+        </body>
+        </html>"#,
     )
 }
 
