@@ -53,6 +53,7 @@ struct Event {
 #[derive(Debug, MultipartForm)]
 struct Upload {
     image: TempFile,
+    idempotency_key: actix_multipart::form::text::Text<uuid::Uuid>,
 }
 
 #[derive(Clone)]
@@ -370,22 +371,24 @@ async fn event_ical(state: Data<AppState>, path: web::Path<i64>) -> HttpResponse
 }
 
 async fn upload_ui() -> HttpResponse {
+    let idempotency_key = uuid::Uuid::new_v4();
     HttpResponse::Ok().content_type(ContentType::html()).body(
-        r#"<!doctype html>
+        format!(
+            r#"<!doctype html>
         <html lang="en">
         <head>
             <meta name="color-scheme" content="light dark">
             <meta name="viewport" content="width=device-width, minimum-scale=1, initial-scale=1">
             <title>Somerville Events Upload</title>
             <style>
-                body {
+                body {{
                     font-family: system-ui, sans-serif;
                     max-width: 800px;
                     margin: 0 auto;
                     padding: 1rem;
                     line-height: 1.5;
-                }
-                form {
+                }}
+                form {{
                     display: flex;
                     flex-direction: column;
                     gap: 1.5rem;
@@ -393,20 +396,20 @@ async fn upload_ui() -> HttpResponse {
                     padding: 2rem;
                     border-radius: 8px;
                     align-items: center;
-                }
+                }}
 
                 /* File Input Styling */
                 /* Hide the actual input but keep it accessible/validatable */
-                input[type=file] {
+                input[type=file] {{
                     opacity: 0;
                     width: 0.1px;
                     height: 0.1px;
                     position: absolute;
                     z-index: -1;
-                }
+                }}
 
                 /* Prominent Take Photo Button (Label) */
-                .file-label {
+                .file-label {{
                     display: flex;
                     align-items: center;
                     justify-content: center;
@@ -421,29 +424,29 @@ async fn upload_ui() -> HttpResponse {
                     transition: all 0.2s;
                     box-sizing: border-box;
                     border: 2px solid transparent;
-                }
-                .file-label:hover {
+                }}
+                .file-label:hover {{
                     background-color: #218838;
-                }
-                .file-label:active {
+                }}
+                .file-label:active {{
                     background-color: #1e7e34;
                     transform: scale(0.98);
-                }
+                }}
 
                 /* When file is selected (valid), change label appearance */
-                input[type=file]:valid + .file-label {
+                input[type=file]:valid + .file-label {{
                     background-color: #1e7e34;
                     border-color: #155724;
-                }
+                }}
                 /* Use ::after to change text content based on state is tricky without attr() support for arbitrary strings in all browsers,
                    but we can use a checkmark. */
-                input[type=file]:valid + .file-label::after {
+                input[type=file]:valid + .file-label::after {{
                     content: " ✅";
                     margin-left: 0.5rem;
-                }
+                }}
 
                 /* Prominent Upload Button */
-                #upload-btn {
+                #upload-btn {{
                     padding: 1.5rem;
                     font-size: 1.5rem;
                     background-color: #007bff;
@@ -456,23 +459,23 @@ async fn upload_ui() -> HttpResponse {
                     /* Initially hidden/disabled look if desired, or just always there */
                     opacity: 0.5;
                     pointer-events: none;
-                }
+                }}
                 
                 /* Enable upload button when file is selected */
-                input[type=file]:valid ~ #upload-btn {
+                input[type=file]:valid ~ #upload-btn {{
                     opacity: 1;
                     pointer-events: auto;
                     background-color: #007bff;
-                }
+                }}
                 
-                input[type=file]:valid ~ #upload-btn:hover {
+                input[type=file]:valid ~ #upload-btn:hover {{
                     background-color: #0056b3;
-                }
+                }}
 
-                a {
+                a {{
                     display: inline-block;
                     margin-bottom: 1rem;
-                }
+                }}
             </style>
         </head>
         <body>
@@ -481,6 +484,7 @@ async fn upload_ui() -> HttpResponse {
             <p>Upload an image of a flyer or event poster. We'll extract the details automatically.</p>
             
             <form action="/upload" method="post" enctype="multipart/form-data">
+                <input type="hidden" name="idempotency_key" value="{}">
                 <!-- Input must be before label/button for sibling selectors to work -->
                 <input type="file" id="image" name="image" accept="image/*" capture="environment" required>
                 
@@ -492,10 +496,42 @@ async fn upload_ui() -> HttpResponse {
             </form>
         </body>
         </html>"#,
+            idempotency_key
+        ),
     )
 }
 
 async fn upload(state: Data<AppState>, MultipartForm(req): MultipartForm<Upload>) -> HttpResponse {
+    let idempotency_key = req.idempotency_key.0;
+
+    // Check for idempotency
+    let insert_result = sqlx::query!(
+        r#"
+        INSERT INTO app.idempotency_keys (idempotency_key)
+        VALUES ($1)
+        ON CONFLICT DO NOTHING
+        RETURNING idempotency_key
+        "#,
+        idempotency_key
+    )
+    .fetch_optional(&state.db_connection_pool)
+    .await;
+
+    match insert_result {
+        Ok(Some(_)) => {
+            // New request, proceed
+        }
+        Ok(None) => {
+            // Duplicate request
+            log::warn!("Duplicate upload attempt blocked for key: {}", idempotency_key);
+            return HttpResponse::Conflict().body("Upload already in progress or completed.");
+        }
+        Err(e) => {
+            log::error!("Database error checking idempotency: {e}");
+            return HttpResponse::InternalServerError().body("Database error");
+        }
+    }
+
     match parse_image(req.image.file.path(), &state.client, &state.api_key).await {
         Ok(event) => match save_event_to_db(&state.db_connection_pool, &event).await {
             Ok(id) => {
