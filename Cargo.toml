@@ -18,6 +18,7 @@ sqlx = { version = "0.8", features = [
     "runtime-tokio",
     "tls-rustls-ring-webpki",
     "chrono",
+    "uuid",
 ] }
 serde_json = "1"
 serde = { version = "1", features = ["derive"] } # Serialization/deserialization
@@ -35,3 +36,4 @@ futures-util = "0.3"
 dotenvy = "0.15.7" # Environment variable loading
 html-escape = "0.2.13"
 icalendar = "0.17.6"
+uuid = { version = "1.19.0", features = ["v4", "serde"] }
