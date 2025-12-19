@@ -388,26 +388,87 @@ async fn upload_ui() -> HttpResponse {
                 form {
                     display: flex;
                     flex-direction: column;
-                    gap: 1rem;
+                    gap: 1.5rem;
                     border: 1px solid #ccc;
                     padding: 2rem;
                     border-radius: 8px;
+                    align-items: center;
                 }
+
+                /* File Input Styling */
+                /* Hide the actual input but keep it accessible/validatable */
                 input[type=file] {
-                    font-size: 1rem;
+                    opacity: 0;
+                    width: 0.1px;
+                    height: 0.1px;
+                    position: absolute;
+                    z-index: -1;
                 }
-                button {
-                    padding: 0.75rem;
-                    font-size: 1rem;
+
+                /* Prominent Take Photo Button (Label) */
+                .file-label {
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    padding: 1.5rem;
+                    font-size: 1.5rem;
+                    background-color: #28a745;
+                    color: white;
+                    border-radius: 8px;
+                    cursor: pointer;
+                    width: 100%;
+                    text-align: center;
+                    transition: all 0.2s;
+                    box-sizing: border-box;
+                    border: 2px solid transparent;
+                }
+                .file-label:hover {
+                    background-color: #218838;
+                }
+                .file-label:active {
+                    background-color: #1e7e34;
+                    transform: scale(0.98);
+                }
+
+                /* When file is selected (valid), change label appearance */
+                input[type=file]:valid + .file-label {
+                    background-color: #1e7e34;
+                    border-color: #155724;
+                }
+                /* Use ::after to change text content based on state is tricky without attr() support for arbitrary strings in all browsers,
+                   but we can use a checkmark. */
+                input[type=file]:valid + .file-label::after {
+                    content: " ✅";
+                    margin-left: 0.5rem;
+                }
+
+                /* Prominent Upload Button */
+                #upload-btn {
+                    padding: 1.5rem;
+                    font-size: 1.5rem;
                     background-color: #007bff;
                     color: white;
                     border: none;
-                    border-radius: 4px;
+                    border-radius: 8px;
                     cursor: pointer;
+                    width: 100%;
+                    transition: all 0.2s;
+                    /* Initially hidden/disabled look if desired, or just always there */
+                    opacity: 0.5;
+                    pointer-events: none;
                 }
-                button:hover {
+                
+                /* Enable upload button when file is selected */
+                input[type=file]:valid ~ #upload-btn {
+                    opacity: 1;
+                    pointer-events: auto;
+                    background-color: #007bff;
+                }
+                
+                input[type=file]:valid ~ #upload-btn:hover {
                     background-color: #0056b3;
                 }
+
                 a {
                     display: inline-block;
                     margin-bottom: 1rem;
@@ -420,9 +481,14 @@ async fn upload_ui() -> HttpResponse {
             <p>Upload an image of a flyer or event poster. We'll extract the details automatically.</p>
             
             <form action="/upload" method="post" enctype="multipart/form-data">
-                <label for="image">Take Photo or Choose File</label>
+                <!-- Input must be before label/button for sibling selectors to work -->
                 <input type="file" id="image" name="image" accept="image/*" capture="environment" required>
-                <button type="submit">Upload and Process</button>
+                
+                <label for="image" class="file-label">
+                    📸 Take Photo / Choose File
+                </label>
+
+                <button type="submit" id="upload-btn">Upload</button>
             </form>
         </body>
         </html>"#,
@@ -434,7 +500,13 @@ async fn upload(state: Data<AppState>, MultipartForm(req): MultipartForm<Upload>
         Ok(event) => match save_event_to_db(&state.db_connection_pool, &event).await {
             Ok(id) => {
                 log::info!("Saved event to database with id: {}", id);
-                HttpResponse::Ok().json(event)
+
+                HttpResponse::SeeOther()
+                    .insert_header((
+                        actix_web::http::header::LOCATION,
+                        format!("/event/{}.html", id),
+                    ))
+                    .finish()
             }
             Err(e) => {
                 log::error!("Failed to save event to database: {e:#}");
