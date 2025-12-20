@@ -10,6 +10,7 @@ use actix_web::{
 };
 use actix_web_httpauth::{extractors::basic::BasicAuth, middleware::HttpAuthentication};
 use anyhow::{anyhow, Result};
+use async_trait::async_trait;
 use awc::{Client, Connector};
 use base64::{engine::general_purpose::STANDARD as b64, Engine as _};
 use chrono::{DateTime, Duration, NaiveDate, Utc};
@@ -35,7 +36,7 @@ fn format_datetime_in_somerville_tz(dt: DateTime<Utc>) -> String {
         .to_string()
 }
 
-#[derive(Debug, Serialize, Deserialize, JsonSchema, PartialEq, Clone)]
+#[derive(Debug, Serialize, Deserialize, JsonSchema, PartialEq, Clone, sqlx::FromRow)]
 struct Event {
     /// The name of the event
     name: String,
@@ -65,16 +66,97 @@ struct Upload {
     idempotency_key: actix_multipart::form::text::Text<uuid::Uuid>,
 }
 
-#[derive(Clone)]
 struct AppState {
     api_key: String,
     client: Client,
     username: String,
     password: String,
-    db_connection_pool: sqlx::Pool<sqlx::Postgres>,
+    events_repo: Box<dyn EventsRepo>,
 }
 
 static TLS_CONFIG: OnceLock<Arc<rustls::ClientConfig>> = OnceLock::new();
+
+#[async_trait]
+trait EventsRepo: Send + Sync {
+    async fn list(&self) -> Result<Vec<Event>>;
+    async fn get(&self, id: i64) -> Result<Option<Event>>;
+    async fn claim_idempotency_key(&self, idempotency_key: uuid::Uuid) -> Result<bool>;
+    async fn insert(&self, event: &Event) -> Result<i64>;
+}
+
+struct EventsDatabase {
+    pool: sqlx::Pool<sqlx::Postgres>,
+}
+
+#[async_trait]
+impl EventsRepo for EventsDatabase {
+    async fn list(&self) -> Result<Vec<Event>> {
+        let events = sqlx::query_as!(
+            Event,
+            r#"
+            SELECT
+                id,
+                name,
+                full_description,
+                start_date,
+                end_date,
+                location,
+                event_type,
+                additional_details,
+                confidence
+            FROM app.events
+            ORDER BY start_date ASC NULLS LAST
+            "#
+        )
+        .fetch_all(&self.pool)
+        .await?;
+        Ok(events)
+    }
+
+    async fn get(&self, id: i64) -> Result<Option<Event>> {
+        let event = sqlx::query_as!(
+            Event,
+            r#"
+            SELECT
+                id,
+                name,
+                full_description,
+                start_date,
+                end_date,
+                location,
+                event_type,
+                additional_details,
+                confidence
+            FROM app.events
+            WHERE id = $1
+            "#,
+            id
+        )
+        .fetch_optional(&self.pool)
+        .await?;
+        Ok(event)
+    }
+
+    async fn claim_idempotency_key(&self, idempotency_key: uuid::Uuid) -> Result<bool> {
+        let insert_result = sqlx::query!(
+            r#"
+            INSERT INTO app.idempotency_keys (idempotency_key)
+            VALUES ($1)
+            ON CONFLICT DO NOTHING
+            RETURNING idempotency_key
+            "#,
+            idempotency_key
+        )
+        .fetch_optional(&self.pool)
+        .await?;
+
+        Ok(insert_result.is_some())
+    }
+
+    async fn insert(&self, event: &Event) -> Result<i64> {
+        save_event_to_db(&self.pool, event).await
+    }
+}
 
 fn init_tls_once() -> Arc<rustls::ClientConfig> {
     use rustls_platform_verifier::ConfigVerifierExt as _;
@@ -145,7 +227,9 @@ async fn main() -> Result<()> {
             api_key: api_key.clone(),
             username: username.clone(),
             password: password.clone(),
-            db_connection_pool: db_connection_pool.clone(),
+            events_repo: Box::new(EventsDatabase {
+                pool: db_connection_pool.clone(),
+            }),
             client,
         };
 
@@ -172,25 +256,7 @@ async fn main() -> Result<()> {
 }
 
 async fn index(state: Data<AppState>) -> HttpResponse {
-    let events = sqlx::query_as!(
-        Event,
-        r#"
-        SELECT
-            id,
-            name,
-            full_description,
-            start_date,
-            end_date,
-            location,
-            event_type,
-            additional_details,
-            confidence
-        FROM app.events
-        ORDER BY start_date ASC NULLS LAST
-        "#
-    )
-    .fetch_all(&state.db_connection_pool)
-    .await;
+    let events = state.events_repo.list().await;
 
     match events {
         Ok(events) => {
@@ -369,26 +435,7 @@ async fn index(state: Data<AppState>) -> HttpResponse {
 
 async fn event_details(state: Data<AppState>, path: web::Path<i64>) -> HttpResponse {
     let id = path.into_inner();
-    let event = sqlx::query_as!(
-        Event,
-        r#"
-        SELECT
-            id,
-            name,
-            full_description,
-            start_date,
-            end_date,
-            location,
-            event_type,
-            additional_details,
-            confidence
-        FROM app.events
-        WHERE id = $1
-        "#,
-        id
-    )
-    .fetch_optional(&state.db_connection_pool)
-    .await;
+    let event = state.events_repo.get(id).await;
 
     match event {
         Ok(Some(event)) => {
@@ -437,26 +484,7 @@ async fn event_details(state: Data<AppState>, path: web::Path<i64>) -> HttpRespo
 
 async fn event_ical(state: Data<AppState>, path: web::Path<i64>) -> HttpResponse {
     let id = path.into_inner();
-    let event_res = sqlx::query_as!(
-        Event,
-        r#"
-        SELECT
-            id,
-            name,
-            full_description,
-            start_date,
-            end_date,
-            location,
-            event_type,
-            additional_details,
-            confidence
-        FROM app.events
-        WHERE id = $1
-        "#,
-        id
-    )
-    .fetch_optional(&state.db_connection_pool)
-    .await;
+    let event_res = state.events_repo.get(id).await;
 
     match event_res {
         Ok(Some(event)) => {
@@ -712,23 +740,15 @@ async fn upload(state: Data<AppState>, MultipartForm(req): MultipartForm<Upload>
     let idempotency_key = req.idempotency_key.0;
 
     // Check for idempotency
-    let insert_result = sqlx::query!(
-        r#"
-        INSERT INTO app.idempotency_keys (idempotency_key)
-        VALUES ($1)
-        ON CONFLICT DO NOTHING
-        RETURNING idempotency_key
-        "#,
-        idempotency_key
-    )
-    .fetch_optional(&state.db_connection_pool)
-    .await;
-
-    match insert_result {
-        Ok(Some(_)) => {
+    match state
+        .events_repo
+        .claim_idempotency_key(idempotency_key)
+        .await
+    {
+        Ok(true) => {
             // New request, proceed
         }
-        Ok(None) => {
+        Ok(false) => {
             // Duplicate request
             log::warn!(
                 "Duplicate upload attempt blocked for key: {}",
@@ -756,7 +776,7 @@ async fn upload(state: Data<AppState>, MultipartForm(req): MultipartForm<Upload>
 
     actix_web::rt::spawn(async move {
         match parse_image(&dest_path_clone, &state.client, &state.api_key).await {
-            Ok(event) => match save_event_to_db(&state.db_connection_pool, &event).await {
+            Ok(event) => match state.events_repo.insert(&event).await {
                 Ok(id) => {
                     log::info!("Saved event to database with id: {}", id);
                 }
@@ -997,7 +1017,9 @@ async fn test_parse_image() -> Result<()> {
         client,
         password: "password".to_string(),
         username: "username".to_string(),
-        db_connection_pool,
+        events_repo: Box::new(EventsDatabase {
+            pool: db_connection_pool.clone(),
+        }),
     };
 
     // Actix runtime entrypoint
@@ -1010,7 +1032,7 @@ async fn test_parse_image() -> Result<()> {
     assert_eq!(event.name, "Dance Therapy");
 
     // Test saving to the database using a transaction
-    let mut tx = state.db_connection_pool.begin().await?;
+    let mut tx = db_connection_pool.begin().await?;
     let id = save_event_to_db(&mut *tx, &event).await?;
     log::info!("Test saved event with id: {}", id);
 
@@ -1048,35 +1070,183 @@ async fn test_parse_image() -> Result<()> {
 
 #[actix_web::test]
 async fn test_index() -> Result<()> {
-    dotenv().ok();
+    use actix_web::{test, App};
+    use chrono::{NaiveDateTime, NaiveTime, TimeZone};
+    use scraper::{Html, Selector};
 
-    let db_user = env::var("DB_APP_USER").expect("DB_APP_USER");
-    let db_password = env::var("DB_APP_USER_PASS").expect("DB_APP_USER_PASS");
-    let db_name = env::var("DB_NAME").expect("DB_NAME");
-    let db_url = format!("postgres://{db_user}:{db_password}@localhost/{db_name}");
+    #[derive(Clone)]
+    struct FakeEventsRepo {
+        events: Arc<Vec<Event>>,
+    }
 
-    let db_connection_pool = PgPoolOptions::new().connect(&db_url).await?;
+    #[async_trait]
+    impl EventsRepo for FakeEventsRepo {
+        async fn list(&self) -> Result<Vec<Event>> {
+            Ok(self.events.as_ref().clone())
+        }
 
-    // Dummy client since index doesn't use it
-    let client = awc::Client::default();
+        async fn get(&self, id: i64) -> Result<Option<Event>> {
+            Ok(self.events.iter().find(|e| e.id == Some(id)).cloned())
+        }
+
+        async fn claim_idempotency_key(&self, _idempotency_key: uuid::Uuid) -> Result<bool> {
+            Ok(true)
+        }
+
+        async fn insert(&self, _event: &Event) -> Result<i64> {
+            Ok(1)
+        }
+    }
+
+    let now_utc = Utc::now();
+    let today_local = now_utc.with_timezone(&New_York).date_naive();
+    let yesterday_local = today_local.pred_opt().unwrap();
+    let tomorrow_local = today_local.succ_opt().unwrap();
+    let day_after_tomorrow_local = tomorrow_local.succ_opt().unwrap();
+
+    let mk_local = |d: NaiveDateTime| New_York.from_local_datetime(&d).single().unwrap();
+    let local_dt = |date, h, m| NaiveDateTime::new(date, NaiveTime::from_hms_opt(h, m, 0).unwrap());
+
+    let past_event = Event {
+        id: Some(1),
+        name: "Past Event".to_string(),
+        full_description: "Should not render".to_string(),
+        start_date: Some(mk_local(local_dt(yesterday_local, 10, 0)).with_timezone(&Utc)),
+        end_date: Some(mk_local(local_dt(yesterday_local, 11, 0)).with_timezone(&Utc)),
+        location: Some("Somewhere".to_string()),
+        event_type: None,
+        additional_details: None,
+        confidence: 1.0,
+    };
+
+    // No end_date: should remain visible (end = start + 1 day) and appear under start day + next day.
+    let ongoing_no_end = Event {
+        id: Some(2),
+        name: "Ongoing No End".to_string(),
+        full_description: "Should render twice".to_string(),
+        start_date: Some(mk_local(local_dt(today_local, 9, 0)).with_timezone(&Utc)),
+        end_date: None,
+        location: Some("Somerville".to_string()),
+        event_type: None,
+        additional_details: None,
+        confidence: 1.0,
+    };
+
+    // Explicit multi-day: should appear under each day.
+    let multi_day = Event {
+        id: Some(3),
+        name: "Multi Day".to_string(),
+        full_description: "Spans multiple days".to_string(),
+        start_date: Some(mk_local(local_dt(tomorrow_local, 12, 0)).with_timezone(&Utc)),
+        end_date: Some(mk_local(local_dt(day_after_tomorrow_local, 13, 0)).with_timezone(&Utc)),
+        location: Some("Davis".to_string()),
+        event_type: None,
+        additional_details: None,
+        confidence: 1.0,
+    };
+
+    // Missing start: should be excluded entirely.
+    let missing_start = Event {
+        id: Some(4),
+        name: "Missing Start".to_string(),
+        full_description: "Not an event".to_string(),
+        start_date: None,
+        end_date: Some(mk_local(local_dt(tomorrow_local, 10, 0)).with_timezone(&Utc)),
+        location: None,
+        event_type: None,
+        additional_details: None,
+        confidence: 1.0,
+    };
+
+    // Intentionally shuffled to ensure server-side sorting/grouping is doing the work.
+    let fake_repo = FakeEventsRepo {
+        events: Arc::new(vec![multi_day, missing_start, past_event, ongoing_no_end]),
+    };
 
     let state = AppState {
         api_key: "dummy".to_string(),
-        client,
+        client: awc::Client::default(),
         username: "user".to_string(),
         password: "pass".to_string(),
-        db_connection_pool,
+        events_repo: Box::new(fake_repo),
     };
 
-    let resp = index(Data::new(state)).await;
+    let app = test::init_service(
+        App::new()
+            .app_data(Data::new(state))
+            .route("/", web::get().to(index)),
+    )
+    .await;
+
+    let req = test::TestRequest::get().uri("/").to_request();
+    let resp = test::call_service(&app, req).await;
     assert_eq!(resp.status(), actix_web::http::StatusCode::OK);
 
-    use actix_web::body::to_bytes;
-    let body = to_bytes(resp.into_body())
-        .await
-        .map_err(|e| anyhow!("Error reading body: {}", e))?;
+    let body = test::read_body(resp).await;
     let body_str = std::str::from_utf8(&body)?;
+
     assert!(body_str.contains("Somerville Events"));
+    assert!(!body_str.contains("Missing Start"));
+    assert!(!body_str.contains("Past Event"));
+
+    let document = Html::parse_document(body_str);
+    let day_sections_sel = Selector::parse("section.day").unwrap();
+    let day_heading_sel = Selector::parse("section.day > h2").unwrap();
+    let event_link_sel = Selector::parse("article.event h3 a").unwrap();
+
+    let days: Vec<String> = document
+        .select(&day_heading_sel)
+        .map(|h| h.text().collect::<String>().trim().to_string())
+        .collect();
+
+    // We should have headings for today, tomorrow, and the day after tomorrow.
+    // No heading for yesterday (past-only).
+    assert!(days.len() >= 3);
+    assert!(
+        body_str.contains(&format!("day-{}", today_local.format("%Y-%m-%d"))),
+        "Missing today's heading id"
+    );
+    assert!(
+        body_str.contains(&format!("day-{}", tomorrow_local.format("%Y-%m-%d"))),
+        "Missing tomorrow's heading id"
+    );
+    assert!(
+        body_str.contains(&format!(
+            "day-{}",
+            day_after_tomorrow_local.format("%Y-%m-%d")
+        )),
+        "Missing day-after-tomorrow heading id"
+    );
+    assert!(
+        !body_str.contains(&format!("day-{}", yesterday_local.format("%Y-%m-%d"))),
+        "Should not render past day headings"
+    );
+
+    // Duplicate assertions for spanning behavior: "Ongoing No End" should appear on today + tomorrow.
+    let occurrences_ongoing = body_str.matches("Ongoing No End").count();
+    assert_eq!(occurrences_ongoing, 2);
+
+    // "Multi Day" spans tomorrow -> day after tomorrow, so it should appear twice.
+    let occurrences_multi = body_str.matches("Multi Day").count();
+    assert_eq!(occurrences_multi, 2);
+
+    // Basic sanity: links are present and use expected routes.
+    let links: Vec<String> = document
+        .select(&event_link_sel)
+        .filter_map(|a| a.value().attr("href").map(|s| s.to_string()))
+        .collect();
+    assert!(links.iter().any(|h| h == "/event/2.html"));
+    assert!(links.iter().any(|h| h == "/event/3.html"));
+
+    // Best-effort check that sections contain articles (semantic structure).
+    assert!(
+        document.select(&day_sections_sel).any(|s| {
+            s.select(&Selector::parse("article.event").unwrap())
+                .next()
+                .is_some()
+        }),
+        "Expected section.day to contain article.event"
+    );
 
     Ok(())
 }

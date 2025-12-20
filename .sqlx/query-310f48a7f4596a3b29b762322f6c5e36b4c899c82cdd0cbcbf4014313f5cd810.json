@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n        SELECT\n            id,\n            name,\n            full_description,\n            start_date,\n            end_date,\n            location,\n            event_type,\n            additional_details,\n            confidence\n        FROM app.events\n        ORDER BY start_date ASC NULLS LAST\n        ",
+  "query": "\n            SELECT\n                id,\n                name,\n                full_description,\n                start_date,\n                end_date,\n                location,\n                event_type,\n                additional_details,\n                confidence\n            FROM app.events\n            WHERE id = $1\n            ",
   "describe": {
     "columns": [
       {
@@ -50,7 +50,9 @@
       }
     ],
     "parameters": {
-      "Left": []
+      "Left": [
+        "Int8"
+      ]
     },
     "nullable": [
       false,
@@ -64,5 +66,5 @@
       false
     ]
   },
-  "hash": "961b9c68b2f131ea89489afc883ed5078a63045473d33905db9d85e5a1b2f93a"
+  "hash": "310f48a7f4596a3b29b762322f6c5e36b4c899c82cdd0cbcbf4014313f5cd810"
 }
