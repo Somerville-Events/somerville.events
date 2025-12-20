@@ -106,6 +106,7 @@ async fn main() -> Result<()> {
     env_logger::init_from_env(env_logger::Env::new().default_filter_or("info"));
 
     // Read env once
+    let host = env::var("HOST").expect("HOST");
     let api_key: String = env::var("OPENAI_API_KEY").expect("OPENAI_API_KEY");
     let username = env::var("BASIC_AUTH_USER").expect("BASIC_AUTH_USER");
     let password = env::var("BASIC_AUTH_PASS").expect("BASIC_AUTH_PASS");
@@ -153,8 +154,9 @@ async fn main() -> Result<()> {
                     .route(web::get().to(upload_ui))
                     .route(web::post().to(upload)),
             )
+            .route("/upload-success", web::get().to(upload_success))
     })
-    .bind(("127.0.0.1", 8080))?
+    .bind((host, 8080))?
     .run()
     .await?;
     Ok(())
@@ -370,6 +372,48 @@ async fn event_ical(state: Data<AppState>, path: web::Path<i64>) -> HttpResponse
     }
 }
 
+async fn upload_success() -> HttpResponse {
+    HttpResponse::Ok().content_type(ContentType::html()).body(
+        r#"<!doctype html>
+        <html lang="en">
+        <head>
+            <meta name="color-scheme" content="light dark">
+            <meta name="viewport" content="width=device-width, minimum-scale=1, initial-scale=1">
+            <title>Upload Successful - Somerville Events</title>
+            <style>
+                body {
+                    font-family: system-ui, sans-serif;
+                    max-width: 800px;
+                    margin: 0 auto;
+                    padding: 1rem;
+                    line-height: 1.5;
+                    text-align: center;
+                }
+                a {
+                    display: inline-block;
+                    margin-top: 2rem;
+                    padding: 0.75rem 1.5rem;
+                    background-color: #28a745;
+                    color: white;
+                    text-decoration: none;
+                    border-radius: 6px;
+                    font-weight: bold;
+                }
+                a:hover {
+                    background-color: #218838;
+                }
+            </style>
+        </head>
+        <body>
+            <h1>Upload Successful!</h1>
+            <p>Your photo has been uploaded and is being processed in the background.</p>
+            <p>Please check the events page in a few moments to see your event.</p>
+            <a href="/">Back to Events</a>
+        </body>
+        </html>"#,
+    )
+}
+
 async fn upload_ui() -> HttpResponse {
     let idempotency_key = uuid::Uuid::new_v4();
     HttpResponse::Ok().content_type(ContentType::html()).body(
@@ -523,7 +567,10 @@ async fn upload(state: Data<AppState>, MultipartForm(req): MultipartForm<Upload>
         }
         Ok(None) => {
             // Duplicate request
-            log::warn!("Duplicate upload attempt blocked for key: {}", idempotency_key);
+            log::warn!(
+                "Duplicate upload attempt blocked for key: {}",
+                idempotency_key
+            );
             return HttpResponse::Conflict().body("Upload already in progress or completed.");
         }
         Err(e) => {
@@ -532,28 +579,42 @@ async fn upload(state: Data<AppState>, MultipartForm(req): MultipartForm<Upload>
         }
     }
 
-    match parse_image(req.image.file.path(), &state.client, &state.api_key).await {
-        Ok(event) => match save_event_to_db(&state.db_connection_pool, &event).await {
-            Ok(id) => {
-                log::info!("Saved event to database with id: {}", id);
+    let temp_dir = std::env::temp_dir();
+    let file_name = format!("{}.jpg", uuid::Uuid::new_v4());
+    let dest_path = temp_dir.join(&file_name);
 
-                HttpResponse::SeeOther()
-                    .insert_header((
-                        actix_web::http::header::LOCATION,
-                        format!("/event/{}.html", id),
-                    ))
-                    .finish()
-            }
-            Err(e) => {
-                log::error!("Failed to save event to database: {e:#}");
-                HttpResponse::InternalServerError().body("Failed to save event to database")
-            }
-        },
-        Err(e) => {
-            log::error!("parse_image failed: {e:#}");
-            HttpResponse::InternalServerError().body("Parsing failed")
-        }
+    if let Err(e) = req.image.file.persist(&dest_path) {
+        log::error!("Failed to persist uploaded file: {e}");
+        return HttpResponse::InternalServerError().body("Failed to save uploaded file");
     }
+
+    let state = state.into_inner();
+    let dest_path_clone = dest_path.clone();
+
+    actix_web::rt::spawn(async move {
+        match parse_image(&dest_path_clone, &state.client, &state.api_key).await {
+            Ok(event) => match save_event_to_db(&state.db_connection_pool, &event).await {
+                Ok(id) => {
+                    log::info!("Saved event to database with id: {}", id);
+                }
+                Err(e) => {
+                    log::error!("Failed to save event to database: {e:#}");
+                }
+            },
+            Err(e) => {
+                log::error!("parse_image failed: {e:#}");
+            }
+        }
+
+        // Cleanup
+        if let Err(e) = fs::remove_file(&dest_path_clone) {
+            log::warn!("Failed to remove temp file {:?}: {}", dest_path_clone, e);
+        }
+    });
+
+    HttpResponse::SeeOther()
+        .insert_header((actix_web::http::header::LOCATION, "/upload-success"))
+        .finish()
 }
 
 async fn save_event_to_db<'e, E>(executor: E, event: &Event) -> Result<i64>
