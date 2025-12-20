@@ -1,0 +1,5 @@
+---
+alwaysApply: true
+---
+
+Avoid commenting about WHAT the code is doing, and instead comment WHY you chose to do it that way, especially if it is unintuitive. Include how you feel about it (for instance "This is so jank") if you think it's not elegant.
