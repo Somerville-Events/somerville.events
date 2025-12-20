@@ -580,7 +580,7 @@ async fn upload(state: Data<AppState>, MultipartForm(req): MultipartForm<Upload>
     }
 
     let temp_dir = std::env::temp_dir();
-    let file_name = format!("{}.jpg", uuid::Uuid::new_v4());
+    let file_name = format!("{}.jpg", idempotency_key);
     let dest_path = temp_dir.join(&file_name);
 
     if let Err(e) = req.image.file.persist(&dest_path) {
