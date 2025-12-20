@@ -1,0 +1,5 @@
+---
+alwaysApply: true
+---
+
+We should always use type-safe sqlx macros like query_as!(). We should use them offline. If the query cache is out of date, you can refresh it using sqlx.

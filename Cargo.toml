@@ -38,3 +38,7 @@ html-escape = "0.2.13"
 icalendar = { version = "0.17.6", features = ["chrono-tz"] }
 uuid = { version = "1.19.0", features = ["v4", "serde"] }
 chrono-tz = "0.10.4"
+async-trait = "0.1.89"
+
+[dev-dependencies]
+scraper = "0.25.0"
