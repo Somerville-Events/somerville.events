@@ -516,6 +516,31 @@ async fn upload_ui() -> HttpResponse {
                     background-color: #0056b3;
                 }}
 
+                /* Disabled state (e.g. during upload) overrides the valid state */
+                input[type=file]:valid ~ #upload-btn:disabled {{
+                    opacity: 0.8;
+                    pointer-events: none;
+                    cursor: wait;
+                    background-color: #007bff; /* keep blue */
+                }}
+
+                /* Loading Spinner */
+                .spinner {{
+                    display: inline-block;
+                    width: 1em;
+                    height: 1em;
+                    border: 3px solid rgba(255,255,255,0.3);
+                    border-radius: 50%;
+                    border-top-color: #fff;
+                    animation: spin 1s ease-in-out infinite;
+                    margin-right: 0.5rem;
+                    vertical-align: middle;
+                }}
+
+                @keyframes spin {{
+                    to {{ transform: rotate(360deg); }}
+                }}
+
                 a {{
                     display: inline-block;
                     margin-bottom: 1rem;
@@ -538,6 +563,14 @@ async fn upload_ui() -> HttpResponse {
 
                 <button type="submit" id="upload-btn">Upload</button>
             </form>
+
+            <script>
+                document.querySelector('form').addEventListener('submit', function(e) {{
+                    var btn = document.getElementById('upload-btn');
+                    btn.disabled = true;
+                    btn.innerHTML = '<span class="spinner"></span> Uploading...';
+                }});
+            </script>
         </body>
         </html>"#,
             idempotency_key
@@ -580,7 +613,7 @@ async fn upload(state: Data<AppState>, MultipartForm(req): MultipartForm<Upload>
     }
 
     let temp_dir = std::env::temp_dir();
-    let file_name = format!("{}.jpg", uuid::Uuid::new_v4());
+    let file_name = format!("{}.jpg", idempotency_key);
     let dest_path = temp_dir.join(&file_name);
 
     if let Err(e) = req.image.file.persist(&dest_path) {
