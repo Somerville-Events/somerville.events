@@ -1,0 +1,5 @@
+---
+alwaysApply: true
+---
+
+Run database migrations via `source .env && export DATABASE_URL=postgres://$DB_MIGRATOR:$DB_MIGRATOR_PASS@localhost/$DB_NAME && sqlx migrate run`
