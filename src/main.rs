@@ -36,6 +36,139 @@ fn format_datetime_in_somerville_tz(dt: DateTime<Utc>) -> String {
         .to_string()
 }
 
+fn render_event_html(event: &Event, is_details_view: bool) -> String {
+    let when = match (event.start_date, event.end_date) {
+        (Some(start), Some(end)) => format!(
+            "{} – {}",
+            format_datetime_in_somerville_tz(start),
+            format_datetime_in_somerville_tz(end)
+        ),
+        (Some(start), None) => format_datetime_in_somerville_tz(start),
+        (None, Some(end)) => format_datetime_in_somerville_tz(end),
+        (None, None) => "TBD".to_string(),
+    };
+
+    let when_html = match (event.start_date, event.end_date) {
+        (Some(start), Some(end)) => format!(
+            r#"<time datetime="{start_dt}">{start_label}</time> – <time datetime="{end_dt}">{end_label}</time>"#,
+            start_dt = html_escape::encode_double_quoted_attribute(
+                &start.with_timezone(&New_York).to_rfc3339()
+            ),
+            start_label = html_escape::encode_text(&format_datetime_in_somerville_tz(start)),
+            end_dt = html_escape::encode_double_quoted_attribute(
+                &end.with_timezone(&New_York).to_rfc3339()
+            ),
+            end_label = html_escape::encode_text(&format_datetime_in_somerville_tz(end)),
+        ),
+        (Some(start), None) => format!(
+            r#"<time datetime="{start_dt}">{start_label}</time>"#,
+            start_dt = html_escape::encode_double_quoted_attribute(
+                &start.with_timezone(&New_York).to_rfc3339()
+            ),
+            start_label = html_escape::encode_text(&format_datetime_in_somerville_tz(start)),
+        ),
+        _ => html_escape::encode_text(&when).to_string(),
+    };
+
+    let id = event.id.unwrap_or_default();
+    let name = html_escape::encode_text(&event.name);
+    let loc_str = event.location.as_deref().unwrap_or("");
+    let location = html_escape::encode_text(loc_str);
+    let description = html_escape::encode_text(&event.full_description);
+
+    let title_html = if is_details_view {
+        format!("<h1>{}</h1>", name)
+    } else {
+        format!(r#"<h3><a href="/event/{id}.html">{name}</a></h3>"#)
+    };
+
+    format!(
+        r#"
+        <article class="event">
+            <header>
+                {title_html}
+            </header>
+            <dl class="event-meta">
+                <dt>When</dt>
+                <dd>{when_html}</dd>
+                <dt>Location</dt>
+                <dd>{location}</dd>
+            </dl>
+            <p class="event-description">{description}</p>
+            <p class="event-actions"><a href="/event/{id}.ical" class="button">Add to calendar</a></p>
+        </article>
+        "#
+    )
+}
+
+const COMMON_STYLES: &str = r#"
+    body { font-family: system-ui, sans-serif; max-width: 800px; margin: 0 auto; padding: 1rem; line-height: 1.5; }
+    h1 { margin-bottom: 1rem; }
+    h2 { margin-top: 2.5rem; }
+    header.site-header { display: flex; align-items: baseline; justify-content: space-between; gap: 1rem; flex-wrap: wrap; }
+    nav.site-nav a { display: inline-block; }
+    section.day { margin-bottom: 2.5rem; }
+    article.event { padding: 1rem 0; border-top: 1px solid color-mix(in srgb, currentColor 15%, transparent); }
+    article.event:first-child { border-top: 0; }
+    dl.event-meta { margin: 0.5rem 0 0.75rem 0; display: grid; grid-template-columns: 7rem 1fr; gap: 0.25rem 1rem; }
+    dl.event-meta dt { font-weight: 600; }
+    dl.event-meta dd { margin: 0; }
+    p.event-description { margin: 0.75rem 0; }
+    p.event-actions { margin: 0.5rem 0 0; }
+    a.back-link { display: inline-block; margin-bottom: 2rem; text-decoration: none; }
+
+    /* Dieter Rams inspired button style */
+    .button {
+        display: inline-block;
+        padding: 0.8rem 1.4rem;
+        font-family: system-ui, sans-serif;
+        font-size: 1rem;
+        font-weight: 600;
+        text-decoration: none;
+        text-align: center;
+        color: #333;
+        background-color: #e0e0e0;
+        border: none;
+        border-radius: 4px;
+        box-shadow: 
+            inset 1px 1px 0px rgba(255, 255, 255, 0.8),
+            inset -1px -1px 0px rgba(0, 0, 0, 0.1),
+            0 4px 0 #a0a0a0,
+            0 5px 8px rgba(0,0,0,0.2);
+        cursor: pointer;
+        transition: transform 0.1s, box-shadow 0.1s;
+        /* Subtle texture */
+        background-image: linear-gradient(rgba(255,255,255,0.05), rgba(0,0,0,0.05));
+    }
+
+    .button:active {
+        transform: translateY(4px);
+        box-shadow: 
+            inset 2px 2px 5px rgba(0, 0, 0, 0.1),
+            0 0 0 #a0a0a0;
+    }
+
+    .button.primary {
+        background-color: #d13a26;
+        color: white;
+        box-shadow: 
+            inset 1px 1px 0px rgba(255, 255, 255, 0.2),
+            inset -1px -1px 0px rgba(0, 0, 0, 0.2),
+            0 4px 0 #8c2415,
+            0 5px 8px rgba(0,0,0,0.3);
+    }
+
+    .button.primary:active {
+        box-shadow: 
+            inset 2px 2px 5px rgba(0, 0, 0, 0.2),
+            0 0 0 #8c2415;
+    }
+    
+    .hidden {
+        display: none !important;
+    }
+    "#;
+
 #[derive(Debug, Serialize, Deserialize, JsonSchema, PartialEq, Clone, sqlx::FromRow)]
 struct Event {
     /// The name of the event
@@ -330,64 +463,7 @@ async fn index_with_now(state: Data<AppState>, now_utc: DateTime<Utc>) -> HttpRe
                 ));
 
                 for event in day_events {
-                    let when = match (event.start_date, event.end_date) {
-                        (Some(start), Some(end)) => format!(
-                            "{} – {}",
-                            format_datetime_in_somerville_tz(start),
-                            format_datetime_in_somerville_tz(end)
-                        ),
-                        (Some(start), None) => format_datetime_in_somerville_tz(start),
-                        (None, Some(end)) => format_datetime_in_somerville_tz(end),
-                        (None, None) => "TBD".to_string(),
-                    };
-
-                    let when_html = match (event.start_date, event.end_date) {
-                        (Some(start), Some(end)) => format!(
-                            r#"<time datetime="{start_dt}">{start_label}</time> – <time datetime="{end_dt}">{end_label}</time>"#,
-                            start_dt = html_escape::encode_double_quoted_attribute(
-                                &start.with_timezone(&New_York).to_rfc3339()
-                            ),
-                            start_label =
-                                html_escape::encode_text(&format_datetime_in_somerville_tz(start)),
-                            end_dt = html_escape::encode_double_quoted_attribute(
-                                &end.with_timezone(&New_York).to_rfc3339()
-                            ),
-                            end_label =
-                                html_escape::encode_text(&format_datetime_in_somerville_tz(end)),
-                        ),
-                        (Some(start), None) => format!(
-                            r#"<time datetime="{start_dt}">{start_label}</time>"#,
-                            start_dt = html_escape::encode_double_quoted_attribute(
-                                &start.with_timezone(&New_York).to_rfc3339()
-                            ),
-                            start_label =
-                                html_escape::encode_text(&format_datetime_in_somerville_tz(start)),
-                        ),
-                        _ => html_escape::encode_text(&when).to_string(),
-                    };
-
-                    events_html.push_str(&format!(
-                        r#"
-                        <article class="event">
-                            <header>
-                                <h3><a href="/event/{id}.html">{name}</a></h3>
-                            </header>
-                            <dl class="event-meta">
-                                <dt>When</dt>
-                                <dd>{when_html}</dd>
-                                <dt>Location</dt>
-                                <dd>{location}</dd>
-                            </dl>
-                            <p class="event-description">{description}</p>
-                            <p class="event-actions"><a href="/event/{id}.ical">Add to calendar (.ics)</a></p>
-                        </article>
-                        "#,
-                        id = event.id.unwrap_or_default(),
-                        name = html_escape::encode_text(&event.name),
-                        when_html = when_html,
-                        location = html_escape::encode_text(&event.location.unwrap_or_default()),
-                        description = html_escape::encode_text(&event.full_description),
-                    ));
+                    events_html.push_str(&render_event_html(&event, false));
                 }
 
                 events_html.push_str("</section>");
@@ -401,34 +477,23 @@ async fn index_with_now(state: Data<AppState>, now_utc: DateTime<Utc>) -> HttpRe
                     <meta name="viewport" content="width=device-width, minimum-scale=1, initial-scale=1">
                     <title>Somerville Events</title>
                     <style>
-                        body {{ font-family: system-ui, sans-serif; max-width: 800px; margin: 0 auto; padding: 1rem; line-height: 1.5; }}
-                        h1 {{ margin-bottom: 1rem; }}
-                        h2 {{ margin-top: 2.5rem; }}
-                        header.site-header {{ display: flex; align-items: baseline; justify-content: space-between; gap: 1rem; }}
-                        nav.site-nav a {{ display: inline-block; }}
-                        section.day {{ margin-bottom: 2.5rem; }}
-                        article.event {{ padding: 1rem 0; border-top: 1px solid color-mix(in srgb, currentColor 15%, transparent); }}
-                        article.event:first-child {{ border-top: 0; }}
-                        dl.event-meta {{ margin: 0.5rem 0 0.75rem 0; display: grid; grid-template-columns: 7rem 1fr; gap: 0.25rem 1rem; }}
-                        dl.event-meta dt {{ font-weight: 600; }}
-                        dl.event-meta dd {{ margin: 0; }}
-                        p.event-description {{ margin: 0.75rem 0; }}
-                        p.event-actions {{ margin: 0.5rem 0 0; }}
+                        {common_styles}
                     </style>
                 </head>
                 <body>
                     <header class="site-header">
                         <h1>Somerville Events</h1>
                         <nav class="site-nav" aria-label="Site">
-                            <a href="/upload">Upload new event</a>
+                            <a href="/upload" class="button primary">Upload new event</a>
                         </nav>
                     </header>
                     <main>
-                        {}
+                        {events_html}
                     </main>
                 </body>
                 </html>"#,
-                events_html
+                common_styles = COMMON_STYLES,
+                events_html = events_html
             ))
         }
         Err(e) => {
@@ -450,33 +515,19 @@ async fn event_details(state: Data<AppState>, path: web::Path<i64>) -> HttpRespo
                 <head>
                     <meta name="color-scheme" content="light dark">
                     <meta name="viewport" content="width=device-width, minimum-scale=1, initial-scale=1">
-                    <title>{} - Somerville Events</title>
+                    <title>{name} - Somerville Events</title>
                     <style>
-                        body {{ font-family: system-ui, sans-serif; max-width: 800px; margin: 0 auto; padding: 1rem; line-height: 1.5; }}
-                        a {{ display: inline-block; margin-bottom: 2rem; }}
-                        .ical-link {{ margin-left: 1rem; }}
+                        {common_styles}
                     </style>
                 </head>
                 <body>
-                    <a href="/">&larr; Back to Events</a>
-                    <h1>{}</h1>
-                    <p><strong>Date:</strong> {}</p>
-                    <p><strong>Location:</strong> {}</p>
-                    <p>{}</p>
-                    <p>
-                        <a href="/event/{}.ical" class="ical-link">Add to Calendar (.ics)</a>
-                    </p>
+                    <a href="/" class="back-link">&larr; Back to Events</a>
+                    {event_html}
                 </body>
                 </html>"#,
-                html_escape::encode_text(&event.name),
-                html_escape::encode_text(&event.name),
-                event
-                    .start_date
-                    .map(format_datetime_in_somerville_tz)
-                    .unwrap_or_else(|| "TBD".to_string()),
-                html_escape::encode_text(&event.location.unwrap_or_default()),
-                html_escape::encode_text(&event.full_description),
-                id
+                name = html_escape::encode_text(&event.name),
+                common_styles = COMMON_STYLES,
+                event_html = render_event_html(&event, true)
             ))
         }
         Ok(None) => HttpResponse::NotFound().body("Event not found"),
@@ -536,45 +587,32 @@ async fn event_ical(state: Data<AppState>, path: web::Path<i64>) -> HttpResponse
 }
 
 async fn upload_success() -> HttpResponse {
-    HttpResponse::Ok().content_type(ContentType::html()).body(
-        r#"<!doctype html>
+    HttpResponse::Ok()
+        .content_type(ContentType::html())
+        .body(format!(
+            r#"<!doctype html>
         <html lang="en">
         <head>
             <meta name="color-scheme" content="light dark">
             <meta name="viewport" content="width=device-width, minimum-scale=1, initial-scale=1">
             <title>Upload Successful - Somerville Events</title>
             <style>
-                body {
-                    font-family: system-ui, sans-serif;
-                    max-width: 800px;
-                    margin: 0 auto;
-                    padding: 1rem;
-                    line-height: 1.5;
+                {common_styles}
+                body {{
                     text-align: center;
-                }
-                a {
-                    display: inline-block;
-                    margin-top: 2rem;
-                    padding: 0.75rem 1.5rem;
-                    background-color: #28a745;
-                    color: white;
-                    text-decoration: none;
-                    border-radius: 6px;
-                    font-weight: bold;
-                }
-                a:hover {
-                    background-color: #218838;
-                }
+                }}
             </style>
         </head>
         <body>
             <h1>Upload Successful!</h1>
             <p>Your photo has been uploaded and is being processed in the background.</p>
             <p>Please check the events page in a few moments to see your event.</p>
-            <a href="/">Back to Events</a>
+            <br>
+            <a href="/" class="button primary">Back to Events</a>
         </body>
         </html>"#,
-    )
+            common_styles = COMMON_STYLES
+        ))
 }
 
 async fn upload_ui() -> HttpResponse {
@@ -588,13 +626,8 @@ async fn upload_ui() -> HttpResponse {
             <meta name="viewport" content="width=device-width, minimum-scale=1, initial-scale=1">
             <title>Somerville Events Upload</title>
             <style>
-                body {{
-                    font-family: system-ui, sans-serif;
-                    max-width: 800px;
-                    margin: 0 auto;
-                    padding: 1rem;
-                    line-height: 1.5;
-                }}
+                {common_styles}
+
                 form {{
                     display: flex;
                     flex-direction: column;
@@ -617,34 +650,27 @@ async fn upload_ui() -> HttpResponse {
 
                 /* Prominent Take Photo Button (Label) */
                 .file-label {{
-                    display: flex;
-                    align-items: center;
-                    justify-content: center;
-                    padding: 1.5rem;
-                    font-size: 1.5rem;
-                    background-color: #28a745;
-                    color: white;
-                    border-radius: 8px;
-                    cursor: pointer;
+                    /* We inherit button styles but override some for the label behavior */
                     width: 100%;
-                    text-align: center;
-                    transition: all 0.2s;
                     box-sizing: border-box;
-                    border: 2px solid transparent;
-                }}
-                .file-label:hover {{
-                    background-color: #218838;
-                }}
-                .file-label:active {{
-                    background-color: #1e7e34;
-                    transform: scale(0.98);
                 }}
 
                 /* When file is selected (valid), change label appearance */
                 input[type=file]:valid + .file-label {{
-                    background-color: #1e7e34;
-                    border-color: #155724;
+                    background-color: #4a9e56; /* Green-ish for success state */
+                    box-shadow: 
+                        inset 1px 1px 0px rgba(255, 255, 255, 0.2),
+                        inset -1px -1px 0px rgba(0, 0, 0, 0.2),
+                        0 4px 0 #36753e,
+                        0 5px 8px rgba(0,0,0,0.3);
+                    color: white;
                 }}
+                input[type=file]:valid + .file-label:active {{
+                    box-shadow: 
+                        inset 2px 2px 5px rgba(0, 0, 0, 0.2),
+                        0 0 0 #36753e;
+                }}
+
                 /* Use ::after to change text content based on state is tricky without attr() support for arbitrary strings in all browsers,
                    but we can use a checkmark. */
                 input[type=file]:valid + .file-label::after {{
@@ -654,37 +680,13 @@ async fn upload_ui() -> HttpResponse {
 
                 /* Prominent Upload Button */
                 #upload-btn {{
-                    padding: 1.5rem;
-                    font-size: 1.5rem;
-                    background-color: #007bff;
-                    color: white;
-                    border: none;
-                    border-radius: 8px;
-                    cursor: pointer;
                     width: 100%;
-                    transition: all 0.2s;
-                    /* Initially hidden/disabled look if desired, or just always there */
-                    opacity: 0.5;
-                    pointer-events: none;
+                    display: none; /* Hidden by default */
                 }}
                 
                 /* Enable upload button when file is selected */
                 input[type=file]:valid ~ #upload-btn {{
-                    opacity: 1;
-                    pointer-events: auto;
-                    background-color: #007bff;
-                }}
-                
-                input[type=file]:valid ~ #upload-btn:hover {{
-                    background-color: #0056b3;
-                }}
-
-                /* Disabled state (e.g. during upload) overrides the valid state */
-                input[type=file]:valid ~ #upload-btn:disabled {{
-                    opacity: 0.8;
-                    pointer-events: none;
-                    cursor: wait;
-                    background-color: #007bff; /* keep blue */
+                    display: inline-block;
                 }}
 
                 /* Loading Spinner */
@@ -704,39 +706,50 @@ async fn upload_ui() -> HttpResponse {
                     to {{ transform: rotate(360deg); }}
                 }}
 
-                a {{
+                a.back-link {{
                     display: inline-block;
                     margin-bottom: 1rem;
+                    text-decoration: none;
                 }}
             </style>
         </head>
         <body>
-            <a href="/">&larr; Back to Events</a>
+            <a href="/" class="back-link">&larr; Back to Events</a>
             <h1>Upload Event Flyer</h1>
             <p>Upload an image of a flyer or event poster. We'll extract the details automatically.</p>
             
             <form action="/upload" method="post" enctype="multipart/form-data">
-                <input type="hidden" name="idempotency_key" value="{}">
+                <input type="hidden" name="idempotency_key" value="{idempotency_key}">
                 <!-- Input must be before label/button for sibling selectors to work -->
-                <input type="file" id="image" name="image" accept="image/*" capture="environment" required>
+                <!-- Removed capture="environment" to allow library access -->
+                <input type="file" id="image" name="image" accept="image/*" required>
                 
-                <label for="image" class="file-label">
-                    📸 Take Photo / Choose File
+                <label for="image" class="button file-label">
+                    Take Photo / Choose File
                 </label>
 
-                <button type="submit" id="upload-btn">Upload</button>
+                <button type="submit" id="upload-btn" class="button primary">Upload</button>
             </form>
 
             <script>
                 document.querySelector('form').addEventListener('submit', function(e) {{
                     var btn = document.getElementById('upload-btn');
-                    btn.disabled = true;
+                    // We don't disable immediately to prevent form submit cancellation if it takes a split second
+                    // actually we do want to prevent double submit.
+                    if (btn.classList.contains('submitting')) {{
+                        e.preventDefault();
+                        return;
+                    }}
+                    btn.classList.add('submitting');
+                    btn.style.opacity = '0.8';
+                    btn.style.cursor = 'wait';
                     btn.innerHTML = '<span class="spinner"></span> Uploading...';
                 }});
             </script>
         </body>
         </html>"#,
-            idempotency_key
+            common_styles = COMMON_STYLES,
+            idempotency_key = idempotency_key
         ),
     )
 }
