@@ -12,7 +12,7 @@ use actix_web_httpauth::{extractors::basic::BasicAuth, middleware::HttpAuthentic
 use anyhow::{anyhow, Result};
 use awc::{Client, Connector};
 use base64::{engine::general_purpose::STANDARD as b64, Engine as _};
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, Duration, NaiveDate, Utc};
 use chrono_tz::America::New_York;
 use dotenvy::dotenv;
 use icalendar::{Calendar, CalendarDateTime, Component, Event as IcalEvent, EventLike};
@@ -22,6 +22,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 use sqlx::postgres::PgPoolOptions;
 use std::{
+    collections::BTreeMap,
     env, fs,
     path::Path,
     sync::{Arc, OnceLock},
@@ -193,30 +194,132 @@ async fn index(state: Data<AppState>) -> HttpResponse {
 
     match events {
         Ok(events) => {
-            let mut events_html = String::new();
+            let now_utc = Utc::now();
+            let today_local: NaiveDate = now_utc.with_timezone(&New_York).date_naive();
+
+            let mut events_by_day: BTreeMap<NaiveDate, Vec<Event>> = BTreeMap::new();
+
             for event in events {
+                // If we don't have a start date, we can't show it on a calendar-like "by day" view.
+                let Some(start) = event.start_date else {
+                    continue;
+                };
+
+                // "End time is in the past" is the most reliable signal we have. If end is missing,
+                // we fall back to start + 1 day as a conservative proxy so we don't accidentally
+                // hide an event that's still ongoing.
+                let effective_end = event
+                    .end_date
+                    .or_else(|| event.start_date.map(|start| start + Duration::days(1)));
+                if let Some(end) = effective_end {
+                    if end < now_utc {
+                        continue;
+                    }
+                }
+
+                let end = effective_end.unwrap_or(start);
+                let start_day = start.with_timezone(&New_York).date_naive();
+                let end_day = end.with_timezone(&New_York).date_naive();
+
+                let (mut day, last_day) = if start_day <= end_day {
+                    (start_day, end_day)
+                } else {
+                    (end_day, start_day)
+                };
+
+                loop {
+                    if day >= today_local {
+                        // Show spanning events multiple times: once per day they touch.
+                        events_by_day.entry(day).or_default().push(event.clone());
+                    }
+
+                    if day == last_day {
+                        break;
+                    }
+                    day = day.succ_opt().expect("date overflow");
+                }
+            }
+
+            for day_events in events_by_day.values_mut() {
+                day_events.sort_by(|a, b| {
+                    a.start_date
+                        .cmp(&b.start_date)
+                        .then_with(|| a.name.cmp(&b.name))
+                });
+            }
+
+            let mut events_html = String::new();
+
+            for (day, day_events) in events_by_day {
+                let day_id = format!("day-{}", day.format("%Y-%m-%d"));
                 events_html.push_str(&format!(
-                    r#"
-                    <div class="event">
-                        <h2><a href="/event/{}.html">{}</a></h2>
-                        <p><strong>Date:</strong> {}</p>
-                        <p><strong>Location:</strong> {}</p>
-                        <p>{}</p>
-                        <p><a href="/event/{}.ical">📅 Add to Calendar</a></p>
-                    </div>
-                    <hr>
-                    "#,
-                    // Use unwrap_or_default for ID, though it should exist from DB
-                    event.id.unwrap_or_default(),
-                    html_escape::encode_text(&event.name),
-                    event
-                        .start_date
-                        .map(format_datetime_in_somerville_tz)
-                        .unwrap_or_else(|| "TBD".to_string()),
-                    html_escape::encode_text(&event.location.unwrap_or_default()),
-                    html_escape::encode_text(&event.full_description),
-                    event.id.unwrap_or_default()
+                    r#"<section class="day" aria-labelledby="{day_id}">
+                        <h2 id="{day_id}">{}</h2>"#,
+                    day.format("%A, %B %d, %Y")
                 ));
+
+                for event in day_events {
+                    let when = match (event.start_date, event.end_date) {
+                        (Some(start), Some(end)) => format!(
+                            "{} – {}",
+                            format_datetime_in_somerville_tz(start),
+                            format_datetime_in_somerville_tz(end)
+                        ),
+                        (Some(start), None) => format_datetime_in_somerville_tz(start),
+                        (None, Some(end)) => format_datetime_in_somerville_tz(end),
+                        (None, None) => "TBD".to_string(),
+                    };
+
+                    let when_html = match (event.start_date, event.end_date) {
+                        (Some(start), Some(end)) => format!(
+                            r#"<time datetime="{start_dt}">{start_label}</time> – <time datetime="{end_dt}">{end_label}</time>"#,
+                            start_dt = html_escape::encode_double_quoted_attribute(
+                                &start.with_timezone(&New_York).to_rfc3339()
+                            ),
+                            start_label =
+                                html_escape::encode_text(&format_datetime_in_somerville_tz(start)),
+                            end_dt = html_escape::encode_double_quoted_attribute(
+                                &end.with_timezone(&New_York).to_rfc3339()
+                            ),
+                            end_label =
+                                html_escape::encode_text(&format_datetime_in_somerville_tz(end)),
+                        ),
+                        (Some(start), None) => format!(
+                            r#"<time datetime="{start_dt}">{start_label}</time>"#,
+                            start_dt = html_escape::encode_double_quoted_attribute(
+                                &start.with_timezone(&New_York).to_rfc3339()
+                            ),
+                            start_label =
+                                html_escape::encode_text(&format_datetime_in_somerville_tz(start)),
+                        ),
+                        _ => html_escape::encode_text(&when).to_string(),
+                    };
+
+                    events_html.push_str(&format!(
+                        r#"
+                        <article class="event">
+                            <header>
+                                <h3><a href="/event/{id}.html">{name}</a></h3>
+                            </header>
+                            <dl class="event-meta">
+                                <dt>When</dt>
+                                <dd>{when_html}</dd>
+                                <dt>Location</dt>
+                                <dd>{location}</dd>
+                            </dl>
+                            <p class="event-description">{description}</p>
+                            <p class="event-actions"><a href="/event/{id}.ical">Add to calendar (.ics)</a></p>
+                        </article>
+                        "#,
+                        id = event.id.unwrap_or_default(),
+                        name = html_escape::encode_text(&event.name),
+                        when_html = when_html,
+                        location = html_escape::encode_text(&event.location.unwrap_or_default()),
+                        description = html_escape::encode_text(&event.full_description),
+                    ));
+                }
+
+                events_html.push_str("</section>");
             }
 
             HttpResponse::Ok().content_type(ContentType::html()).body(format!(
@@ -228,16 +331,30 @@ async fn index(state: Data<AppState>) -> HttpResponse {
                     <title>Somerville Events</title>
                     <style>
                         body {{ font-family: system-ui, sans-serif; max-width: 800px; margin: 0 auto; padding: 1rem; line-height: 1.5; }}
-                        .event {{ margin-bottom: 2rem; }}
                         h1 {{ margin-bottom: 1rem; }}
-                        a {{ display: inline-block; margin-bottom: 2rem; }}
+                        h2 {{ margin-top: 2.5rem; }}
+                        header.site-header {{ display: flex; align-items: baseline; justify-content: space-between; gap: 1rem; }}
+                        nav.site-nav a {{ display: inline-block; }}
+                        section.day {{ margin-bottom: 2.5rem; }}
+                        article.event {{ padding: 1rem 0; border-top: 1px solid color-mix(in srgb, currentColor 15%, transparent); }}
+                        article.event:first-child {{ border-top: 0; }}
+                        dl.event-meta {{ margin: 0.5rem 0 0.75rem 0; display: grid; grid-template-columns: 7rem 1fr; gap: 0.25rem 1rem; }}
+                        dl.event-meta dt {{ font-weight: 600; }}
+                        dl.event-meta dd {{ margin: 0; }}
+                        p.event-description {{ margin: 0.75rem 0; }}
+                        p.event-actions {{ margin: 0.5rem 0 0; }}
                     </style>
                 </head>
                 <body>
-                    <h1>Somerville Events</h1>
-                    <a href="/upload">Upload New Event</a>
-                    <hr>
-                    {}
+                    <header class="site-header">
+                        <h1>Somerville Events</h1>
+                        <nav class="site-nav" aria-label="Site">
+                            <a href="/upload">Upload new event</a>
+                        </nav>
+                    </header>
+                    <main>
+                        {}
+                    </main>
                 </body>
                 </html>"#,
                 events_html
