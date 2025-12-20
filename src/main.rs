@@ -15,7 +15,7 @@ use base64::{engine::general_purpose::STANDARD as b64, Engine as _};
 use chrono::{DateTime, Utc};
 use chrono_tz::America::New_York;
 use dotenvy::dotenv;
-use icalendar::{Calendar, Component, Event as IcalEvent, EventLike};
+use icalendar::{Calendar, CalendarDateTime, Component, Event as IcalEvent, EventLike};
 use rustls;
 use schemars::{schema_for, JsonSchema};
 use serde::{Deserialize, Serialize};
@@ -353,12 +353,17 @@ async fn event_ical(state: Data<AppState>, path: web::Path<i64>) -> HttpResponse
             }
 
             if let Some(start) = event.start_date {
-                ical_event.starts(start);
+                let start_et = start.with_timezone(&New_York);
+                ical_event.starts(CalendarDateTime::from_date_time(start_et));
                 if let Some(end) = event.end_date {
-                    ical_event.ends(end);
+                    ical_event.ends(CalendarDateTime::from_date_time(
+                        end.with_timezone(&New_York),
+                    ));
                 } else {
                     // Default to 1 hour duration if no end date
-                    ical_event.ends(start + chrono::Duration::hours(1));
+                    ical_event.ends(CalendarDateTime::from_date_time(
+                        start_et + chrono::Duration::hours(1),
+                    ));
                 }
             }
 
