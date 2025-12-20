@@ -264,7 +264,11 @@ async fn index_with_now(state: Data<AppState>, now_utc: DateTime<Utc>) -> HttpRe
 
     match events {
         Ok(events) => {
-            let today_local: NaiveDate = now_utc.with_timezone(&New_York).date_naive();
+            // We normally hide anything too far in the past, but we allow a small look-back
+            // window so "no end date" events from yesterday still show up.
+            let earliest_day_to_render: NaiveDate = (now_utc - Duration::days(1))
+                .with_timezone(&New_York)
+                .date_naive();
 
             let mut events_by_day: BTreeMap<NaiveDate, Vec<Event>> = BTreeMap::new();
 
@@ -274,21 +278,19 @@ async fn index_with_now(state: Data<AppState>, now_utc: DateTime<Utc>) -> HttpRe
                     continue;
                 };
 
-                // "End time is in the past" is the most reliable signal we have. If end is missing,
-                // we fall back to start + 1 day as a conservative proxy so we don't accidentally
-                // hide an event that's still ongoing.
-                let effective_end = event
-                    .end_date
-                    .or_else(|| event.start_date.map(|start| start + Duration::days(1)));
-                if let Some(end) = effective_end {
-                    if end < now_utc {
-                        continue;
-                    }
-                }
-
-                let end = effective_end.unwrap_or(start);
                 let start_day = start.with_timezone(&New_York).date_naive();
-                let end_day = end.with_timezone(&New_York).date_naive();
+                let (end_day, visibility_end) = match event.end_date {
+                    // Events without an end date render only once (on their start day), but they
+                    // should remain visible for up to 24h after start (so "yesterday" can show).
+                    None => (start_day, start + Duration::days(1)),
+                    Some(end) => (end.with_timezone(&New_York).date_naive(), end),
+                };
+
+                // "End time is in the past" is our most reliable signal. For missing end dates,
+                // we approximate an end for visibility only (see above).
+                if visibility_end < now_utc {
+                    continue;
+                }
 
                 let (mut day, last_day) = if start_day <= end_day {
                     (start_day, end_day)
@@ -297,7 +299,7 @@ async fn index_with_now(state: Data<AppState>, now_utc: DateTime<Utc>) -> HttpRe
                 };
 
                 loop {
-                    if day >= today_local {
+                    if day >= earliest_day_to_render {
                         // Show spanning events multiple times: once per day they touch.
                         events_by_day.entry(day).or_default().push(event.clone());
                     }
@@ -1137,12 +1139,26 @@ async fn test_index() -> Result<()> {
         confidence: 1.0,
     };
 
-    // No end_date: should remain visible (end = start + 1 day) and appear under start day + next day.
+    // No end_date: should render only on its start day.
     let ongoing_no_end = Event {
         id: Some(2),
         name: "Ongoing No End".to_string(),
-        full_description: "Should render twice".to_string(),
+        full_description: "Should render once".to_string(),
         start_date: Some(mk_local(local_dt(today_local, 9, 0)).with_timezone(&Utc)),
+        end_date: None,
+        location: Some("Somerville".to_string()),
+        event_type: None,
+        additional_details: None,
+        confidence: 1.0,
+    };
+
+    // No end_date from yesterday (within the last 24h) should still render, and should
+    // cause a "yesterday" heading to appear.
+    let yesterday_no_end = Event {
+        id: Some(7),
+        name: "Yesterday No End".to_string(),
+        full_description: "Should render under yesterday".to_string(),
+        start_date: Some(mk_local(local_dt(yesterday_local, 15, 0)).with_timezone(&Utc)),
         end_date: None,
         location: Some("Somerville".to_string()),
         event_type: None,
@@ -1212,6 +1228,7 @@ async fn test_index() -> Result<()> {
             same_day_2,
             ongoing_no_end,
             same_day_1,
+            yesterday_no_end,
         ]),
     };
 
@@ -1270,13 +1287,15 @@ async fn test_index() -> Result<()> {
         "Missing day-after-tomorrow heading id; got day_ids={day_ids:?}"
     );
     assert!(
-        !day_ids.contains(&format!("day-{}", yesterday_local.format("%Y-%m-%d"))),
-        "Should not render past day headings; got day_ids={day_ids:?}"
+        day_ids.contains(&format!("day-{}", yesterday_local.format("%Y-%m-%d"))),
+        "Expected yesterday heading due to a no-end event within 24h; got day_ids={day_ids:?}"
     );
 
-    // Duplicate assertions for spanning behavior: "Ongoing No End" should appear on today + tomorrow.
+    // No end_date events should only render once (on their start day).
     let occurrences_ongoing = body_str.matches("Ongoing No End").count();
-    assert_eq!(occurrences_ongoing, 2);
+    assert_eq!(occurrences_ongoing, 1);
+    let occurrences_yesterday_no_end = body_str.matches("Yesterday No End").count();
+    assert_eq!(occurrences_yesterday_no_end, 1);
 
     // Multiple events on the same day should show up under the same day section.
     let today_id = format!("day-{}", today_local.format("%Y-%m-%d"));
