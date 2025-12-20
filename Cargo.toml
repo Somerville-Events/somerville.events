@@ -37,3 +37,4 @@ dotenvy = "0.15.7" # Environment variable loading
 html-escape = "0.2.13"
 icalendar = "0.17.6"
 uuid = { version = "1.19.0", features = ["v4", "serde"] }
+chrono-tz = "0.10.4"
