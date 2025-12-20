@@ -13,8 +13,9 @@ use anyhow::{anyhow, Result};
 use awc::{Client, Connector};
 use base64::{engine::general_purpose::STANDARD as b64, Engine as _};
 use chrono::{DateTime, Utc};
+use chrono_tz::America::New_York;
 use dotenvy::dotenv;
-use icalendar::{Calendar, Component, Event as IcalEvent, EventLike};
+use icalendar::{Calendar, CalendarDateTime, Component, Event as IcalEvent, EventLike};
 use rustls;
 use schemars::{schema_for, JsonSchema};
 use serde::{Deserialize, Serialize};
@@ -25,6 +26,13 @@ use std::{
     path::Path,
     sync::{Arc, OnceLock},
 };
+
+fn format_datetime_in_somerville_tz(dt: DateTime<Utc>) -> String {
+    // Somerville, MA observes DST, so we use a real TZ database instead of a fixed offset.
+    dt.with_timezone(&New_York)
+        .format("%A, %B %d, %Y at %I:%M %p")
+        .to_string()
+}
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema, PartialEq, Clone)]
 struct Event {
@@ -203,7 +211,7 @@ async fn index(state: Data<AppState>) -> HttpResponse {
                     html_escape::encode_text(&event.name),
                     event
                         .start_date
-                        .map(|d| d.format("%A, %B %d, %Y at %I:%M %p").to_string())
+                        .map(format_datetime_in_somerville_tz)
                         .unwrap_or_else(|| "TBD".to_string()),
                     html_escape::encode_text(&event.location.unwrap_or_default()),
                     html_escape::encode_text(&event.full_description),
@@ -295,7 +303,7 @@ async fn event_details(state: Data<AppState>, path: web::Path<i64>) -> HttpRespo
                 html_escape::encode_text(&event.name),
                 event
                     .start_date
-                    .map(|d| d.format("%A, %B %d, %Y at %I:%M %p").to_string())
+                    .map(format_datetime_in_somerville_tz)
                     .unwrap_or_else(|| "TBD".to_string()),
                 html_escape::encode_text(&event.location.unwrap_or_default()),
                 html_escape::encode_text(&event.full_description),
@@ -345,12 +353,17 @@ async fn event_ical(state: Data<AppState>, path: web::Path<i64>) -> HttpResponse
             }
 
             if let Some(start) = event.start_date {
-                ical_event.starts(start);
+                let start_et = start.with_timezone(&New_York);
+                ical_event.starts(CalendarDateTime::from_date_time(start_et));
                 if let Some(end) = event.end_date {
-                    ical_event.ends(end);
+                    ical_event.ends(CalendarDateTime::from_date_time(
+                        end.with_timezone(&New_York),
+                    ));
                 } else {
                     // Default to 1 hour duration if no end date
-                    ical_event.ends(start + chrono::Duration::hours(1));
+                    ical_event.ends(CalendarDateTime::from_date_time(
+                        start_et + chrono::Duration::hours(1),
+                    ));
                 }
             }
 

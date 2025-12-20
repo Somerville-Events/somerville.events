@@ -35,5 +35,6 @@ anyhow = "1"
 futures-util = "0.3"
 dotenvy = "0.15.7" # Environment variable loading
 html-escape = "0.2.13"
-icalendar = "0.17.6"
+icalendar = { version = "0.17.6", features = ["chrono-tz"] }
 uuid = { version = "1.19.0", features = ["v4", "serde"] }
+chrono-tz = "0.10.4"
