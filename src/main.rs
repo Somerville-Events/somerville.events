@@ -216,6 +216,7 @@ async fn main() -> Result<()> {
     let db_user = env::var("DB_APP_USER").expect("DB_APP_USER");
     let db_password = env::var("DB_APP_USER_PASS").expect("DB_APP_USER_PASS");
     let db_name = env::var("DB_NAME").expect("DB_NAME");
+    let static_file_dir = env::var("STATIC_FILE_DIR").unwrap_or_else(|_| "./static".to_string());
 
     // TLS config once
     let tls_config = TLS_CONFIG.get_or_init(init_tls_once).clone();
@@ -250,7 +251,7 @@ async fn main() -> Result<()> {
         App::new()
             .app_data(Data::new(state))
             .wrap(middleware::Logger::default())
-            .service(actix_files::Files::new("/static", "./static").show_files_listing())
+            .service(actix_files::Files::new("/static", &static_file_dir).show_files_listing())
             .route("/", web::get().to(index))
             .route("/event/{id}.html", web::get().to(event_details))
             .route("/event/{id}.ical", web::get().to(event_ical))
