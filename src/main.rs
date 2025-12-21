@@ -628,68 +628,152 @@ async fn upload_ui() -> HttpResponse {
             <style>
                 {common_styles}
 
-                form {{
+                /* Full bleed container setup */
+                body {{
+                    margin: 0;
+                    padding: 0;
+                    width: 100%;
+                    height: 100vh;
+                    max-width: none;
                     display: flex;
                     flex-direction: column;
-                    gap: 1.5rem;
-                    border: 1px solid #ccc;
-                    padding: 2rem;
-                    border-radius: 8px;
+                    background-color: #000;
+                }}
+
+                h1, p {{
+                    display: none; /* Hide default header elements in full screen camera mode */
+                }}
+
+                /* Only show header content if camera is NOT active, handled via class on body */
+                body.no-camera h1, 
+                body.no-camera p {{
+                    display: block;
+                    margin-left: 1rem;
+                    margin-right: 1rem;
+                    color: #333; /* Standard text color for fallback */
+                }}
+
+                /* Main container takes available space */
+                #camera-ui {{
+                    flex: 1;
+                    display: flex;
+                    flex-direction: column;
+                    position: relative;
+                    background: #000;
+                    overflow: hidden;
+                }}
+
+                /* Video fills the available space, reserving bottom for controls */
+                /* Container for video/preview to manage flex layout correctly */
+                .viewport-container {{
+                    flex: 1;
+                    position: relative;
+                    width: 100%;
+                    overflow: hidden;
+                    background: #000;
+                    display: flex;
+                    justify-content: center;
                     align-items: center;
                 }}
 
-                /* File Input Styling */
-                /* Hide the actual input but keep it accessible/validatable */
-                input[type=file] {{
-                    opacity: 0;
-                    width: 0.1px;
-                    height: 0.1px;
-                    position: absolute;
-                    z-index: -1;
-                }}
-
-                /* Prominent Take Photo Button (Label) */
-                .file-label {{
-                    /* We inherit button styles but override some for the label behavior */
+                #camera-stream, #preview-image {{
                     width: 100%;
-                    box-sizing: border-box;
-                }}
-
-                /* When file is selected (valid), change label appearance */
-                input[type=file]:valid + .file-label {{
-                    background-color: #4a9e56; /* Green-ish for success state */
-                    box-shadow: 
-                        inset 1px 1px 0px rgba(255, 255, 255, 0.2),
-                        inset -1px -1px 0px rgba(0, 0, 0, 0.2),
-                        0 4px 0 #36753e,
-                        0 5px 8px rgba(0,0,0,0.3);
-                    color: white;
-                }}
-                input[type=file]:valid + .file-label:active {{
-                    box-shadow: 
-                        inset 2px 2px 5px rgba(0, 0, 0, 0.2),
-                        0 0 0 #36753e;
-                }}
-
-                /* Use ::after to change text content based on state is tricky without attr() support for arbitrary strings in all browsers,
-                   but we can use a checkmark. */
-                input[type=file]:valid + .file-label::after {{
-                    content: " ✅";
-                    margin-left: 0.5rem;
-                }}
-
-                /* Prominent Upload Button */
-                #upload-btn {{
-                    width: 100%;
-                    display: none; /* Hidden by default */
+                    height: 100%;
+                    object-fit: contain;
+                    display: block;
                 }}
                 
-                /* Enable upload button when file is selected */
-                input[type=file]:valid ~ #upload-btn {{
+                #preview-image {{
+                    display: none;
+                }}
+
+                /* Controls bar at bottom - now static, not absolute */
+                .controls-bar {{
+                    width: 100%;
+                    padding: 20px;
+                    box-sizing: border-box;
+                    background: #000; /* Solid black background */
+                    display: flex;
+                    justify-content: center;
+                    align-items: center;
+                    min-height: 100px; /* Explicit space reserved */
+                    gap: 1rem;
+                    z-index: 20;
+                }}
+
+                /* Retake Button (hidden by default) */
+                #retake-btn {{
+                    display: none;
+                }}
+
+                /* Upload Button (hidden by default) */
+                #upload-btn {{
+                    display: none;
+                }}
+
+                /* Fallback Form (Hidden if JS active and camera works) */
+                #fallback-form {{
+                    padding: 1rem;
+                    background: #fff;
+                    border-radius: 8px;
+                    margin: 1rem;
+                    display: none;
+                }}
+
+                /* State: Camera Active (Default JS state) */
+                /* State: Preview Active */
+                body.preview-mode #camera-stream {{
+                    display: none;
+                }}
+                body.preview-mode #preview-image {{
+                    display: block;
+                }}
+                body.preview-mode #shutter-btn {{
+                    display: none;
+                }}
+                body.preview-mode #retake-btn {{
+                    display: inline-block;
+                }}
+                body.preview-mode #upload-btn {{
                     display: inline-block;
                 }}
 
-                /* Loading Spinner */
+                /* State: No Camera / No JS (Fallback) */
+                body.no-camera {{
+                    background-color: canvas; /* Reset to default */
+                    height: auto;
+                    display: block;
+                }}
+                body.no-camera #camera-ui {{
+                    display: none;
+                }}
+                body.no-camera #fallback-form {{
+                    display: flex;
+                    flex-direction: column;
+                    gap: 1rem;
+                    border: 1px solid #ccc;
+                }}
+
+                .button {{
+                    /* Re-declare generic button styles for context */
+                    display: inline-block;
+                    padding: 0.8rem 1.4rem;
+                    font-family: system-ui, sans-serif;
+                    font-size: 1rem;
+                    font-weight: 600;
+                    color: #333;
+                    background-color: #e0e0e0;
+                    border: none;
+                    border-radius: 4px;
+                    text-decoration: none;
+                    cursor: pointer;
+                }}
+                .button.primary {{
+                    background-color: #d13a26;
+                    color: white;
+                }}
+                
+                /* Spinner */
                 .spinner {{
                     display: inline-block;
                     width: 1em;
@@ -699,51 +783,154 @@ async fn upload_ui() -> HttpResponse {
                     border-top-color: #fff;
                     animation: spin 1s ease-in-out infinite;
                     margin-right: 0.5rem;
-                    vertical-align: middle;
+                }}
+                @keyframes spin {{ to {{ transform: rotate(360deg); }} }}
+                
+                /* File Input Styling for Fallback */
+                .file-input-wrapper input[type=file] {{
+                    font-size: 1rem;
                 }}
 
-                @keyframes spin {{
-                    to {{ transform: rotate(360deg); }}
+                /* Image Preview for fallback (No JS specific, but if JS fails to load camera) */
+                #fallback-preview {{
+                    max-width: 100%;
+                    margin-top: 1rem;
+                    display: none;
+                    border-radius: 4px;
                 }}
 
-                a.back-link {{
-                    display: inline-block;
-                    margin-bottom: 1rem;
-                    text-decoration: none;
-                }}
             </style>
         </head>
-        <body>
-            <a href="/" class="back-link">&larr; Back to Events</a>
+        <body class="no-camera"> <!-- Default to no-camera, upgraded by JS -->
             <h1>Upload Event Flyer</h1>
-            <p>Upload an image of a flyer or event poster. We'll extract the details automatically.</p>
+            <p>Upload an image of a flyer or event poster.</p>
             
-            <form action="/upload" method="post" enctype="multipart/form-data">
-                <input type="hidden" name="idempotency_key" value="{idempotency_key}">
-                <!-- Input must be before label/button for sibling selectors to work -->
-                <!-- Removed capture="environment" to allow library access -->
-                <input type="file" id="image" name="image" accept="image/*" required>
+            <!-- Full Screen Camera UI -->
+            <div id="camera-ui">
+                <div class="viewport-container">
+                    <video id="camera-stream" autoplay playsinline muted></video>
+                    <img id="preview-image" alt="Captured flyer">
+                </div>
                 
-                <label for="image" class="button file-label">
-                    Take Photo / Choose File
-                </label>
+                <div class="controls-bar">
+                    <button type="button" id="retake-btn" class="button">Retake</button>
+                    <button type="button" id="shutter-btn" class="button">Take Photo</button>
+                    <!-- We wrap the real submit in a button outside the form for the UI, or handle via JS? -->
+                    <!-- Best to keep the form logic simple. We can trigger the form submit via JS. -->
+                    <button type="button" id="upload-btn" class="button primary">Upload</button>
+                </div>
+            </div>
 
-                <button type="submit" id="upload-btn" class="button primary">Upload</button>
+            <!-- Hidden canvas for capture -->
+            <canvas id="capture-canvas" style="display: none;"></canvas>
+
+            <!-- Actual Form (Visible as fallback, hidden when Camera UI active) -->
+            <form id="fallback-form" action="/upload" method="post" enctype="multipart/form-data">
+                <input type="hidden" name="idempotency_key" value="{idempotency_key}">
+                
+                <div class="file-input-wrapper">
+                    <input type="file" id="image" name="image" accept="image/*" required>
+                </div>
+
+                <img id="fallback-preview" alt="Selected Image Preview">
+
+                <button type="submit" class="button primary">Upload</button>
             </form>
 
             <script>
-                document.querySelector('form').addEventListener('submit', function(e) {{
-                    var btn = document.getElementById('upload-btn');
-                    // We don't disable immediately to prevent form submit cancellation if it takes a split second
-                    // actually we do want to prevent double submit.
-                    if (btn.classList.contains('submitting')) {{
-                        e.preventDefault();
-                        return;
+                document.addEventListener('DOMContentLoaded', async () => {{
+                    const body = document.body;
+                    const cameraUi = document.getElementById('camera-ui');
+                    const video = document.getElementById('camera-stream');
+                    const shutterBtn = document.getElementById('shutter-btn');
+                    const retakeBtn = document.getElementById('retake-btn');
+                    const uploadBtn = document.getElementById('upload-btn'); // UI button
+                    const previewImg = document.getElementById('preview-image');
+                    const canvas = document.getElementById('capture-canvas');
+                    
+                    const fallbackForm = document.getElementById('fallback-form');
+                    const fileInput = document.getElementById('image');
+                    const fallbackPreview = document.getElementById('fallback-preview');
+
+                    let stream = null;
+
+                    // Initialize Camera
+                    if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {{
+                        try {{
+                            stream = await navigator.mediaDevices.getUserMedia({{ 
+                                video: {{ facingMode: 'environment' }} 
+                            }});
+                            video.srcObject = stream;
+                            
+                            // Upgrade to Camera Mode
+                            body.classList.remove('no-camera');
+                            
+                            // Handle Shutter
+                            shutterBtn.addEventListener('click', () => {{
+                                if (!stream) return;
+                                
+                                canvas.width = video.videoWidth;
+                                canvas.height = video.videoHeight;
+                                canvas.getContext('2d').drawImage(video, 0, 0);
+                                
+                                canvas.toBlob((blob) => {{
+                                    // Update File Input
+                                    const file = new File([blob], "capture.jpg", {{ type: "image/jpeg" }});
+                                    const dataTransfer = new DataTransfer();
+                                    dataTransfer.items.add(file);
+                                    fileInput.files = dataTransfer.files;
+                                    
+                                    // Show Preview
+                                    previewImg.src = URL.createObjectURL(blob);
+                                    body.classList.add('preview-mode');
+                                    video.pause();
+                                }}, 'image/jpeg');
+                            }});
+
+                            // Handle Retake
+                            retakeBtn.addEventListener('click', () => {{
+                                body.classList.remove('preview-mode');
+                                previewImg.src = '';
+                                fileInput.value = '';
+                                video.play();
+                            }});
+
+                            // Handle Upload (Proxy to real form)
+                            uploadBtn.addEventListener('click', () => {{
+                                if (uploadBtn.classList.contains('submitting')) return;
+                                
+                                uploadBtn.classList.add('submitting');
+                                uploadBtn.innerHTML = '<span class="spinner"></span>';
+                                fallbackForm.submit();
+                            }});
+
+                        }} catch (err) {{
+                            console.warn("Camera access denied or failed:", err);
+                            // Stays in no-camera mode (fallback form visible)
+                        }}
                     }}
-                    btn.classList.add('submitting');
-                    btn.style.opacity = '0.8';
-                    btn.style.cursor = 'wait';
-                    btn.innerHTML = '<span class="spinner"></span> Uploading...';
+
+                    // Fallback Form: Simple Image Preview for non-camera file selection
+                    // This works if JS is on but camera failed/denied. 
+                    // If JS is off, this script won't run, and user gets standard file input behavior (browser dependent).
+                    fileInput.addEventListener('change', () => {{
+                        if (fileInput.files && fileInput.files[0]) {{
+                            const file = fileInput.files[0];
+                            const url = URL.createObjectURL(file);
+                            fallbackPreview.src = url;
+                            fallbackPreview.style.display = 'block';
+                            
+                            // Also update the full-screen preview if we were somehow in that mode? 
+                            // Unlikely if we are using the fallback input, but good for completeness.
+                        }}
+                    }});
+
+                    // Handle form submit state for fallback form
+                    fallbackForm.addEventListener('submit', function() {{
+                        const btn = fallbackForm.querySelector('button[type="submit"]');
+                        btn.style.opacity = '0.8';
+                        btn.innerHTML = 'Uploading...';
+                    }});
                 }});
             </script>
         </body>
