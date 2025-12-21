@@ -70,6 +70,6 @@ jobs:
           SHA=${{ github.sha }}
           REMOTE_DIR="~/artifacts/${SHA}"
           ssh ${VPS_USER}@${VPS_HOST} "mkdir -p ${REMOTE_DIR}"
-          scp -r dist/* ${VPS_USER}@${VPS_HOST}:${REMOTE_DIR}/
+          scp -p -r dist/* ${VPS_USER}@${VPS_HOST}:${REMOTE_DIR}/
           ssh ${VPS_USER}@${VPS_HOST} "bash -x ${REMOTE_DIR}/deploy.sh ${SHA}"
 
