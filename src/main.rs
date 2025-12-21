@@ -691,7 +691,7 @@ async fn upload_ui() -> HttpResponse {
             <style>
                 {common_styles}
 
-                /* Camera Mode Layout (applied when NOT in fallback mode) */
+                /* Camera Mode Layout (applied when camera is active) */
                 body:not(.no-camera) {{
                     margin: 0;
                     padding: 0;
@@ -789,14 +789,14 @@ async fn upload_ui() -> HttpResponse {
                     z-index: 20;
                 }}
 
-                /* Fallback Form (Hidden if JS active and camera works) */
-                #fallback-form {{
+                /* Upload Form (Hidden if JS active and camera works) */
+                form {{
                     display: none;
                     gap: 1.5rem;
                     margin-top: 1rem;
                 }}
 
-                /* State: No Camera / No JS (Fallback) */
+                /* State: No Camera / No JS */
                 body.no-camera {{
                     background-color: canvas; /* Reset to default */
                     height: auto;
@@ -805,7 +805,7 @@ async fn upload_ui() -> HttpResponse {
                 body.no-camera #camera-ui {{
                     display: none;
                 }}
-                body.no-camera #fallback-form {{
+                body.no-camera form {{
                     display: flex;
                     flex-direction: column;
                     align-items: flex-start;
@@ -824,9 +824,9 @@ async fn upload_ui() -> HttpResponse {
                 }}
                 @keyframes spin {{ to {{ transform: rotate(360deg); }} }}
                 
-                /* File Input Styling for Fallback */
+                /* File Input Styling */
                 /* Use ::file-selector-button for modern native styling */
-                #fallback-form input[type=file] {{
+                form input[type=file] {{
                     display: block; /* Ensure it's visible */
                     width: 100%;
                     cursor: pointer;
@@ -835,12 +835,12 @@ async fn upload_ui() -> HttpResponse {
                 }}
 
                 /* Style the button part specifically */
-                #fallback-form input[type=file]::file-selector-button {{
+                form input[type=file]::file-selector-button {{
                     margin-right: 1rem;
                 }}
 
-                /* Image Preview for fallback (No JS specific, but if JS fails to load camera) */
-                #fallback-preview {{
+                /* Image Preview (No JS specific, but if JS fails to load camera) */
+                #image-preview {{
                     max-width: 100%;
                     margin-top: 1rem;
                     display: none;
@@ -868,13 +868,13 @@ async fn upload_ui() -> HttpResponse {
             <!-- Hidden canvas for capture -->
             <canvas id="capture-canvas" style="display: none;"></canvas>
 
-            <!-- Actual Form (Visible as fallback, hidden when Camera UI active) -->
-            <form id="fallback-form" action="/upload" method="post" enctype="multipart/form-data">
+            <!-- Actual Form (Visible, hidden when Camera UI active) -->
+            <form action="/upload" method="post" enctype="multipart/form-data">
                 <input type="hidden" name="idempotency_key" value="{idempotency_key}">
                 
                 <input type="file" id="image" name="image" accept="image/*" required>
 
-                <img id="fallback-preview" alt="Selected Image Preview">
+                <img id="image-preview" alt="Selected Image Preview">
 
                 <button type="submit" class="button primary">Upload</button>
             </form>
@@ -888,9 +888,9 @@ async fn upload_ui() -> HttpResponse {
                     const canvas = document.getElementById('capture-canvas');
                     const skeleton = document.getElementById('camera-skeleton');
                     
-                    const fallbackForm = document.getElementById('fallback-form');
+                    const form = document.querySelector('form');
                     const fileInput = document.getElementById('image');
-                    const fallbackPreview = document.getElementById('fallback-preview');
+                    const imagePreview = document.getElementById('image-preview');
 
                     let stream = null;
 
@@ -934,25 +934,25 @@ async fn upload_ui() -> HttpResponse {
                                     fileInput.files = dataTransfer.files;
                                     
                                     // Submit immediately
-                                    fallbackForm.submit();
+                                    form.submit();
                                 }}, 'image/jpeg');
                             }});
 
                         }} catch (err) {{
                             console.warn("Camera access denied or failed:", err);
-                            // Stays in no-camera mode (fallback form visible)
+                            // Stays in no-camera mode (form visible)
                         }}
                     }}
 
-                    // Fallback Form: Simple Image Preview for non-camera file selection
+                    // Form: Simple Image Preview for file selection
                     // This works if JS is on but camera failed/denied. 
                     // If JS is off, this script won't run, and user gets standard file input behavior (browser dependent).
                     fileInput.addEventListener('change', () => {{
                         if (fileInput.files && fileInput.files[0]) {{
                             const file = fileInput.files[0];
                             const url = URL.createObjectURL(file);
-                            fallbackPreview.src = url;
-                            fallbackPreview.style.display = 'block';
+                            imagePreview.src = url;
+                            imagePreview.style.display = 'block';
                             
                             // Update label to show filename (optional but helpful feedback)
                             // const label = document.querySelector('label[for="image"]');
@@ -960,9 +960,9 @@ async fn upload_ui() -> HttpResponse {
                         }}
                     }});
 
-                    // Handle form submit state for fallback form
-                    fallbackForm.addEventListener('submit', function() {{
-                        const btn = fallbackForm.querySelector('button[type="submit"]');
+                    // Handle form submit state
+                    form.addEventListener('submit', function() {{
+                        const btn = form.querySelector('button[type="submit"]');
                         btn.style.opacity = '0.8';
                         btn.innerHTML = 'Uploading...';
                     }});
