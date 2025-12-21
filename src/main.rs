@@ -861,6 +861,7 @@ async fn upload_ui() -> HttpResponse {
                 </div>
                 
                 <div class="controls-bar">
+                    <button type="button" id="upload-btn" class="button">Choose Photo</button>
                     <button type="button" id="shutter-btn" class="button primary">Take Photo</button>
                 </div>
             </div>
@@ -885,6 +886,7 @@ async fn upload_ui() -> HttpResponse {
                     const cameraUi = document.getElementById('camera-ui');
                     const video = document.getElementById('camera-stream');
                     const shutterBtn = document.getElementById('shutter-btn');
+                    const uploadBtn = document.getElementById('upload-btn');
                     const canvas = document.getElementById('capture-canvas');
                     const skeleton = document.getElementById('camera-skeleton');
                     
@@ -918,6 +920,7 @@ async fn upload_ui() -> HttpResponse {
                                 // Visual feedback
                                 shutterBtn.innerHTML = '<span class="spinner"></span> Uploading...';
                                 shutterBtn.disabled = true;
+                                if (uploadBtn) uploadBtn.disabled = true;
                                 
                                 // Freeze video to show what was captured
                                 video.pause();
@@ -938,6 +941,13 @@ async fn upload_ui() -> HttpResponse {
                                 }}, 'image/jpeg');
                             }});
 
+                            // Handle Upload Button
+                            if (uploadBtn) {{
+                                uploadBtn.addEventListener('click', () => {{
+                                    fileInput.click();
+                                }});
+                            }}
+
                         }} catch (err) {{
                             console.warn("Camera access denied or failed:", err);
                             // Stays in no-camera mode (form visible)
@@ -949,6 +959,17 @@ async fn upload_ui() -> HttpResponse {
                     // If JS is off, this script won't run, and user gets standard file input behavior (browser dependent).
                     fileInput.addEventListener('change', () => {{
                         if (fileInput.files && fileInput.files[0]) {{
+                            // If we are in camera mode, immediately submit
+                            if (!body.classList.contains('no-camera')) {{
+                                if (uploadBtn) {{
+                                     uploadBtn.innerHTML = '<span class="spinner"></span> Uploading...';
+                                     uploadBtn.disabled = true;
+                                }}
+                                shutterBtn.disabled = true;
+                                form.submit();
+                                return;
+                            }}
+
                             const file = fileInput.files[0];
                             const url = URL.createObjectURL(file);
                             imagePreview.src = url;
