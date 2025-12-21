@@ -633,7 +633,9 @@ async fn upload_ui() -> HttpResponse {
                     margin: 0;
                     padding: 0;
                     width: 100%;
-                    height: 100vh;
+                    /* Use 100dvh for mobile browsers to account for dynamic address bars */
+                    height: 100vh; 
+                    height: 100dvh;
                     max-width: none;
                     display: flex;
                     flex-direction: column;
@@ -676,14 +678,43 @@ async fn upload_ui() -> HttpResponse {
                     align-items: center;
                 }}
 
-                #camera-stream, #preview-image {{
+                #camera-stream {{
                     width: 100%;
                     height: 100%;
                     object-fit: contain;
                     display: block;
                 }}
                 
-                #preview-image {{
+                #camera-stream.loading {{
+                    opacity: 0;
+                }}
+
+                /* Skeleton Loader */
+                #camera-skeleton {{
+                    position: absolute;
+                    top: 0;
+                    left: 0;
+                    width: 100%;
+                    height: 100%;
+                    background: #1a1a1a;
+                    display: flex;
+                    justify-content: center;
+                    align-items: center;
+                    z-index: 10;
+                }}
+                
+                #camera-skeleton::after {{
+                    content: "";
+                    width: 40px;
+                    height: 40px;
+                    border: 3px solid rgba(255,255,255,0.1);
+                    border-top-color: rgba(255,255,255,0.5);
+                    border-radius: 50%;
+                    animation: spin 1s ease-in-out infinite;
+                }}
+                
+                /* Hide skeleton when not loading */
+                #camera-skeleton.hidden {{
                     display: none;
                 }}
 
@@ -701,16 +732,6 @@ async fn upload_ui() -> HttpResponse {
                     z-index: 20;
                 }}
 
-                /* Retake Button (hidden by default) */
-                #retake-btn {{
-                    display: none;
-                }}
-
-                /* Upload Button (hidden by default) */
-                #upload-btn {{
-                    display: none;
-                }}
-
                 /* Fallback Form (Hidden if JS active and camera works) */
                 #fallback-form {{
                     padding: 1rem;
@@ -718,24 +739,6 @@ async fn upload_ui() -> HttpResponse {
                     border-radius: 8px;
                     margin: 1rem;
                     display: none;
-                }}
-
-                /* State: Camera Active (Default JS state) */
-                /* State: Preview Active */
-                body.preview-mode #camera-stream {{
-                    display: none;
-                }}
-                body.preview-mode #preview-image {{
-                    display: block;
-                }}
-                body.preview-mode #shutter-btn {{
-                    display: none;
-                }}
-                body.preview-mode #retake-btn {{
-                    display: inline-block;
-                }}
-                body.preview-mode #upload-btn {{
-                    display: inline-block;
                 }}
 
                 /* State: No Camera / No JS (Fallback) */
@@ -808,16 +811,12 @@ async fn upload_ui() -> HttpResponse {
             <!-- Full Screen Camera UI -->
             <div id="camera-ui">
                 <div class="viewport-container">
-                    <video id="camera-stream" autoplay playsinline muted></video>
-                    <img id="preview-image" alt="Captured flyer">
+                    <div id="camera-skeleton"></div>
+                    <video id="camera-stream" class="loading" autoplay playsinline muted></video>
                 </div>
                 
                 <div class="controls-bar">
-                    <button type="button" id="retake-btn" class="button">Retake</button>
-                    <button type="button" id="shutter-btn" class="button">Take Photo</button>
-                    <!-- We wrap the real submit in a button outside the form for the UI, or handle via JS? -->
-                    <!-- Best to keep the form logic simple. We can trigger the form submit via JS. -->
-                    <button type="button" id="upload-btn" class="button primary">Upload</button>
+                    <button type="button" id="shutter-btn" class="button primary">Take Photo</button>
                 </div>
             </div>
 
@@ -843,10 +842,8 @@ async fn upload_ui() -> HttpResponse {
                     const cameraUi = document.getElementById('camera-ui');
                     const video = document.getElementById('camera-stream');
                     const shutterBtn = document.getElementById('shutter-btn');
-                    const retakeBtn = document.getElementById('retake-btn');
-                    const uploadBtn = document.getElementById('upload-btn'); // UI button
-                    const previewImg = document.getElementById('preview-image');
                     const canvas = document.getElementById('capture-canvas');
+                    const skeleton = document.getElementById('camera-skeleton');
                     
                     const fallbackForm = document.getElementById('fallback-form');
                     const fileInput = document.getElementById('image');
@@ -862,12 +859,25 @@ async fn upload_ui() -> HttpResponse {
                             }});
                             video.srcObject = stream;
                             
+                            // Wait for video to be ready before showing
+                            video.onloadedmetadata = () => {{
+                                skeleton.classList.add('hidden');
+                                video.classList.remove('loading');
+                            }};
+                            
                             // Upgrade to Camera Mode
                             body.classList.remove('no-camera');
                             
-                            // Handle Shutter
+                            // Handle Shutter - Immediate Upload
                             shutterBtn.addEventListener('click', () => {{
                                 if (!stream) return;
+                                
+                                // Visual feedback
+                                shutterBtn.innerHTML = '<span class="spinner"></span> Uploading...';
+                                shutterBtn.disabled = true;
+                                
+                                // Freeze video to show what was captured
+                                video.pause();
                                 
                                 canvas.width = video.videoWidth;
                                 canvas.height = video.videoHeight;
@@ -880,28 +890,9 @@ async fn upload_ui() -> HttpResponse {
                                     dataTransfer.items.add(file);
                                     fileInput.files = dataTransfer.files;
                                     
-                                    // Show Preview
-                                    previewImg.src = URL.createObjectURL(blob);
-                                    body.classList.add('preview-mode');
-                                    video.pause();
+                                    // Submit immediately
+                                    fallbackForm.submit();
                                 }}, 'image/jpeg');
-                            }});
-
-                            // Handle Retake
-                            retakeBtn.addEventListener('click', () => {{
-                                body.classList.remove('preview-mode');
-                                previewImg.src = '';
-                                fileInput.value = '';
-                                video.play();
-                            }});
-
-                            // Handle Upload (Proxy to real form)
-                            uploadBtn.addEventListener('click', () => {{
-                                if (uploadBtn.classList.contains('submitting')) return;
-                                
-                                uploadBtn.classList.add('submitting');
-                                uploadBtn.innerHTML = '<span class="spinner"></span>';
-                                fallbackForm.submit();
                             }});
 
                         }} catch (err) {{
