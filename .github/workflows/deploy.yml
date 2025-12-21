@@ -33,10 +33,10 @@ jobs:
       - name: Prepare Artifacts
         run: |
           mkdir -p dist
-          cp -p target/release/somerville-events dist/
+          cp target/release/somerville-events dist/
           cp -r static dist/
           cp -r migrations dist/
-          cp -p deploy.sh dist/
+          cp deploy.sh dist/
           
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
@@ -71,5 +71,6 @@ jobs:
           REMOTE_DIR="~/artifacts/${SHA}"
           ssh ${VPS_USER}@${VPS_HOST} "mkdir -p ${REMOTE_DIR}"
           scp -p -r dist/* ${VPS_USER}@${VPS_HOST}:${REMOTE_DIR}/
+          ssh ${VPS_USER}@${VPS_HOST} "chmod +x ${REMOTE_DIR}/deploy.sh ${REMOTE_DIR}/somerville-events"
           ssh ${VPS_USER}@${VPS_HOST} "bash ${REMOTE_DIR}/deploy.sh ${SHA}"
 
