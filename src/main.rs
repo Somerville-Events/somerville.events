@@ -84,41 +84,107 @@ fn render_event_html(event: &Event, is_details_view: bool) -> String {
 
     format!(
         r#"
-        <article class="event">
-            <header>
-                {title_html}
-            </header>
-            <dl class="event-meta">
+        <article>
+            {title_html}
+            <dl>
                 <dt>When</dt>
                 <dd>{when_html}</dd>
                 <dt>Location</dt>
                 <dd>{location}</dd>
             </dl>
-            <p class="event-description">{description}</p>
-            <p class="event-actions"><a href="/event/{id}.ical" class="button">Add to calendar</a></p>
+            <p>{description}</p>
+            <p><a href="/event/{id}.ical" class="button">Add to calendar</a></p>
         </article>
         "#
     )
 }
 
 const COMMON_STYLES: &str = r#"
-    body { font-family: system-ui, sans-serif; max-width: 800px; margin: 0 auto; padding: 1rem; line-height: 1.5; }
+    :root {
+        --link-color: light-dark(rgb(27, 50, 100),rgb(125, 148, 197));
+        
+        /* Button Colors - Adjusted for dark mode */
+        --button-bg: light-dark(#e0e0e0, #333);
+        --button-text: light-dark(#333, #eee);
+        --button-shadow-light: light-dark(rgba(255, 255, 255, 0.8), rgba(255, 255, 255, 0.1));
+        --button-shadow-dark: rgba(0, 0, 0, 0.1);
+        --button-border: light-dark(#a0a0a0, #555);
+        
+        --primary-bg: #d13a26;
+        --primary-text: #fff;
+        --primary-shadow: #8c2415;
+    }
+
+    body {
+        font-family: system-ui, sans-serif;
+        max-width: 800px;
+        margin: 0 auto;
+        padding: 1rem;
+        line-height: 1.5;
+    }
+
+    a {
+        text-decoration: none;
+        color: var(--link-color);
+    }
+
+    a:hover {
+        text-decoration: underline;
+    }
+
+    header {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        gap: 1rem;
+        flex-wrap: wrap;
+        margin-bottom: 2rem;
+    }
+
+    header h1 {
+        margin: 0;
+        font-size: 2em; 
+    }
+
     h1 { margin-bottom: 1rem; }
     h2 { margin-top: 2.5rem; }
-    header.site-header { display: flex; align-items: baseline; justify-content: space-between; gap: 1rem; flex-wrap: wrap; }
-    nav.site-nav a { display: inline-block; }
-    section.day { margin-bottom: 2.5rem; }
-    article.event { padding: 1rem 0; border-top: 1px solid color-mix(in srgb, currentColor 15%, transparent); }
-    article.event:first-child { border-top: 0; }
-    dl.event-meta { margin: 0.5rem 0 0.75rem 0; display: grid; grid-template-columns: 7rem 1fr; gap: 0.25rem 1rem; }
-    dl.event-meta dt { font-weight: 600; }
-    dl.event-meta dd { margin: 0; }
-    p.event-description { margin: 0.75rem 0; }
-    p.event-actions { margin: 0.5rem 0 0; }
-    a.back-link { display: inline-block; margin-bottom: 2rem; text-decoration: none; }
 
-    /* Dieter Rams inspired button style */
-    .button {
+    section {
+        margin-bottom: 2.5rem;
+    }
+
+    article {
+        padding: 1rem 0;
+        border-top: 1px solid color-mix(in srgb, currentColor 15%, transparent);
+    }
+
+    article:first-child {
+        border-top: 0;
+    }
+
+    article dl {
+        margin: 0.5rem 0 0.75rem 0;
+        display: grid;
+        grid-template-columns: 7rem 1fr;
+        gap: 0.25rem 1rem;
+    }
+
+    article dt {
+        font-weight: 600;
+    }
+    
+    article dd {
+        margin: 0;
+    }
+
+    article p {
+        margin: 0.75rem 0;
+    }
+
+    /* Button Styling */
+    button, 
+    .button, 
+    input[type=file]::file-selector-button {
         display: inline-block;
         padding: 0.8rem 1.4rem;
         font-family: system-ui, sans-serif;
@@ -126,44 +192,44 @@ const COMMON_STYLES: &str = r#"
         font-weight: 600;
         text-decoration: none;
         text-align: center;
-        color: #333;
-        background-color: #e0e0e0;
+        color: var(--button-text);
+        background-color: var(--button-bg);
         border: none;
         border-radius: 4px;
         box-shadow: 
-            inset 1px 1px 0px rgba(255, 255, 255, 0.8),
-            inset -1px -1px 0px rgba(0, 0, 0, 0.1),
-            0 4px 0 #a0a0a0,
+            inset 1px 1px 0px var(--button-shadow-light),
+            inset -1px -1px 0px var(--button-shadow-dark),
+            0 4px 0 var(--button-border),
             0 5px 8px rgba(0,0,0,0.2);
         cursor: pointer;
         transition: transform 0.1s, box-shadow 0.1s;
-        /* Subtle texture */
-        background-image: linear-gradient(rgba(255,255,255,0.05), rgba(0,0,0,0.05));
     }
 
-    .button:active {
+    button:active,
+    .button:active,
+    input[type=file]::file-selector-button:active {
         transform: translateY(4px);
         box-shadow: 
             inset 2px 2px 5px rgba(0, 0, 0, 0.1),
-            0 0 0 #a0a0a0;
+            0 0 0 var(--button-border);
     }
 
-    .button.primary {
-        background-color: #d13a26;
-        color: white;
+    .button.primary, button[type=submit] {
+        background-color: var(--primary-bg);
+        color: var(--primary-text);
         box-shadow: 
             inset 1px 1px 0px rgba(255, 255, 255, 0.2),
             inset -1px -1px 0px rgba(0, 0, 0, 0.2),
-            0 4px 0 #8c2415,
+            0 4px 0 var(--primary-shadow),
             0 5px 8px rgba(0,0,0,0.3);
     }
 
-    .button.primary:active {
+    .button.primary:active, button[type=submit]:active {
         box-shadow: 
             inset 2px 2px 5px rgba(0, 0, 0, 0.2),
-            0 0 0 #8c2415;
+            0 0 0 var(--primary-shadow);
     }
-    
+
     .hidden {
         display: none !important;
     }
@@ -457,7 +523,7 @@ async fn index_with_now(state: Data<AppState>, now_utc: DateTime<Utc>) -> HttpRe
             for (day, day_events) in events_by_day {
                 let day_id = format!("day-{}", day.format("%Y-%m-%d"));
                 events_html.push_str(&format!(
-                    r#"<section class="day" aria-labelledby="{day_id}">
+                    r#"<section aria-labelledby="{day_id}">
                         <h2 id="{day_id}">{}</h2>"#,
                     day.format("%A, %B %d, %Y")
                 ));
@@ -481,9 +547,9 @@ async fn index_with_now(state: Data<AppState>, now_utc: DateTime<Utc>) -> HttpRe
                     </style>
                 </head>
                 <body>
-                    <header class="site-header">
+                    <header>
                         <h1>Somerville Events</h1>
-                        <nav class="site-nav" aria-label="Site">
+                        <nav aria-label="Site">
                             <a href="/upload" class="button primary">Upload new event</a>
                         </nav>
                     </header>
@@ -521,7 +587,7 @@ async fn event_details(state: Data<AppState>, path: web::Path<i64>) -> HttpRespo
                     </style>
                 </head>
                 <body>
-                    <a href="/" class="back-link">&larr; Back to Events</a>
+                    <p><a href="/">&larr; Back to Events</a></p>
                     {event_html}
                 </body>
                 </html>"#,
@@ -598,9 +664,6 @@ async fn upload_success() -> HttpResponse {
             <title>Upload Successful - Somerville Events</title>
             <style>
                 {common_styles}
-                body {{
-                    text-align: center;
-                }}
             </style>
         </head>
         <body>
@@ -628,32 +691,26 @@ async fn upload_ui() -> HttpResponse {
             <style>
                 {common_styles}
 
-                /* Full bleed container setup */
-                body {{
+                /* Camera Mode Layout (applied when NOT in fallback mode) */
+                body:not(.no-camera) {{
                     margin: 0;
                     padding: 0;
                     width: 100%;
-                    /* Use 100dvh for mobile browsers to account for dynamic address bars */
-                    height: 100vh; 
                     height: 100dvh;
                     max-width: none;
                     display: flex;
                     flex-direction: column;
                     background-color: #000;
+                    overflow: hidden;
                 }}
 
-                h1, p {{
-                    display: none; /* Hide default header elements in full screen camera mode */
+                /* Hide standard headers in camera mode */
+                body:not(.no-camera) h1, 
+                body:not(.no-camera) p {{
+                    display: none;
                 }}
-
-                /* Only show header content if camera is NOT active, handled via class on body */
-                body.no-camera h1, 
-                body.no-camera p {{
-                    display: block;
-                    margin-left: 1rem;
-                    margin-right: 1rem;
-                    color: #333; /* Standard text color for fallback */
-                }}
+                
+                /* Fallback mode uses default body styles from common_styles */
 
                 /* Main container takes available space */
                 #camera-ui {{
@@ -734,11 +791,9 @@ async fn upload_ui() -> HttpResponse {
 
                 /* Fallback Form (Hidden if JS active and camera works) */
                 #fallback-form {{
-                    padding: 1rem;
-                    background: #fff;
-                    border-radius: 8px;
-                    margin: 1rem;
                     display: none;
+                    gap: 1.5rem;
+                    margin-top: 1rem;
                 }}
 
                 /* State: No Camera / No JS (Fallback) */
@@ -753,29 +808,9 @@ async fn upload_ui() -> HttpResponse {
                 body.no-camera #fallback-form {{
                     display: flex;
                     flex-direction: column;
-                    gap: 1rem;
-                    border: 1px solid #ccc;
+                    align-items: flex-start;
                 }}
 
-                .button {{
-                    /* Re-declare generic button styles for context */
-                    display: inline-block;
-                    padding: 0.8rem 1.4rem;
-                    font-family: system-ui, sans-serif;
-                    font-size: 1rem;
-                    font-weight: 600;
-                    color: #333;
-                    background-color: #e0e0e0;
-                    border: none;
-                    border-radius: 4px;
-                    text-decoration: none;
-                    cursor: pointer;
-                }}
-                .button.primary {{
-                    background-color: #d13a26;
-                    color: white;
-                }}
-                
                 /* Spinner */
                 .spinner {{
                     display: inline-block;
@@ -790,8 +825,18 @@ async fn upload_ui() -> HttpResponse {
                 @keyframes spin {{ to {{ transform: rotate(360deg); }} }}
                 
                 /* File Input Styling for Fallback */
-                .file-input-wrapper input[type=file] {{
+                /* Use ::file-selector-button for modern native styling */
+                #fallback-form input[type=file] {{
+                    display: block; /* Ensure it's visible */
+                    width: 100%;
+                    cursor: pointer;
+                    font-family: system-ui, sans-serif;
                     font-size: 1rem;
+                }}
+
+                /* Style the button part specifically */
+                #fallback-form input[type=file]::file-selector-button {{
+                    margin-right: 1rem;
                 }}
 
                 /* Image Preview for fallback (No JS specific, but if JS fails to load camera) */
@@ -827,9 +872,7 @@ async fn upload_ui() -> HttpResponse {
             <form id="fallback-form" action="/upload" method="post" enctype="multipart/form-data">
                 <input type="hidden" name="idempotency_key" value="{idempotency_key}">
                 
-                <div class="file-input-wrapper">
-                    <input type="file" id="image" name="image" accept="image/*" required>
-                </div>
+                <input type="file" id="image" name="image" accept="image/*" required>
 
                 <img id="fallback-preview" alt="Selected Image Preview">
 
@@ -911,8 +954,9 @@ async fn upload_ui() -> HttpResponse {
                             fallbackPreview.src = url;
                             fallbackPreview.style.display = 'block';
                             
-                            // Also update the full-screen preview if we were somehow in that mode? 
-                            // Unlikely if we are using the fallback input, but good for completeness.
+                            // Update label to show filename (optional but helpful feedback)
+                            // const label = document.querySelector('label[for="image"]');
+                            // if (label) label.textContent = "Change File (" + file.name + ")";
                         }}
                     }});
 
