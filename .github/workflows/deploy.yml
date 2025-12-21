@@ -23,6 +23,8 @@ jobs:
         uses: Swatinem/rust-cache@v2
 
       - name: Run Tests
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         run: cargo test
 
       - name: Build Release
