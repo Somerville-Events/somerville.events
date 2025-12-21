@@ -477,4 +477,3 @@ fn parse_and_validate_response(content: &str) -> Result<Event> {
     // Now try to parse the cleaned JSON
     serde_json::from_value(json).map_err(|e| anyhow!("Failed to parse cleaned response: {}", e))
 }
-

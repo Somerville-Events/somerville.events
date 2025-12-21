@@ -1,7 +1,7 @@
 mod db;
-mod events;
 mod models;
-mod upload;
+mod upload_events;
+mod view_events;
 
 use actix_web::{
     dev::ServiceRequest,
@@ -15,14 +15,14 @@ use anyhow::Result;
 use awc::{Client, Connector};
 use db::{EventsDatabase, EventsRepo};
 use dotenvy::dotenv;
-use events::{event_details, event_ical, index};
 use rustls;
 use sqlx::postgres::PgPoolOptions;
 use std::{
     env,
     sync::{Arc, OnceLock},
 };
-use upload::{upload, upload_success, upload_ui};
+use upload_events::{upload, upload_success, upload_ui};
+use view_events::{event_details, event_ical, index};
 
 pub const COMMON_STYLES: &str = r#"
     :root {
@@ -346,7 +346,7 @@ mod tests {
         // Actix runtime entrypoint
         let fixed_now_utc = Utc.with_ymd_and_hms(2025, 1, 15, 17, 0, 0).unwrap();
         // Use the public function from upload module
-        let event = crate::upload::parse_image_with_now(
+        let event = crate::upload_events::parse_image_with_now(
             Path::new("examples/dance_flyer.jpg"),
             &state.client,
             &state.api_key,
@@ -524,7 +524,7 @@ mod tests {
         let app = test::init_service(App::new().app_data(Data::new(state)).route(
             "/",
             web::get().to(move |state: Data<AppState>| {
-                crate::events::index_with_now(state, fixed_now_utc.clone())
+                crate::view_events::index_with_now(state, fixed_now_utc.clone())
             }),
         ))
         .await;
