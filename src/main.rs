@@ -84,41 +84,107 @@ fn render_event_html(event: &Event, is_details_view: bool) -> String {
 
     format!(
         r#"
-        <article class="event">
-            <header>
-                {title_html}
-            </header>
-            <dl class="event-meta">
+        <article>
+            {title_html}
+            <dl>
                 <dt>When</dt>
                 <dd>{when_html}</dd>
                 <dt>Location</dt>
                 <dd>{location}</dd>
             </dl>
-            <p class="event-description">{description}</p>
-            <p class="event-actions"><a href="/event/{id}.ical" class="button">Add to calendar</a></p>
+            <p>{description}</p>
+            <p><a href="/event/{id}.ical" class="button">Add to calendar</a></p>
         </article>
         "#
     )
 }
 
 const COMMON_STYLES: &str = r#"
-    body { font-family: system-ui, sans-serif; max-width: 800px; margin: 0 auto; padding: 1rem; line-height: 1.5; }
+    :root {
+        --link-color: light-dark(rgb(27, 50, 100),rgb(125, 148, 197));
+        
+        /* Button Colors - Adjusted for dark mode */
+        --button-bg: light-dark(#e0e0e0, #333);
+        --button-text: light-dark(#333, #eee);
+        --button-shadow-light: light-dark(rgba(255, 255, 255, 0.8), rgba(255, 255, 255, 0.1));
+        --button-shadow-dark: rgba(0, 0, 0, 0.1);
+        --button-border: light-dark(#a0a0a0, #555);
+        
+        --primary-bg: #d13a26;
+        --primary-text: #fff;
+        --primary-shadow: #8c2415;
+    }
+
+    body {
+        font-family: system-ui, sans-serif;
+        max-width: 800px;
+        margin: 0 auto;
+        padding: 1rem;
+        line-height: 1.5;
+    }
+
+    a {
+        text-decoration: none;
+        color: var(--link-color);
+    }
+
+    a:hover {
+        text-decoration: underline;
+    }
+
+    header {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        gap: 1rem;
+        flex-wrap: wrap;
+        margin-bottom: 2rem;
+    }
+
+    header h1 {
+        margin: 0;
+        font-size: 2em; 
+    }
+
     h1 { margin-bottom: 1rem; }
     h2 { margin-top: 2.5rem; }
-    header.site-header { display: flex; align-items: baseline; justify-content: space-between; gap: 1rem; flex-wrap: wrap; }
-    nav.site-nav a { display: inline-block; }
-    section.day { margin-bottom: 2.5rem; }
-    article.event { padding: 1rem 0; border-top: 1px solid color-mix(in srgb, currentColor 15%, transparent); }
-    article.event:first-child { border-top: 0; }
-    dl.event-meta { margin: 0.5rem 0 0.75rem 0; display: grid; grid-template-columns: 7rem 1fr; gap: 0.25rem 1rem; }
-    dl.event-meta dt { font-weight: 600; }
-    dl.event-meta dd { margin: 0; }
-    p.event-description { margin: 0.75rem 0; }
-    p.event-actions { margin: 0.5rem 0 0; }
-    a.back-link { display: inline-block; margin-bottom: 2rem; text-decoration: none; }
 
-    /* Dieter Rams inspired button style */
-    .button {
+    section {
+        margin-bottom: 2.5rem;
+    }
+
+    article {
+        padding: 1rem 0;
+        border-top: 1px solid color-mix(in srgb, currentColor 15%, transparent);
+    }
+
+    article:first-child {
+        border-top: 0;
+    }
+
+    article dl {
+        margin: 0.5rem 0 0.75rem 0;
+        display: grid;
+        grid-template-columns: 7rem 1fr;
+        gap: 0.25rem 1rem;
+    }
+
+    article dt {
+        font-weight: 600;
+    }
+    
+    article dd {
+        margin: 0;
+    }
+
+    article p {
+        margin: 0.75rem 0;
+    }
+
+    /* Button Styling */
+    button, 
+    .button, 
+    input[type=file]::file-selector-button {
         display: inline-block;
         padding: 0.8rem 1.4rem;
         font-family: system-ui, sans-serif;
@@ -126,44 +192,44 @@ const COMMON_STYLES: &str = r#"
         font-weight: 600;
         text-decoration: none;
         text-align: center;
-        color: #333;
-        background-color: #e0e0e0;
+        color: var(--button-text);
+        background-color: var(--button-bg);
         border: none;
         border-radius: 4px;
         box-shadow: 
-            inset 1px 1px 0px rgba(255, 255, 255, 0.8),
-            inset -1px -1px 0px rgba(0, 0, 0, 0.1),
-            0 4px 0 #a0a0a0,
+            inset 1px 1px 0px var(--button-shadow-light),
+            inset -1px -1px 0px var(--button-shadow-dark),
+            0 4px 0 var(--button-border),
             0 5px 8px rgba(0,0,0,0.2);
         cursor: pointer;
         transition: transform 0.1s, box-shadow 0.1s;
-        /* Subtle texture */
-        background-image: linear-gradient(rgba(255,255,255,0.05), rgba(0,0,0,0.05));
     }
 
-    .button:active {
+    button:active,
+    .button:active,
+    input[type=file]::file-selector-button:active {
         transform: translateY(4px);
         box-shadow: 
             inset 2px 2px 5px rgba(0, 0, 0, 0.1),
-            0 0 0 #a0a0a0;
+            0 0 0 var(--button-border);
     }
 
-    .button.primary {
-        background-color: #d13a26;
-        color: white;
+    .button.primary, button[type=submit] {
+        background-color: var(--primary-bg);
+        color: var(--primary-text);
         box-shadow: 
             inset 1px 1px 0px rgba(255, 255, 255, 0.2),
             inset -1px -1px 0px rgba(0, 0, 0, 0.2),
-            0 4px 0 #8c2415,
+            0 4px 0 var(--primary-shadow),
             0 5px 8px rgba(0,0,0,0.3);
     }
 
-    .button.primary:active {
+    .button.primary:active, button[type=submit]:active {
         box-shadow: 
             inset 2px 2px 5px rgba(0, 0, 0, 0.2),
-            0 0 0 #8c2415;
+            0 0 0 var(--primary-shadow);
     }
-    
+
     .hidden {
         display: none !important;
     }
@@ -457,7 +523,7 @@ async fn index_with_now(state: Data<AppState>, now_utc: DateTime<Utc>) -> HttpRe
             for (day, day_events) in events_by_day {
                 let day_id = format!("day-{}", day.format("%Y-%m-%d"));
                 events_html.push_str(&format!(
-                    r#"<section class="day" aria-labelledby="{day_id}">
+                    r#"<section aria-labelledby="{day_id}">
                         <h2 id="{day_id}">{}</h2>"#,
                     day.format("%A, %B %d, %Y")
                 ));
@@ -481,9 +547,9 @@ async fn index_with_now(state: Data<AppState>, now_utc: DateTime<Utc>) -> HttpRe
                     </style>
                 </head>
                 <body>
-                    <header class="site-header">
+                    <header>
                         <h1>Somerville Events</h1>
-                        <nav class="site-nav" aria-label="Site">
+                        <nav aria-label="Site">
                             <a href="/upload" class="button primary">Upload new event</a>
                         </nav>
                     </header>
@@ -521,7 +587,7 @@ async fn event_details(state: Data<AppState>, path: web::Path<i64>) -> HttpRespo
                     </style>
                 </head>
                 <body>
-                    <a href="/" class="back-link">&larr; Back to Events</a>
+                    <p><a href="/">&larr; Back to Events</a></p>
                     {event_html}
                 </body>
                 </html>"#,
@@ -598,9 +664,6 @@ async fn upload_success() -> HttpResponse {
             <title>Upload Successful - Somerville Events</title>
             <style>
                 {common_styles}
-                body {{
-                    text-align: center;
-                }}
             </style>
         </head>
         <body>
@@ -628,68 +691,127 @@ async fn upload_ui() -> HttpResponse {
             <style>
                 {common_styles}
 
-                form {{
+                /* Camera Mode Layout (applied when camera is active) */
+                body:not(.no-camera) {{
+                    margin: 0;
+                    padding: 0;
+                    width: 100%;
+                    height: 100dvh;
+                    max-width: none;
                     display: flex;
                     flex-direction: column;
-                    gap: 1.5rem;
-                    border: 1px solid #ccc;
-                    padding: 2rem;
-                    border-radius: 8px;
+                    background-color: #000;
+                    overflow: hidden;
+                }}
+
+                /* Hide standard headers in camera mode */
+                body:not(.no-camera) h1, 
+                body:not(.no-camera) p {{
+                    display: none;
+                }}
+                
+                /* Fallback mode uses default body styles from common_styles */
+
+                /* Main container takes available space */
+                #camera-ui {{
+                    flex: 1;
+                    display: flex;
+                    flex-direction: column;
+                    position: relative;
+                    background: #000;
+                    overflow: hidden;
+                }}
+
+                /* Video fills the available space, reserving bottom for controls */
+                /* Container for video/preview to manage flex layout correctly */
+                .viewport-container {{
+                    flex: 1;
+                    position: relative;
+                    width: 100%;
+                    overflow: hidden;
+                    background: #000;
+                    display: flex;
+                    justify-content: center;
                     align-items: center;
                 }}
 
-                /* File Input Styling */
-                /* Hide the actual input but keep it accessible/validatable */
-                input[type=file] {{
-                    opacity: 0;
-                    width: 0.1px;
-                    height: 0.1px;
-                    position: absolute;
-                    z-index: -1;
-                }}
-
-                /* Prominent Take Photo Button (Label) */
-                .file-label {{
-                    /* We inherit button styles but override some for the label behavior */
+                #camera-stream {{
                     width: 100%;
-                    box-sizing: border-box;
-                }}
-
-                /* When file is selected (valid), change label appearance */
-                input[type=file]:valid + .file-label {{
-                    background-color: #4a9e56; /* Green-ish for success state */
-                    box-shadow: 
-                        inset 1px 1px 0px rgba(255, 255, 255, 0.2),
-                        inset -1px -1px 0px rgba(0, 0, 0, 0.2),
-                        0 4px 0 #36753e,
-                        0 5px 8px rgba(0,0,0,0.3);
-                    color: white;
-                }}
-                input[type=file]:valid + .file-label:active {{
-                    box-shadow: 
-                        inset 2px 2px 5px rgba(0, 0, 0, 0.2),
-                        0 0 0 #36753e;
-                }}
-
-                /* Use ::after to change text content based on state is tricky without attr() support for arbitrary strings in all browsers,
-                   but we can use a checkmark. */
-                input[type=file]:valid + .file-label::after {{
-                    content: " ✅";
-                    margin-left: 0.5rem;
-                }}
-
-                /* Prominent Upload Button */
-                #upload-btn {{
-                    width: 100%;
-                    display: none; /* Hidden by default */
+                    height: 100%;
+                    object-fit: contain;
+                    display: block;
                 }}
                 
-                /* Enable upload button when file is selected */
-                input[type=file]:valid ~ #upload-btn {{
-                    display: inline-block;
+                #camera-stream.loading {{
+                    opacity: 0;
                 }}
 
-                /* Loading Spinner */
+                /* Skeleton Loader */
+                #camera-skeleton {{
+                    position: absolute;
+                    top: 0;
+                    left: 0;
+                    width: 100%;
+                    height: 100%;
+                    background: #1a1a1a;
+                    display: flex;
+                    justify-content: center;
+                    align-items: center;
+                    z-index: 10;
+                }}
+                
+                #camera-skeleton::after {{
+                    content: "";
+                    width: 40px;
+                    height: 40px;
+                    border: 3px solid rgba(255,255,255,0.1);
+                    border-top-color: rgba(255,255,255,0.5);
+                    border-radius: 50%;
+                    animation: spin 1s ease-in-out infinite;
+                }}
+                
+                /* Hide skeleton when not loading */
+                #camera-skeleton.hidden {{
+                    display: none;
+                }}
+
+                /* Controls bar at bottom - now static, not absolute */
+                .controls-bar {{
+                    width: 100%;
+                    padding: 20px;
+                    box-sizing: border-box;
+                    background: #000; /* Solid black background */
+                    display: flex;
+                    justify-content: center;
+                    align-items: center;
+                    min-height: 100px; /* Explicit space reserved */
+                    gap: 1rem;
+                    z-index: 20;
+                }}
+
+                /* Upload Form (Hidden if JS active and camera works) */
+                form {{
+                    display: none;
+                    gap: 1.5rem;
+                    margin-top: 1rem;
+                }}
+
+                /* State: No Camera / No JS */
+                body.no-camera {{
+                    background-color: canvas; /* Reset to default */
+                    height: auto;
+                    display: block;
+                }}
+                body.no-camera #camera-ui {{
+                    display: none;
+                }}
+                body.no-camera form {{
+                    display: flex;
+                    flex-direction: column;
+                    align-items: flex-start;
+                }}
+
+                /* Spinner */
                 .spinner {{
                     display: inline-block;
                     width: 1em;
@@ -699,51 +821,151 @@ async fn upload_ui() -> HttpResponse {
                     border-top-color: #fff;
                     animation: spin 1s ease-in-out infinite;
                     margin-right: 0.5rem;
-                    vertical-align: middle;
+                }}
+                @keyframes spin {{ to {{ transform: rotate(360deg); }} }}
+                
+                /* File Input Styling */
+                /* Use ::file-selector-button for modern native styling */
+                form input[type=file] {{
+                    display: block; /* Ensure it's visible */
+                    width: 100%;
+                    cursor: pointer;
+                    font-family: system-ui, sans-serif;
+                    font-size: 1rem;
                 }}
 
-                @keyframes spin {{
-                    to {{ transform: rotate(360deg); }}
+                /* Style the button part specifically */
+                form input[type=file]::file-selector-button {{
+                    margin-right: 1rem;
                 }}
 
-                a.back-link {{
-                    display: inline-block;
-                    margin-bottom: 1rem;
-                    text-decoration: none;
+                /* Image Preview (No JS specific, but if JS fails to load camera) */
+                #image-preview {{
+                    max-width: 100%;
+                    margin-top: 1rem;
+                    display: none;
+                    border-radius: 4px;
                 }}
+
             </style>
         </head>
-        <body>
-            <a href="/" class="back-link">&larr; Back to Events</a>
+        <body class="no-camera"> <!-- Default to no-camera, upgraded by JS -->
             <h1>Upload Event Flyer</h1>
-            <p>Upload an image of a flyer or event poster. We'll extract the details automatically.</p>
+            <p>Upload an image of a flyer or event poster.</p>
             
+            <!-- Full Screen Camera UI -->
+            <div id="camera-ui">
+                <div class="viewport-container">
+                    <div id="camera-skeleton"></div>
+                    <video id="camera-stream" class="loading" autoplay playsinline muted></video>
+                </div>
+                
+                <div class="controls-bar">
+                    <button type="button" id="shutter-btn" class="button primary">Take Photo</button>
+                </div>
+            </div>
+
+            <!-- Hidden canvas for capture -->
+            <canvas id="capture-canvas" style="display: none;"></canvas>
+
+            <!-- Actual Form (Visible, hidden when Camera UI active) -->
             <form action="/upload" method="post" enctype="multipart/form-data">
                 <input type="hidden" name="idempotency_key" value="{idempotency_key}">
-                <!-- Input must be before label/button for sibling selectors to work -->
-                <!-- Removed capture="environment" to allow library access -->
-                <input type="file" id="image" name="image" accept="image/*" required>
                 
-                <label for="image" class="button file-label">
-                    Take Photo / Choose File
-                </label>
+                <input type="file" id="image" name="image" accept="image/*" required>
 
-                <button type="submit" id="upload-btn" class="button primary">Upload</button>
+                <img id="image-preview" alt="Selected Image Preview">
+
+                <button type="submit" class="button primary">Upload</button>
             </form>
 
             <script>
-                document.querySelector('form').addEventListener('submit', function(e) {{
-                    var btn = document.getElementById('upload-btn');
-                    // We don't disable immediately to prevent form submit cancellation if it takes a split second
-                    // actually we do want to prevent double submit.
-                    if (btn.classList.contains('submitting')) {{
-                        e.preventDefault();
-                        return;
+                document.addEventListener('DOMContentLoaded', async () => {{
+                    const body = document.body;
+                    const cameraUi = document.getElementById('camera-ui');
+                    const video = document.getElementById('camera-stream');
+                    const shutterBtn = document.getElementById('shutter-btn');
+                    const canvas = document.getElementById('capture-canvas');
+                    const skeleton = document.getElementById('camera-skeleton');
+                    
+                    const form = document.querySelector('form');
+                    const fileInput = document.getElementById('image');
+                    const imagePreview = document.getElementById('image-preview');
+
+                    let stream = null;
+
+                    // Initialize Camera
+                    if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {{
+                        try {{
+                            stream = await navigator.mediaDevices.getUserMedia({{ 
+                                video: {{ facingMode: 'environment' }} 
+                            }});
+                            video.srcObject = stream;
+                            
+                            // Wait for video to be ready before showing
+                            video.onloadedmetadata = () => {{
+                                skeleton.classList.add('hidden');
+                                video.classList.remove('loading');
+                            }};
+                            
+                            // Upgrade to Camera Mode
+                            body.classList.remove('no-camera');
+                            
+                            // Handle Shutter - Immediate Upload
+                            shutterBtn.addEventListener('click', () => {{
+                                if (!stream) return;
+                                
+                                // Visual feedback
+                                shutterBtn.innerHTML = '<span class="spinner"></span> Uploading...';
+                                shutterBtn.disabled = true;
+                                
+                                // Freeze video to show what was captured
+                                video.pause();
+                                
+                                canvas.width = video.videoWidth;
+                                canvas.height = video.videoHeight;
+                                canvas.getContext('2d').drawImage(video, 0, 0);
+                                
+                                canvas.toBlob((blob) => {{
+                                    // Update File Input
+                                    const file = new File([blob], "capture.jpg", {{ type: "image/jpeg" }});
+                                    const dataTransfer = new DataTransfer();
+                                    dataTransfer.items.add(file);
+                                    fileInput.files = dataTransfer.files;
+                                    
+                                    // Submit immediately
+                                    form.submit();
+                                }}, 'image/jpeg');
+                            }});
+
+                        }} catch (err) {{
+                            console.warn("Camera access denied or failed:", err);
+                            // Stays in no-camera mode (form visible)
+                        }}
                     }}
-                    btn.classList.add('submitting');
-                    btn.style.opacity = '0.8';
-                    btn.style.cursor = 'wait';
-                    btn.innerHTML = '<span class="spinner"></span> Uploading...';
+
+                    // Form: Simple Image Preview for file selection
+                    // This works if JS is on but camera failed/denied. 
+                    // If JS is off, this script won't run, and user gets standard file input behavior (browser dependent).
+                    fileInput.addEventListener('change', () => {{
+                        if (fileInput.files && fileInput.files[0]) {{
+                            const file = fileInput.files[0];
+                            const url = URL.createObjectURL(file);
+                            imagePreview.src = url;
+                            imagePreview.style.display = 'block';
+                            
+                            // Update label to show filename (optional but helpful feedback)
+                            // const label = document.querySelector('label[for="image"]');
+                            // if (label) label.textContent = "Change File (" + file.name + ")";
+                        }}
+                    }});
+
+                    // Handle form submit state
+                    form.addEventListener('submit', function() {{
+                        const btn = form.querySelector('button[type="submit"]');
+                        btn.style.opacity = '0.8';
+                        btn.innerHTML = 'Uploading...';
+                    }});
                 }});
             </script>
         </body>
@@ -1274,8 +1496,8 @@ async fn test_index() -> Result<()> {
     assert!(!body_str.contains("Past Event"));
 
     let document = Html::parse_document(body_str);
-    let day_sections_sel = Selector::parse("section.day").unwrap();
-    let event_link_sel = Selector::parse("article.event h3 a").unwrap();
+    let day_sections_sel = Selector::parse("section").unwrap();
+    let event_link_sel = Selector::parse("article h3 a").unwrap();
 
     let day_ids: Vec<String> = document
         .select(&day_sections_sel)
@@ -1312,16 +1534,15 @@ async fn test_index() -> Result<()> {
 
     // Multiple events on the same day should show up under the same day section.
     let today_id = format!("day-{}", today_local.format("%Y-%m-%d"));
-    let today_section_sel =
-        Selector::parse(&format!("section.day[aria-labelledby=\"{today_id}\"]"))
-            .expect("selector parse");
+    let today_section_sel = Selector::parse(&format!("section[aria-labelledby=\"{today_id}\"]"))
+        .expect("selector parse");
     let today_section = document
         .select(&today_section_sel)
         .next()
         .expect("today section");
 
     let today_articles: Vec<_> = today_section
-        .select(&Selector::parse("article.event").unwrap())
+        .select(&Selector::parse("article").unwrap())
         .collect();
     assert!(
         today_articles.len() >= 2,
@@ -1346,11 +1567,11 @@ async fn test_index() -> Result<()> {
     // Best-effort check that sections contain articles (semantic structure).
     assert!(
         document.select(&day_sections_sel).any(|s| {
-            s.select(&Selector::parse("article.event").unwrap())
+            s.select(&Selector::parse("article").unwrap())
                 .next()
                 .is_some()
         }),
-        "Expected section.day to contain article.event"
+        "Expected section to contain article"
     );
 
     Ok(())
