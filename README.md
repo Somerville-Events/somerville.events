@@ -36,20 +36,19 @@ cargo run
 curl -u username:password -s -F image=@examples/fuzz.jpeg http://localhost:8080/upload
 ```
 
-## Deployment
+## Deploy
 
-The project uses GitHub Actions to build and deploy to the VPS.
+Push to `main`. It will automatically build, test, and deploy the new version.
 
-### 1. Prerequisites (Local)
+### Prerequisites
 
 When modifying SQL queries, you must update the offline cache since the CI runner cannot connect to the database.
 
 ```bash
 cargo sqlx prepare -- --lib
-git add .sqlx
 ```
 
-### 2. GitHub Secrets Configuration
+You must have the GitHub secrets set up properly.
 
 Go to your repository settings -> Secrets and variables -> Actions -> New repository secret. Add the following:
 
@@ -57,14 +56,3 @@ Go to your repository settings -> Secrets and variables -> Actions -> New reposi
 - `VPS_USER`: The username to SSH as (e.g., `git` or your user).
 - `SSH_PRIVATE_KEY`: The private SSH key matching the public key in `~/.ssh/authorized_keys` on the VPS.
 - `KNOWN_HOSTS`: The output of `ssh-keyscan <VPS_HOST>`.
-
-### 3. Deploying
-
-Push to `main`. It will automatically build, test, and deploy the new version.
-
-```bash
-git checkout main
-# make changes
-cargo sqlx prepare -- --lib # if you changed queries
-git push
-```

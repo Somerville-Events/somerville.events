@@ -34,7 +34,7 @@ jobs:
           cp target/release/somerville-events dist/
           cp -r static dist/
           cp -r migrations dist/
-          cp build-scripts/deploy.sh dist/
+          cp deploy.sh dist/
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
@@ -65,17 +65,9 @@ jobs:
           VPS_HOST: ${{ secrets.VPS_HOST }}
           VPS_USER: ${{ secrets.VPS_USER }}
         run: |
-          # Define paths
           SHA=${{ github.sha }}
-          REMOTE_INCOMING="~/artifacts/incoming/${SHA}"
-          
-          # Create incoming directory
-          ssh ${VPS_USER}@${VPS_HOST} "mkdir -p ${REMOTE_INCOMING}"
-          
-          # SCP files
-          scp -r dist/* ${VPS_USER}@${VPS_HOST}:${REMOTE_INCOMING}/
-          
-          # Execute deploy script remotely
-          # We execute it from the incoming directory so it can find 'migrations' locally
-          ssh ${VPS_USER}@${VPS_HOST} "cd ${REMOTE_INCOMING} && bash deploy.sh ${REMOTE_INCOMING}/somerville-events ${REMOTE_INCOMING}/static ${SHA}"
+          REMOTE_DIR="~/artifacts/${SHA}"
+          ssh ${VPS_USER}@${VPS_HOST} "mkdir -p ${REMOTE_DIR}"
+          scp -r dist/* ${VPS_USER}@${VPS_HOST}:${REMOTE_DIR}/
+          ssh ${VPS_USER}@${VPS_HOST} "bash ${REMOTE_DIR}/deploy.sh ${SHA}"
 
