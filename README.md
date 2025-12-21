@@ -56,3 +56,4 @@ Go to your repository settings -> Secrets and variables -> Actions -> New reposi
 - `VPS_USER`: The username to SSH as (e.g., `git` or your user).
 - `SSH_PRIVATE_KEY`: The private SSH key matching the public key in `~/.ssh/authorized_keys` on the VPS.
 - `KNOWN_HOSTS`: The output of `ssh-keyscan <VPS_HOST>`.
+- `OPENAI_API_KEY`: The test runner needs this.
