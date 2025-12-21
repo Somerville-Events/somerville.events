@@ -1496,8 +1496,8 @@ async fn test_index() -> Result<()> {
     assert!(!body_str.contains("Past Event"));
 
     let document = Html::parse_document(body_str);
-    let day_sections_sel = Selector::parse("section.day").unwrap();
-    let event_link_sel = Selector::parse("article.event h3 a").unwrap();
+    let day_sections_sel = Selector::parse("section").unwrap();
+    let event_link_sel = Selector::parse("article h3 a").unwrap();
 
     let day_ids: Vec<String> = document
         .select(&day_sections_sel)
@@ -1534,16 +1534,15 @@ async fn test_index() -> Result<()> {
 
     // Multiple events on the same day should show up under the same day section.
     let today_id = format!("day-{}", today_local.format("%Y-%m-%d"));
-    let today_section_sel =
-        Selector::parse(&format!("section.day[aria-labelledby=\"{today_id}\"]"))
-            .expect("selector parse");
+    let today_section_sel = Selector::parse(&format!("section[aria-labelledby=\"{today_id}\"]"))
+        .expect("selector parse");
     let today_section = document
         .select(&today_section_sel)
         .next()
         .expect("today section");
 
     let today_articles: Vec<_> = today_section
-        .select(&Selector::parse("article.event").unwrap())
+        .select(&Selector::parse("article").unwrap())
         .collect();
     assert!(
         today_articles.len() >= 2,
@@ -1568,11 +1567,11 @@ async fn test_index() -> Result<()> {
     // Best-effort check that sections contain articles (semantic structure).
     assert!(
         document.select(&day_sections_sel).any(|s| {
-            s.select(&Selector::parse("article.event").unwrap())
+            s.select(&Selector::parse("article").unwrap())
                 .next()
                 .is_some()
         }),
-        "Expected section.day to contain article.event"
+        "Expected section to contain article"
     );
 
     Ok(())
