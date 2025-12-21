@@ -214,7 +214,7 @@ const COMMON_STYLES: &str = r#"
             0 0 0 var(--button-border);
     }
 
-    .button.primary, button[type=submit] {
+    .button.primary, button.primary, button[type=submit] {
         background-color: var(--primary-bg);
         color: var(--primary-text);
         box-shadow: 
@@ -224,7 +224,7 @@ const COMMON_STYLES: &str = r#"
             0 5px 8px rgba(0,0,0,0.3);
     }
 
-    .button.primary:active, button[type=submit]:active {
+    .button.primary:active, button.primary:active, button[type=submit]:active {
         box-shadow: 
             inset 2px 2px 5px rgba(0, 0, 0, 0.2),
             0 0 0 var(--primary-shadow);
@@ -437,6 +437,7 @@ async fn main() -> Result<()> {
         App::new()
             .app_data(Data::new(state))
             .wrap(middleware::Logger::default())
+            .service(actix_files::Files::new("/static", "./static").show_files_listing())
             .route("/", web::get().to(index))
             .route("/event/{id}.html", web::get().to(event_details))
             .route("/event/{id}.ical", web::get().to(event_ical))
@@ -680,14 +681,16 @@ async fn upload_success() -> HttpResponse {
 
 async fn upload_ui() -> HttpResponse {
     let idempotency_key = uuid::Uuid::new_v4();
-    HttpResponse::Ok().content_type(ContentType::html()).body(
-        format!(
+    HttpResponse::Ok()
+        .content_type(ContentType::html())
+        .body(format!(
             r#"<!doctype html>
         <html lang="en">
         <head>
             <meta name="color-scheme" content="light dark">
             <meta name="viewport" content="width=device-width, minimum-scale=1, initial-scale=1">
             <title>Somerville Events Upload</title>
+            <script type="module" src="/static/upload.js"></script>
             <style>
                 {common_styles}
 
@@ -713,7 +716,7 @@ async fn upload_ui() -> HttpResponse {
                 /* Fallback mode uses default body styles from common_styles */
 
                 /* Main container takes available space */
-                #camera-ui {{
+                .camera-ui {{
                     flex: 1;
                     display: flex;
                     flex-direction: column;
@@ -735,19 +738,19 @@ async fn upload_ui() -> HttpResponse {
                     align-items: center;
                 }}
 
-                #camera-stream {{
+                video {{
                     width: 100%;
                     height: 100%;
                     object-fit: contain;
                     display: block;
                 }}
                 
-                #camera-stream.loading {{
+                video.loading {{
                     opacity: 0;
                 }}
 
                 /* Skeleton Loader */
-                #camera-skeleton {{
+                .skeleton {{
                     position: absolute;
                     top: 0;
                     left: 0;
@@ -760,7 +763,7 @@ async fn upload_ui() -> HttpResponse {
                     z-index: 10;
                 }}
                 
-                #camera-skeleton::after {{
+                .skeleton::after {{
                     content: "";
                     width: 40px;
                     height: 40px;
@@ -771,7 +774,7 @@ async fn upload_ui() -> HttpResponse {
                 }}
                 
                 /* Hide skeleton when not loading */
-                #camera-skeleton.hidden {{
+                .skeleton.hidden {{
                     display: none;
                 }}
 
@@ -802,7 +805,7 @@ async fn upload_ui() -> HttpResponse {
                     height: auto;
                     display: block;
                 }}
-                body.no-camera #camera-ui {{
+                body.no-camera .camera-ui {{
                     display: none;
                 }}
                 body.no-camera form {{
@@ -840,7 +843,7 @@ async fn upload_ui() -> HttpResponse {
                 }}
 
                 /* Image Preview (No JS specific, but if JS fails to load camera) */
-                #image-preview {{
+                form img {{
                     max-width: 100%;
                     margin-top: 1rem;
                     display: none;
@@ -854,147 +857,36 @@ async fn upload_ui() -> HttpResponse {
             <p>Upload an image of a flyer or event poster.</p>
             
             <!-- Full Screen Camera UI -->
-            <div id="camera-ui">
+            <div class="camera-ui">
                 <div class="viewport-container">
-                    <div id="camera-skeleton"></div>
-                    <video id="camera-stream" class="loading" autoplay playsinline muted></video>
+                    <div class="skeleton"></div>
+                    <video class="loading" autoplay playsinline muted></video>
                 </div>
                 
                 <div class="controls-bar">
-                    <button type="button" id="upload-btn" class="button">Choose Photo</button>
-                    <button type="button" id="shutter-btn" class="button primary">Take Photo</button>
+                    <button type="button">Choose Photo</button>
+                    <button type="button" class="primary">Take Photo</button>
                 </div>
             </div>
 
             <!-- Hidden canvas for capture -->
-            <canvas id="capture-canvas" style="display: none;"></canvas>
+            <canvas style="display: none;"></canvas>
 
             <!-- Actual Form (Visible, hidden when Camera UI active) -->
             <form action="/upload" method="post" enctype="multipart/form-data">
                 <input type="hidden" name="idempotency_key" value="{idempotency_key}">
                 
-                <input type="file" id="image" name="image" accept="image/*" required>
+                <input type="file" name="image" accept="image/*" required>
 
-                <img id="image-preview" alt="Selected Image Preview">
+                <img alt="Selected Image Preview">
 
-                <button type="submit" class="button primary">Upload</button>
+                <button type="submit">Upload</button>
             </form>
-
-            <script>
-                document.addEventListener('DOMContentLoaded', async () => {{
-                    const body = document.body;
-                    const cameraUi = document.getElementById('camera-ui');
-                    const video = document.getElementById('camera-stream');
-                    const shutterBtn = document.getElementById('shutter-btn');
-                    const uploadBtn = document.getElementById('upload-btn');
-                    const canvas = document.getElementById('capture-canvas');
-                    const skeleton = document.getElementById('camera-skeleton');
-                    
-                    const form = document.querySelector('form');
-                    const fileInput = document.getElementById('image');
-                    const imagePreview = document.getElementById('image-preview');
-
-                    let stream = null;
-
-                    // Initialize Camera
-                    if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {{
-                        try {{
-                            stream = await navigator.mediaDevices.getUserMedia({{ 
-                                video: {{ facingMode: 'environment' }} 
-                            }});
-                            video.srcObject = stream;
-                            
-                            // Wait for video to be ready before showing
-                            video.onloadedmetadata = () => {{
-                                skeleton.classList.add('hidden');
-                                video.classList.remove('loading');
-                            }};
-                            
-                            // Upgrade to Camera Mode
-                            body.classList.remove('no-camera');
-                            
-                            // Handle Shutter - Immediate Upload
-                            shutterBtn.addEventListener('click', () => {{
-                                if (!stream) return;
-                                
-                                // Visual feedback
-                                shutterBtn.innerHTML = '<span class="spinner"></span> Uploading...';
-                                shutterBtn.disabled = true;
-                                if (uploadBtn) uploadBtn.disabled = true;
-                                
-                                // Freeze video to show what was captured
-                                video.pause();
-                                
-                                canvas.width = video.videoWidth;
-                                canvas.height = video.videoHeight;
-                                canvas.getContext('2d').drawImage(video, 0, 0);
-                                
-                                canvas.toBlob((blob) => {{
-                                    // Update File Input
-                                    const file = new File([blob], "capture.jpg", {{ type: "image/jpeg" }});
-                                    const dataTransfer = new DataTransfer();
-                                    dataTransfer.items.add(file);
-                                    fileInput.files = dataTransfer.files;
-                                    
-                                    // Submit immediately
-                                    form.submit();
-                                }}, 'image/jpeg');
-                            }});
-
-                            // Handle Upload Button
-                            if (uploadBtn) {{
-                                uploadBtn.addEventListener('click', () => {{
-                                    fileInput.click();
-                                }});
-                            }}
-
-                        }} catch (err) {{
-                            console.warn("Camera access denied or failed:", err);
-                            // Stays in no-camera mode (form visible)
-                        }}
-                    }}
-
-                    // Form: Simple Image Preview for file selection
-                    // This works if JS is on but camera failed/denied. 
-                    // If JS is off, this script won't run, and user gets standard file input behavior (browser dependent).
-                    fileInput.addEventListener('change', () => {{
-                        if (fileInput.files && fileInput.files[0]) {{
-                            // If we are in camera mode, immediately submit
-                            if (!body.classList.contains('no-camera')) {{
-                                if (uploadBtn) {{
-                                     uploadBtn.innerHTML = '<span class="spinner"></span> Uploading...';
-                                     uploadBtn.disabled = true;
-                                }}
-                                shutterBtn.disabled = true;
-                                form.submit();
-                                return;
-                            }}
-
-                            const file = fileInput.files[0];
-                            const url = URL.createObjectURL(file);
-                            imagePreview.src = url;
-                            imagePreview.style.display = 'block';
-                            
-                            // Update label to show filename (optional but helpful feedback)
-                            // const label = document.querySelector('label[for="image"]');
-                            // if (label) label.textContent = "Change File (" + file.name + ")";
-                        }}
-                    }});
-
-                    // Handle form submit state
-                    form.addEventListener('submit', function() {{
-                        const btn = form.querySelector('button[type="submit"]');
-                        btn.style.opacity = '0.8';
-                        btn.innerHTML = 'Uploading...';
-                    }});
-                }});
-            </script>
         </body>
         </html>"#,
             common_styles = COMMON_STYLES,
             idempotency_key = idempotency_key
-        ),
-    )
+        ))
 }
 
 async fn upload(state: Data<AppState>, MultipartForm(req): MultipartForm<Upload>) -> HttpResponse {
