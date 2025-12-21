@@ -1,0 +1,81 @@
+name: Deploy to VPS
+
+on:
+  push:
+    branches:
+      - main
+
+env:
+  CARGO_TERM_COLOR: always
+  SQLX_OFFLINE: true
+
+jobs:
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache dependencies
+        uses: Swatinem/rust-cache@v2
+
+      - name: Run Tests
+        run: cargo test
+
+      - name: Build Release
+        run: cargo build --release
+
+      - name: Prepare Artifacts
+        run: |
+          mkdir -p dist
+          cp target/release/somerville-events dist/
+          cp -r static dist/
+          cp -r migrations dist/
+          cp build-scripts/deploy.sh dist/
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-bundle
+          path: dist/
+
+  deploy:
+    name: Deploy
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: app-bundle
+          path: dist
+
+      - name: Install SSH Key
+        uses: shimataro/ssh-key-action@v2
+        with:
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          known_hosts: ${{ secrets.KNOWN_HOSTS }}
+          if_key_exists: replace
+
+      - name: Deploy to VPS
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+        run: |
+          # Define paths
+          SHA=${{ github.sha }}
+          REMOTE_INCOMING="~/artifacts/incoming/${SHA}"
+          
+          # Create incoming directory
+          ssh ${VPS_USER}@${VPS_HOST} "mkdir -p ${REMOTE_INCOMING}"
+          
+          # SCP files
+          scp -r dist/* ${VPS_USER}@${VPS_HOST}:${REMOTE_INCOMING}/
+          
+          # Execute deploy script remotely
+          # We execute it from the incoming directory so it can find 'migrations' locally
+          ssh ${VPS_USER}@${VPS_HOST} "cd ${REMOTE_INCOMING} && bash deploy.sh ${REMOTE_INCOMING}/somerville-events ${REMOTE_INCOMING}/static ${SHA}"
+
