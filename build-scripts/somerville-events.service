@@ -1,0 +1,14 @@
+[Unit]
+Description=Somerville Events (Rust) API
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/srv
+ExecStart=%h/bin/somerville-events
+Restart=on-failure
+RestartSec=3
+EnvironmentFile=%h/.env
+
+[Install]
+WantedBy=default.target
