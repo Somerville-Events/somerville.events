@@ -1,11 +1,7 @@
 use crate::models::Event;
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;
-use sqlx::Row as _;
 use strsim::jaro_winkler;
-
-const NAME_SIMILARITY_THRESHOLD: f64 = 0.9;
-const DESCRIPTION_SIMILARITY_THRESHOLD: f64 = 0.85;
 
 #[async_trait]
 pub trait EventsRepo: Send + Sync {
@@ -107,10 +103,13 @@ impl EventsRepo for EventsDatabase {
 }
 
 pub async fn save_event_to_db(executor: &sqlx::Pool<sqlx::Postgres>, event: &Event) -> Result<i64> {
-    if is_duplicate_event(executor, event).await? {
-        return Err(anyhow!(
-            "Duplicate event detected: similar name/description with identical start and end dates"
-        ));
+    // If the event already exists, instead of saving a new one just
+    // return the ID for the existing one.
+    if let Some(duplicate_id) = find_duplicate(executor, event)
+        .await
+        .map_err(|e| anyhow!("Database lookup failed: {e}"))?
+    {
+        return Ok(duplicate_id);
     }
 
     let id = sqlx::query_scalar!(
@@ -142,41 +141,56 @@ pub async fn save_event_to_db(executor: &sqlx::Pool<sqlx::Postgres>, event: &Eve
     Ok(id)
 }
 
-/// Checks the database for an existing event with the same start/end time whose
-/// name and description are similar enough to be considered a duplicate.
-async fn is_duplicate_event(executor: &sqlx::Pool<sqlx::Postgres>, event: &Event) -> Result<bool> {
-    let (Some(start_date), Some(end_date)) = (event.start_date, event.end_date) else {
-        return Ok(false);
-    };
-
-    let potential_duplicates = sqlx::query(
+async fn find_duplicate(
+    executor: &sqlx::Pool<sqlx::Postgres>,
+    event: &Event,
+) -> Result<Option<i64>> {
+    let potential_duplicates = sqlx::query_as!(
+        Event,
         r#"
-        SELECT id, name, full_description
+        SELECT 
+            id,
+            name,
+            full_description,
+            start_date,
+            end_date,
+            location,
+            event_type,
+            confidence
         FROM app.events
         WHERE start_date = $1 AND end_date = $2
         "#,
+        event.start_date,
+        event.end_date
     )
-    .bind(start_date)
-    .bind(end_date)
     .fetch_all(executor)
     .await?;
 
-    for row in potential_duplicates {
-        let name: String = row.try_get("name")?;
-        let full_description: String = row.try_get("full_description")?;
+    const NAME_SIMILARITY_THRESHOLD: f64 = 0.95;
+    const DESCRIPTION_SIMILARITY_THRESHOLD: f64 = 0.85;
+    const LOCATION_SIMILARITY_THRESHOLD: f64 = 0.95;
 
-        if is_fuzzy_match(&name, &event.name, NAME_SIMILARITY_THRESHOLD)
+    for row in potential_duplicates {
+        if is_fuzzy_match(&row.name, &event.name, NAME_SIMILARITY_THRESHOLD)
             && is_fuzzy_match(
-                &full_description,
+                &row.full_description,
                 &event.full_description,
                 DESCRIPTION_SIMILARITY_THRESHOLD,
             )
+            && (match (&row.location, &event.location) {
+                (Some(loc1), Some(loc2)) => {
+                    is_fuzzy_match(loc1, loc2, LOCATION_SIMILARITY_THRESHOLD)
+                }
+                (None, None) => true,
+                _ => false,
+            })
         {
-            return Ok(true);
+            log::info!("Found duplicate {row:?}. Using it instead of {event:?}");
+            return Ok(row.id);
         }
     }
 
-    Ok(false)
+    Ok(None)
 }
 
 fn is_fuzzy_match(a: &str, b: &str, threshold: f64) -> bool {
