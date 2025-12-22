@@ -2681,6 +2681,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sqlx",
+ "strsim",
  "uuid",
 ]
 
