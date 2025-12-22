@@ -8,6 +8,7 @@ pub trait EventsRepo: Send + Sync {
     async fn get(&self, id: i64) -> Result<Option<Event>>;
     async fn claim_idempotency_key(&self, idempotency_key: uuid::Uuid) -> Result<bool>;
     async fn insert(&self, event: &Event) -> Result<i64>;
+    async fn delete(&self, id: i64) -> Result<()>;
 }
 
 pub struct EventsDatabase {
@@ -81,6 +82,24 @@ impl EventsRepo for EventsDatabase {
 
     async fn insert(&self, event: &Event) -> Result<i64> {
         save_event_to_db(&self.pool, event).await
+    }
+
+    async fn delete(&self, id: i64) -> Result<()> {
+        let result = sqlx::query!(
+            r#"
+            DELETE FROM app.events
+            WHERE id = $1
+            "#,
+            id
+        )
+        .execute(&self.pool)
+        .await?;
+
+        if result.rows_affected() == 0 {
+            return Err(anyhow!("Event with id {} not found", id));
+        }
+
+        Ok(())
     }
 }
 
