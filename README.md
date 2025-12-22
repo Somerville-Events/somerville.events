@@ -22,6 +22,13 @@ Set the values in your `.env`
 
 ```
 ./reset_database.sh
+sqlx migrate
+```
+
+Add a precommit hook for safety
+
+```
+cp pre-commit .git/hooks/
 ```
 
 ## Run

@@ -1,0 +1,15 @@
+#!/bin/sh
+
+current_branch=$(git symbolic-ref --short HEAD 2>/dev/null)
+
+if [ "$current_branch" != "main" ]; then
+    # We are not on main, so skip checks
+    exit 0
+fi
+
+# We use SQLX_OFFLINE=true to ensure we check against the saved schema
+export SQLX_OFFLINE=true
+
+cargo fmt -- --check
+cargo check
+cargo clippy -- -D warnings

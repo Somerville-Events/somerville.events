@@ -353,7 +353,7 @@ pub async fn parse_image_with_now(
         fs::read(image_path).map_err(|e| anyhow!("Failed to read file: {image_path:?} - {e}"))?;
 
     // Guess MIME type
-    let mime_type = mime_guess::from_path(&image_path)
+    let mime_type = mime_guess::from_path(image_path)
         .first_raw()
         .map(|m| m.to_string())
         .unwrap_or_else(|| "image/png".to_string());

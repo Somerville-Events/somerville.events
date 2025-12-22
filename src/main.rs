@@ -18,7 +18,6 @@ use anyhow::Result;
 use awc::{Client, Connector};
 use db::{EventsDatabase, EventsRepo};
 use dotenvy::dotenv;
-use rustls;
 use sqlx::postgres::PgPoolOptions;
 use std::{
     env,
