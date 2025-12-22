@@ -491,31 +491,29 @@ mod tests {
     use chrono::TimeZone;
     use dotenvy::dotenv;
     use std::env;
-    use std::sync::{Arc, OnceLock};
+    use std::sync::Arc;
 
-    static TLS_CONFIG: OnceLock<Arc<rustls::ClientConfig>> = OnceLock::new();
-
-    fn init_tls_once() -> Arc<rustls::ClientConfig> {
-        use rustls_platform_verifier::ConfigVerifierExt as _;
-
+    fn init_crypto() {
         // Ignore error if already installed (e.g. by another test)
         let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
+    }
 
+    fn get_test_client() -> Client {
+        use rustls_platform_verifier::ConfigVerifierExt as _;
+        init_crypto();
         let client_config = rustls::ClientConfig::with_platform_verifier()
             .expect("Failed to create TLS client config.");
-        Arc::new(client_config)
+        awc::ClientBuilder::new()
+            .timeout(std::time::Duration::from_secs(120))
+            .connector(Connector::new().rustls_0_23(Arc::new(client_config)))
+            .finish()
     }
 
     #[actix_web::test]
     async fn test_parse_image() -> Result<()> {
         dotenv().ok();
         let api_key = env::var("OPENAI_API_KEY")?;
-        let tls_config = TLS_CONFIG.get_or_init(init_tls_once).clone();
-
-        let client: Client = awc::ClientBuilder::new()
-            .timeout(std::time::Duration::from_secs(120))
-            .connector(Connector::new().rustls_0_23(tls_config))
-            .finish();
+        let client = get_test_client();
 
         let fixed_now_utc = Utc.with_ymd_and_hms(2025, 1, 15, 17, 0, 0).unwrap();
         let event_opt = parse_image_with_now(
@@ -543,12 +541,7 @@ mod tests {
     async fn test_parse_not_an_event_selfie() -> Result<()> {
         dotenv().ok();
         let api_key = env::var("OPENAI_API_KEY")?;
-        let tls_config = TLS_CONFIG.get_or_init(init_tls_once).clone();
-
-        let client: Client = awc::ClientBuilder::new()
-            .timeout(std::time::Duration::from_secs(120))
-            .connector(Connector::new().rustls_0_23(tls_config))
-            .finish();
+        let client = get_test_client();
 
         let fixed_now_utc = Utc.with_ymd_and_hms(2025, 1, 15, 17, 0, 0).unwrap();
 
@@ -574,12 +567,7 @@ mod tests {
     async fn test_parse_not_an_event_soda_ad() -> Result<()> {
         dotenv().ok();
         let api_key = env::var("OPENAI_API_KEY")?;
-        let tls_config = TLS_CONFIG.get_or_init(init_tls_once).clone();
-
-        let client: Client = awc::ClientBuilder::new()
-            .timeout(std::time::Duration::from_secs(120))
-            .connector(Connector::new().rustls_0_23(tls_config))
-            .finish();
+        let client = get_test_client();
 
         let fixed_now_utc = Utc.with_ymd_and_hms(2025, 1, 15, 17, 0, 0).unwrap();
 

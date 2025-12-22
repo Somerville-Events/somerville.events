@@ -216,8 +216,6 @@ mod tests {
 
     #[actix_web::test]
     async fn test_index_filters_by_category() -> Result<()> {
-        let tls_config = TLS_CONFIG.get_or_init(init_tls_once).clone();
-
         let now_utc = Utc.with_ymd_and_hms(2025, 1, 15, 17, 0, 0).unwrap();
         let today_local = now_utc.with_timezone(&New_York).date_naive();
         let mk_local = |d: NaiveDateTime| New_York.from_local_datetime(&d).single().unwrap();
@@ -248,9 +246,7 @@ mod tests {
 
         let state = AppState {
             api_key: "dummy".to_string(),
-            client: awc::ClientBuilder::new()
-                .connector(Connector::new().rustls_0_23(tls_config))
-                .finish(),
+            client: awc::Client::default(),
             username: "user".to_string(),
             password: "pass".to_string(),
             events_repo: Box::new(FakeEventsRepo::new(vec![art_event.clone(), music_event])),
@@ -261,7 +257,7 @@ mod tests {
         let app = test::init_service(App::new().app_data(Data::new(state)).route(
             "/",
             web::get().to(move |state: Data<AppState>| {
-                crate::view_events::index_with_now(state, fixed_now_utc.clone(), filter.clone())
+                crate::view_events::index_with_now(state, fixed_now_utc, filter.clone())
             }),
         ))
         .await;
@@ -284,10 +280,6 @@ mod tests {
 
     #[actix_web::test]
     async fn test_index() -> Result<()> {
-        // Ensure the rustls process-level CryptoProvider is installed for tests too.
-        // Otherwise, awc/rustls can panic when it first touches TLS-related internals.
-        let tls_config = TLS_CONFIG.get_or_init(init_tls_once).clone();
-
         let now_utc = Utc.with_ymd_and_hms(2025, 1, 15, 17, 0, 0).unwrap();
         let today_local = now_utc.with_timezone(&New_York).date_naive();
         let yesterday_local = today_local.pred_opt().unwrap();
@@ -383,9 +375,7 @@ mod tests {
 
         let state = AppState {
             api_key: "dummy".to_string(),
-            client: awc::ClientBuilder::new()
-                .connector(Connector::new().rustls_0_23(tls_config))
-                .finish(),
+            client: awc::Client::default(),
             username: "user".to_string(),
             password: "pass".to_string(),
             events_repo: Box::new(fake_repo),
@@ -395,7 +385,7 @@ mod tests {
         let app = test::init_service(App::new().app_data(Data::new(state)).route(
             "/",
             web::get().to(move |state: Data<AppState>| {
-                crate::view_events::index_with_now(state, fixed_now_utc.clone(), None)
+                crate::view_events::index_with_now(state, fixed_now_utc, None)
             }),
         ))
         .await;
@@ -495,8 +485,6 @@ mod tests {
 
     #[actix_web::test]
     async fn test_ical_endpoint() -> Result<()> {
-        let tls_config = TLS_CONFIG.get_or_init(init_tls_once).clone();
-
         let now_utc = Utc.with_ymd_and_hms(2025, 1, 15, 17, 0, 0).unwrap();
         let today_local = now_utc.with_timezone(&New_York).date_naive();
         let mk_local = |d: NaiveDateTime| New_York.from_local_datetime(&d).single().unwrap();
@@ -516,9 +504,7 @@ mod tests {
 
         let state = AppState {
             api_key: "dummy".to_string(),
-            client: awc::ClientBuilder::new()
-                .connector(Connector::new().rustls_0_23(tls_config))
-                .finish(),
+            client: awc::Client::default(),
             username: "user".to_string(),
             password: "pass".to_string(),
             events_repo: Box::new(FakeEventsRepo::new(vec![event])),
