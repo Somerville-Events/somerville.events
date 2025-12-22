@@ -367,6 +367,104 @@ mod tests {
     }
 
     #[actix_web::test]
+    async fn test_index_filters_by_category() -> Result<()> {
+        let tls_config = TLS_CONFIG.get_or_init(init_tls_once).clone();
+
+        #[derive(Clone)]
+        struct CategorizedRepo {
+            events: Arc<Vec<Event>>,
+        }
+
+        #[async_trait]
+        impl EventsRepo for CategorizedRepo {
+            async fn list(&self) -> Result<Vec<Event>> {
+                Ok(self.events.as_ref().clone())
+            }
+
+            async fn get(&self, id: i64) -> Result<Option<Event>> {
+                Ok(self.events.iter().find(|e| e.id == Some(id)).cloned())
+            }
+
+            async fn claim_idempotency_key(&self, _idempotency_key: uuid::Uuid) -> Result<bool> {
+                Ok(true)
+            }
+
+            async fn insert(&self, _event: &Event) -> Result<i64> {
+                Ok(1)
+            }
+        }
+
+        let now_utc = Utc.with_ymd_and_hms(2025, 1, 15, 17, 0, 0).unwrap();
+        let today_local = now_utc.with_timezone(&New_York).date_naive();
+        let mk_local = |d: NaiveDateTime| New_York.from_local_datetime(&d).single().unwrap();
+        let local_dt =
+            |date, h, m| NaiveDateTime::new(date, NaiveTime::from_hms_opt(h, m, 0).unwrap());
+
+        let art_event = Event {
+            id: Some(1),
+            name: "Art Show".to_string(),
+            full_description: "Paintings galore".to_string(),
+            start_date: Some(mk_local(local_dt(today_local, 11, 0)).with_timezone(&Utc)),
+            end_date: None,
+            location: Some("Gallery".to_string()),
+            event_type: Some("Art".to_string()),
+            additional_details: None,
+            confidence: 1.0,
+        };
+
+        let music_event = Event {
+            id: Some(2),
+            name: "Music Night".to_string(),
+            full_description: "Jazz and blues".to_string(),
+            start_date: Some(mk_local(local_dt(today_local, 19, 0)).with_timezone(&Utc)),
+            end_date: None,
+            location: Some("Club".to_string()),
+            event_type: Some("Music".to_string()),
+            additional_details: None,
+            confidence: 1.0,
+        };
+
+        let repo = CategorizedRepo {
+            events: Arc::new(vec![art_event.clone(), music_event]),
+        };
+
+        let state = AppState {
+            api_key: "dummy".to_string(),
+            client: awc::ClientBuilder::new()
+                .connector(Connector::new().rustls_0_23(tls_config))
+                .finish(),
+            username: "user".to_string(),
+            password: "pass".to_string(),
+            events_repo: Box::new(repo),
+        };
+
+        let fixed_now_utc = now_utc;
+        let filter = Some("Art".to_string());
+        let app = test::init_service(App::new().app_data(Data::new(state)).route(
+            "/",
+            web::get().to(move |state: Data<AppState>| {
+                crate::view_events::index_with_now(state, fixed_now_utc.clone(), filter.clone())
+            }),
+        ))
+        .await;
+
+        let req = test::TestRequest::get().uri("/?category=Art").to_request();
+        let resp = test::call_service(&app, req).await;
+        assert_eq!(resp.status(), actix_web::http::StatusCode::OK);
+
+        let body = test::read_body(resp).await;
+        let body_str = std::str::from_utf8(&body)?;
+
+        assert!(body_str.contains("Art Show"));
+        assert!(!body_str.contains("Music Night"));
+        assert!(body_str.contains(r#"<a href="/?category=Art">Art</a>"#));
+        assert!(body_str.contains("Category: Art"));
+        assert!(body_str.contains(r#"<a class="button" href="/">"#));
+
+        Ok(())
+    }
+
+    #[actix_web::test]
     async fn test_index() -> Result<()> {
         // Ensure the rustls process-level CryptoProvider is installed for tests too.
         // Otherwise, awc/rustls can panic when it first touches TLS-related internals.
@@ -525,7 +623,7 @@ mod tests {
         let app = test::init_service(App::new().app_data(Data::new(state)).route(
             "/",
             web::get().to(move |state: Data<AppState>| {
-                crate::view_events::index_with_now(state, fixed_now_utc.clone())
+                crate::view_events::index_with_now(state, fixed_now_utc.clone(), None)
             }),
         ))
         .await;

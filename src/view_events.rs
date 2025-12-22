@@ -4,6 +4,7 @@ use actix_web::{http::header::ContentType, web, web::Data, HttpResponse};
 use chrono::{DateTime, Duration, NaiveDate, Utc};
 use chrono_tz::America::New_York;
 use icalendar::{Calendar, CalendarDateTime, Component, Event as IcalEvent, EventLike};
+use serde::Deserialize;
 use std::collections::BTreeMap;
 
 pub fn format_datetime(dt: DateTime<Utc>) -> String {
@@ -11,6 +12,18 @@ pub fn format_datetime(dt: DateTime<Utc>) -> String {
     dt.with_timezone(&New_York)
         .format("%A, %B %d, %Y at %I:%M %p")
         .to_string()
+}
+
+fn percent_encode_query_value(value: &str) -> String {
+    value
+        .bytes()
+        .map(|b| match b {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
+                (b as char).to_string()
+            }
+            _ => format!("%{:02X}", b),
+        })
+        .collect()
 }
 
 fn render_event_html(event: &Event, is_details_view: bool) -> String {
@@ -57,6 +70,18 @@ fn render_event_html(event: &Event, is_details_view: bool) -> String {
         format!(r#"<h3><a href="/event/{id}.html">{name}</a></h3>"#)
     };
 
+    let category_html = match event.event_type.as_deref() {
+        Some(category) if !category.is_empty() => {
+            let category_encoded = percent_encode_query_value(category);
+            format!(
+                r#"<a href="/?category={category_query}">{category_label}</a>"#,
+                category_query = html_escape::encode_double_quoted_attribute(&category_encoded),
+                category_label = html_escape::encode_text(category)
+            )
+        }
+        _ => "Not specified".to_string(),
+    };
+
     format!(
         r#"
         <article>
@@ -66,6 +91,8 @@ fn render_event_html(event: &Event, is_details_view: bool) -> String {
                 <dd>{when_html}</dd>
                 <dt>Location</dt>
                 <dd>{location}</dd>
+                <dt>Category</dt>
+                <dd>{category_html}</dd>
             </dl>
             <p>{description}</p>
             <p><a href="/event/{id}.ical" class="button">Add to calendar</a></p>
@@ -74,15 +101,38 @@ fn render_event_html(event: &Event, is_details_view: bool) -> String {
     )
 }
 
-pub async fn index(state: Data<AppState>) -> HttpResponse {
-    index_with_now(state, Utc::now()).await
+#[derive(Deserialize)]
+pub struct IndexQuery {
+    pub category: Option<String>,
 }
 
-pub async fn index_with_now(state: Data<AppState>, now_utc: DateTime<Utc>) -> HttpResponse {
+pub async fn index(state: Data<AppState>, query: web::Query<IndexQuery>) -> HttpResponse {
+    index_with_now(state, Utc::now(), query.into_inner().category).await
+}
+
+pub async fn index_with_now(
+    state: Data<AppState>,
+    now_utc: DateTime<Utc>,
+    category: Option<String>,
+) -> HttpResponse {
     let events = state.events_repo.list().await;
 
     match events {
         Ok(events) => {
+            let filtered_events: Vec<Event> = if let Some(ref category_filter) = category {
+                events
+                    .into_iter()
+                    .filter(|event| {
+                        event
+                            .event_type
+                            .as_ref()
+                            .map(|c| c.eq_ignore_ascii_case(category_filter))
+                            .unwrap_or(false)
+                    })
+                    .collect()
+            } else {
+                events
+            };
             // We normally hide anything too far in the past, but we allow a small look-back
             // window so "no end date" events from yesterday still show up.
             let earliest_day_to_render: NaiveDate = (now_utc - Duration::days(1))
@@ -91,7 +141,7 @@ pub async fn index_with_now(state: Data<AppState>, now_utc: DateTime<Utc>) -> Ht
 
             let mut events_by_day: BTreeMap<NaiveDate, Vec<Event>> = BTreeMap::new();
 
-            for event in events {
+            for event in filtered_events {
                 // If we don't have a start date, we can't show it on a calendar-like "by day" view.
                 let Some(start) = event.start_date else {
                     continue;
@@ -155,6 +205,15 @@ pub async fn index_with_now(state: Data<AppState>, now_utc: DateTime<Utc>) -> Ht
                 events_html.push_str("</section>");
             }
 
+            let filter_badge = if let Some(category_filter) = category {
+                let category_label = html_escape::encode_text(&category_filter);
+                r#"<p><a class="button" href="/">"#.to_string()
+                    + &format!("Category: {category_label} \u{2715}")
+                    + "</a></p>"
+            } else {
+                String::new()
+            };
+
             HttpResponse::Ok().content_type(ContentType::html()).body(format!(
                 r#"<!doctype html>
                 <html lang="en">
@@ -174,11 +233,13 @@ pub async fn index_with_now(state: Data<AppState>, now_utc: DateTime<Utc>) -> Ht
                         </nav>
                     </header>
                     <main>
+                        {filter_badge}
                         {events_html}
                     </main>
                 </body>
                 </html>"#,
                 common_styles = COMMON_STYLES,
+                filter_badge = filter_badge,
                 events_html = events_html
             ))
         }
