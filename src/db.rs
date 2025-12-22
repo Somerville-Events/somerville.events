@@ -166,25 +166,8 @@ async fn find_duplicate(
     .fetch_all(executor)
     .await?;
 
-    const NAME_SIMILARITY_THRESHOLD: f64 = 0.95;
-    const DESCRIPTION_SIMILARITY_THRESHOLD: f64 = 0.85;
-    const LOCATION_SIMILARITY_THRESHOLD: f64 = 0.95;
-
     for row in potential_duplicates {
-        if is_fuzzy_match(&row.name, &event.name, NAME_SIMILARITY_THRESHOLD)
-            && is_fuzzy_match(
-                &row.full_description,
-                &event.full_description,
-                DESCRIPTION_SIMILARITY_THRESHOLD,
-            )
-            && (match (&row.location, &event.location) {
-                (Some(loc1), Some(loc2)) => {
-                    is_fuzzy_match(loc1, loc2, LOCATION_SIMILARITY_THRESHOLD)
-                }
-                (None, None) => true,
-                _ => false,
-            })
-        {
+        if is_duplicate(&row, event) {
             log::info!("Found duplicate {row:?}. Using it instead of {event:?}");
             return Ok(row.id);
         }
@@ -192,55 +175,12 @@ async fn find_duplicate(
 
     Ok(None)
 }
-
-fn is_fuzzy_match(a: &str, b: &str, threshold: f64) -> bool {
-    // jaro_winkler returns 0.0 when either string is empty; that is fine for our threshold checks.
-    let a_normalized = normalize_for_similarity(a);
-    let b_normalized = normalize_for_similarity(b);
-    jaro_winkler(&a_normalized, &b_normalized) >= threshold
-}
-
-fn normalize_for_similarity(input: &str) -> String {
-    let collapsed = input
-        .chars()
-        .map(|c| {
-            if c.is_alphanumeric() || c.is_whitespace() {
-                c
-            } else {
-                ' '
-            }
+fn is_duplicate(a: &Event, b: &Event) -> bool {
+    jaro_winkler(&a.name, &b.name) > 0.95
+        && jaro_winkler(&a.full_description, &b.full_description) > 0.85
+        && (match (&a.location, &b.location) {
+            (Some(loc1), Some(loc2)) => jaro_winkler(loc1, loc2) > 0.95,
+            (None, None) => true,
+            _ => false,
         })
-        .collect::<String>();
-
-    collapsed
-        .split_whitespace()
-        .collect::<Vec<_>>()
-        .join(" ")
-        .to_lowercase()
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn normalizes_punctuation_and_casing() {
-        let a = "Dance Therapy! @ 7PM";
-        let b = "dance therapy 7pm";
-        assert!(is_fuzzy_match(a, b, 0.95));
-    }
-
-    #[test]
-    fn rejects_dissimilar_text() {
-        let a = "Dance Therapy";
-        let b = "Community Cleanup";
-        assert!(!is_fuzzy_match(a, b, 0.8));
-    }
-
-    #[test]
-    fn collapses_whitespace() {
-        let a = "Dance     Therapy";
-        let b = "Dance Therapy";
-        assert!(is_fuzzy_match(a, b, 0.99));
-    }
 }
