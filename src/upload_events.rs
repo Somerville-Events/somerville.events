@@ -1,5 +1,6 @@
+use crate::common_ui::COMMON_STYLES;
 use crate::models::Event;
-use crate::{AppState, COMMON_STYLES};
+use crate::AppState;
 use actix_multipart::form::{tempfile::TempFile, MultipartForm};
 use actix_web::{http::header::ContentType, web::Data, HttpResponse};
 use anyhow::{anyhow, Result};
@@ -16,7 +17,7 @@ pub struct Upload {
     pub idempotency_key: actix_multipart::form::text::Text<uuid::Uuid>,
 }
 
-pub async fn upload_ui() -> HttpResponse {
+pub async fn index() -> HttpResponse {
     let idempotency_key = uuid::Uuid::new_v4();
     HttpResponse::Ok()
         .content_type(ContentType::html())
@@ -226,7 +227,7 @@ pub async fn upload_ui() -> HttpResponse {
         ))
 }
 
-pub async fn upload(
+pub async fn save(
     state: Data<AppState>,
     MultipartForm(req): MultipartForm<Upload>,
 ) -> HttpResponse {
@@ -293,7 +294,7 @@ pub async fn upload(
         .finish()
 }
 
-pub async fn upload_success() -> HttpResponse {
+pub async fn success() -> HttpResponse {
     HttpResponse::Ok()
         .content_type(ContentType::html())
         .body(format!(
