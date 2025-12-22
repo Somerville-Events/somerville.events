@@ -32,9 +32,9 @@ pub struct AppState {
     pub events_repo: Box<dyn EventsRepo>,
 }
 
-static TLS_CONFIG: OnceLock<Arc<rustls::ClientConfig>> = OnceLock::new();
+pub(crate) static TLS_CONFIG: OnceLock<Arc<rustls::ClientConfig>> = OnceLock::new();
 
-fn init_tls_once() -> Arc<rustls::ClientConfig> {
+pub(crate) fn init_tls_once() -> Arc<rustls::ClientConfig> {
     use rustls_platform_verifier::ConfigVerifierExt as _;
 
     rustls::crypto::aws_lc_rs::default_provider()

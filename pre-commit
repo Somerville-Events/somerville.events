@@ -12,5 +12,4 @@ fi
 export SQLX_OFFLINE=true
 
 cargo fmt -- --check
-cargo check
-cargo clippy -- -D warnings
+cargo clippy --all-targets -- -D warnings

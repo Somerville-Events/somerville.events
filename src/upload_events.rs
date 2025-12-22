@@ -491,21 +491,12 @@ mod tests {
     use chrono::TimeZone;
     use dotenvy::dotenv;
     use std::env;
-    use std::sync::Arc;
-
-    fn init_crypto() {
-        // Ignore error if already installed (e.g. by another test)
-        let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
-    }
 
     fn get_test_client() -> Client {
-        use rustls_platform_verifier::ConfigVerifierExt as _;
-        init_crypto();
-        let client_config = rustls::ClientConfig::with_platform_verifier()
-            .expect("Failed to create TLS client config.");
+        let client_config = crate::TLS_CONFIG.get_or_init(crate::init_tls_once).clone();
         awc::ClientBuilder::new()
             .timeout(std::time::Duration::from_secs(120))
-            .connector(Connector::new().rustls_0_23(Arc::new(client_config)))
+            .connector(Connector::new().rustls_0_23(client_config))
             .finish()
     }
 
