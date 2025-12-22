@@ -1,4 +1,4 @@
-use crate::models::Event;
+use crate::models::{Event, EventExtraction};
 use crate::{AppState, COMMON_STYLES};
 use actix_multipart::form::{tempfile::TempFile, MultipartForm};
 use actix_web::{http::header::ContentType, web::Data, HttpResponse};
@@ -269,7 +269,7 @@ pub async fn upload(
 
     actix_web::rt::spawn(async move {
         match parse_image(&dest_path_clone, &state.client, &state.api_key).await {
-            Ok(event) => match state.events_repo.insert(&event).await {
+            Ok(Some(event)) => match state.events_repo.insert(&event).await {
                 Ok(id) => {
                     log::info!("Saved event to database with id: {}", id);
                 }
@@ -277,6 +277,12 @@ pub async fn upload(
                     log::error!("Failed to save event to database: {e:#}");
                 }
             },
+            Ok(None) => {
+                log::info!(
+                    "Uploaded image {} was not an event or was missing a date; skipping insert.",
+                    dest_path_clone.display()
+                );
+            }
             Err(e) => {
                 log::error!("parse_image failed: {e:#}");
             }
@@ -319,7 +325,11 @@ pub async fn upload_success() -> HttpResponse {
         ))
 }
 
-pub async fn parse_image(image_path: &Path, client: &Client, api_key: &str) -> Result<Event> {
+pub async fn parse_image(
+    image_path: &Path,
+    client: &Client,
+    api_key: &str,
+) -> Result<Option<Event>> {
     parse_image_with_now(image_path, client, api_key, Utc::now()).await
 }
 
@@ -328,7 +338,7 @@ pub async fn parse_image_with_now(
     client: &Client,
     api_key: &str,
     now: DateTime<Utc>,
-) -> Result<Event> {
+) -> Result<Option<Event>> {
     // Read file
     let bytes =
         fs::read(image_path).map_err(|e| anyhow!("Failed to read file: {image_path:?} - {e}"))?;
@@ -343,7 +353,7 @@ pub async fn parse_image_with_now(
     let b64_data = b64.encode(&bytes);
     let data_url = format!("data:{mime_type};base64,{b64_data}");
 
-    let schema = schema_for!(Event);
+    let schema = schema_for!(EventExtraction);
     let schema_str = serde_json::to_string_pretty(&schema).unwrap();
     let now_str = now.to_rfc3339();
 
@@ -366,6 +376,8 @@ pub async fn parse_image_with_now(
                     Never return multiple event types.
                     Today's date is {now_str}.
                     The start_date and end_date must be RFC 3339 formatted date and time strings.
+                    The start_date is required; if it is missing or ambiguous, set the `event` field to null instead of guessing.
+                    If the image is not an event flyer, set the `event` field to null.
                     Assume the event is in the future unless the text clearly indicates it is in the past.
                     Assume the event is in the timezone of the location if provided.
                     Assume the event is nearest to today's date if the date is ambiguous in any way.
@@ -421,15 +433,39 @@ pub async fn parse_image_with_now(
     Ok(event)
 }
 
-fn parse_and_validate_response(content: &str) -> Result<Event> {
-    // First try to parse as the exact struct
+fn parse_and_validate_response(content: &str) -> Result<Option<Event>> {
+    // First try to parse as the wrapped extraction struct
+    if let Ok(result) = serde_json::from_str::<EventExtraction>(content) {
+        return Ok(result.event);
+    }
+
+    // Next, try to parse as a bare event (legacy behavior)
     if let Ok(result) = serde_json::from_str::<Event>(content) {
-        return Ok(result);
+        return Ok(Some(result));
     }
 
     // If that fails, parse as generic JSON and clean it up
     let mut json: serde_json::Value =
         serde_json::from_str(content).map_err(|e| anyhow!("Failed to parse JSON: {}", e))?;
+
+    if json.is_null() {
+        return Ok(None);
+    }
+
+    // If the schema shows an outer object with an "event" field, drill into it.
+    let mut event_value = if let Some(obj) = json.as_object_mut() {
+        if let Some(event) = obj.remove("event") {
+            // Preserve reason when present
+            if event.is_null() {
+                return Ok(None);
+            }
+            event
+        } else {
+            json.clone()
+        }
+    } else {
+        json.clone()
+    };
 
     // Remove any extra fields not in our struct
     let allowed_fields = [
@@ -443,7 +479,7 @@ fn parse_and_validate_response(content: &str) -> Result<Event> {
         "confidence",
     ];
 
-    if let Some(obj) = json.as_object_mut() {
+    if let Some(obj) = event_value.as_object_mut() {
         // Keep only allowed fields
         let keys: Vec<String> = obj.keys().cloned().collect();
         for key in keys {
@@ -474,6 +510,16 @@ fn parse_and_validate_response(content: &str) -> Result<Event> {
         }
     }
 
+    if event_value
+        .get("start_date")
+        .map(|v| v.is_null())
+        .unwrap_or(true)
+    {
+        return Ok(None);
+    }
+
     // Now try to parse the cleaned JSON
-    serde_json::from_value(json).map_err(|e| anyhow!("Failed to parse cleaned response: {}", e))
+    serde_json::from_value(event_value)
+        .map(Some)
+        .map_err(|e| anyhow!("Failed to parse cleaned response: {}", e))
 }

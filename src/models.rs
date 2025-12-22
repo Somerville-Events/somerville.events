@@ -9,7 +9,7 @@ pub struct Event {
     /// The full description of the event or content
     pub full_description: String,
     /// The date and time of the event
-    pub start_date: Option<DateTime<Utc>>,
+    pub start_date: DateTime<Utc>,
     /// The end date of the event
     pub end_date: Option<DateTime<Utc>>,
     /// The location of the event
@@ -24,4 +24,13 @@ pub struct Event {
     #[serde(skip, default)]
     #[schemars(skip)]
     pub id: Option<i64>,
+}
+
+/// Wrapper for LLM extraction so we can distinguish "no event found" from a valid event.
+#[derive(Debug, Serialize, Deserialize, JsonSchema, PartialEq, Clone)]
+pub struct EventExtraction {
+    /// The extracted event. Use `null` when the image is not an event or lacks a usable date.
+    pub event: Option<Event>,
+    /// Optional explanation when no event is returned.
+    pub reason: Option<String>,
 }

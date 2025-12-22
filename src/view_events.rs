@@ -14,17 +14,9 @@ pub fn format_datetime(dt: DateTime<Utc>) -> String {
 }
 
 fn render_event_html(event: &Event, is_details_view: bool) -> String {
-    let when = match (event.start_date, event.end_date) {
-        (Some(start), Some(end)) => {
-            format!("{} – {}", format_datetime(start), format_datetime(end))
-        }
-        (Some(start), None) => format_datetime(start),
-        (None, Some(end)) => format_datetime(end),
-        (None, None) => "TBD".to_string(),
-    };
-
-    let when_html = match (event.start_date, event.end_date) {
-        (Some(start), Some(end)) => format!(
+    let start = event.start_date;
+    let when_html = match event.end_date {
+        Some(end) => format!(
             r#"<time datetime="{start_dt}">{start_label}</time> – <time datetime="{end_dt}">{end_label}</time>"#,
             start_dt = html_escape::encode_double_quoted_attribute(
                 &start.with_timezone(&New_York).to_rfc3339()
@@ -35,14 +27,13 @@ fn render_event_html(event: &Event, is_details_view: bool) -> String {
             ),
             end_label = html_escape::encode_text(&format_datetime(end)),
         ),
-        (Some(start), None) => format!(
+        None => format!(
             r#"<time datetime="{start_dt}">{start_label}</time>"#,
             start_dt = html_escape::encode_double_quoted_attribute(
                 &start.with_timezone(&New_York).to_rfc3339()
             ),
             start_label = html_escape::encode_text(&format_datetime(start)),
         ),
-        _ => html_escape::encode_text(&when).to_string(),
     };
 
     let id = event.id.unwrap_or_default();
@@ -92,16 +83,11 @@ pub async fn index_with_now(state: Data<AppState>, now_utc: DateTime<Utc>) -> Ht
             let mut events_by_day: BTreeMap<NaiveDate, Vec<Event>> = BTreeMap::new();
 
             for event in events {
-                // If we don't have a start date, we can't show it on a calendar-like "by day" view.
-                let Some(start) = event.start_date else {
-                    continue;
-                };
-
-                let start_day = start.with_timezone(&New_York).date_naive();
+                let start_day = event.start_date.with_timezone(&New_York).date_naive();
                 let (end_day, visibility_end) = match event.end_date {
                     // Events without an end date render only once (on their start day), but they
                     // should remain visible for up to 24h after start (so "yesterday" can show).
-                    None => (start_day, start + Duration::days(1)),
+                    None => (start_day, event.start_date + Duration::days(1)),
                     Some(end) => (end.with_timezone(&New_York).date_naive(), end),
                 };
 
@@ -239,19 +225,17 @@ pub async fn event_ical(state: Data<AppState>, path: web::Path<i64>) -> HttpResp
                 ical_event.location(&location);
             }
 
-            if let Some(start) = event.start_date {
-                let start_et = start.with_timezone(&New_York);
-                ical_event.starts(CalendarDateTime::from_date_time(start_et));
-                if let Some(end) = event.end_date {
-                    ical_event.ends(CalendarDateTime::from_date_time(
-                        end.with_timezone(&New_York),
-                    ));
-                } else {
-                    // Default to 1 hour duration if no end date
-                    ical_event.ends(CalendarDateTime::from_date_time(
-                        start_et + chrono::Duration::hours(1),
-                    ));
-                }
+            let start_et = event.start_date.with_timezone(&New_York);
+            ical_event.starts(CalendarDateTime::from_date_time(start_et));
+            if let Some(end) = event.end_date {
+                ical_event.ends(CalendarDateTime::from_date_time(
+                    end.with_timezone(&New_York),
+                ));
+            } else {
+                // Default to 1 hour duration if no end date
+                ical_event.ends(CalendarDateTime::from_date_time(
+                    start_et + chrono::Duration::hours(1),
+                ));
             }
 
             let calendar = Calendar::new().push(ical_event).done();

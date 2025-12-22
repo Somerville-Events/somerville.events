@@ -353,7 +353,8 @@ mod tests {
             &state.api_key,
             fixed_now_utc,
         )
-        .await?;
+        .await?
+        .expect("expected an event to be parsed");
         assert_eq!(event.name, "Dance Therapy");
 
         // "Database" behavior: verify we can "persist" it via the repo without touching Postgres.
@@ -410,7 +411,7 @@ mod tests {
             id: Some(1),
             name: "Past Event".to_string(),
             full_description: "Should not render".to_string(),
-            start_date: Some(mk_local(local_dt(yesterday_local, 10, 0)).with_timezone(&Utc)),
+            start_date: mk_local(local_dt(yesterday_local, 10, 0)).with_timezone(&Utc),
             end_date: Some(mk_local(local_dt(yesterday_local, 11, 0)).with_timezone(&Utc)),
             location: Some("Somewhere".to_string()),
             event_type: None,
@@ -423,7 +424,7 @@ mod tests {
             id: Some(2),
             name: "Ongoing No End".to_string(),
             full_description: "Should render once".to_string(),
-            start_date: Some(mk_local(local_dt(today_local, 9, 0)).with_timezone(&Utc)),
+            start_date: mk_local(local_dt(today_local, 9, 0)).with_timezone(&Utc),
             end_date: None,
             location: Some("Somerville".to_string()),
             event_type: None,
@@ -437,7 +438,7 @@ mod tests {
             id: Some(7),
             name: "Yesterday No End".to_string(),
             full_description: "Should render under yesterday".to_string(),
-            start_date: Some(mk_local(local_dt(yesterday_local, 15, 0)).with_timezone(&Utc)),
+            start_date: mk_local(local_dt(yesterday_local, 15, 0)).with_timezone(&Utc),
             end_date: None,
             location: Some("Somerville".to_string()),
             event_type: None,
@@ -450,7 +451,7 @@ mod tests {
             id: Some(5),
             name: "Same Day 1".to_string(),
             full_description: "First event on the same day".to_string(),
-            start_date: Some(mk_local(local_dt(today_local, 10, 0)).with_timezone(&Utc)),
+            start_date: mk_local(local_dt(today_local, 10, 0)).with_timezone(&Utc),
             // No end_date so this test doesn't become time-of-day dependent.
             end_date: None,
             location: Some("Union".to_string()),
@@ -463,7 +464,7 @@ mod tests {
             id: Some(6),
             name: "Same Day 2".to_string(),
             full_description: "Second event on the same day".to_string(),
-            start_date: Some(mk_local(local_dt(today_local, 12, 0)).with_timezone(&Utc)),
+            start_date: mk_local(local_dt(today_local, 12, 0)).with_timezone(&Utc),
             // No end_date so this test doesn't become time-of-day dependent.
             end_date: None,
             location: Some("Magoun".to_string()),
@@ -477,22 +478,9 @@ mod tests {
             id: Some(3),
             name: "Multi Day".to_string(),
             full_description: "Spans multiple days".to_string(),
-            start_date: Some(mk_local(local_dt(tomorrow_local, 12, 0)).with_timezone(&Utc)),
+            start_date: mk_local(local_dt(tomorrow_local, 12, 0)).with_timezone(&Utc),
             end_date: Some(mk_local(local_dt(day_after_tomorrow_local, 13, 0)).with_timezone(&Utc)),
             location: Some("Davis".to_string()),
-            event_type: None,
-            additional_details: None,
-            confidence: 1.0,
-        };
-
-        // Missing start: should be excluded entirely.
-        let missing_start = Event {
-            id: Some(4),
-            name: "Missing Start".to_string(),
-            full_description: "Not an event".to_string(),
-            start_date: None,
-            end_date: Some(mk_local(local_dt(tomorrow_local, 10, 0)).with_timezone(&Utc)),
-            location: None,
             event_type: None,
             additional_details: None,
             confidence: 1.0,
@@ -502,7 +490,6 @@ mod tests {
         let fake_repo = FakeEventsRepo {
             events: Arc::new(vec![
                 multi_day,
-                missing_start,
                 past_event,
                 same_day_2,
                 ongoing_no_end,
