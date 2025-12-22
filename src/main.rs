@@ -155,7 +155,6 @@ mod tests {
     use chrono::{NaiveDateTime, NaiveTime, TimeZone, Utc};
     use chrono_tz::America::New_York;
     use scraper::{Html, Selector};
-    use std::path::Path;
     use std::sync::{Arc, Mutex};
 
     #[derive(Clone, Default)]
@@ -217,47 +216,6 @@ mod tests {
     }
 
     #[actix_web::test]
-    async fn test_parse_image() -> Result<()> {
-        dotenv().ok();
-        let api_key = env::var("OPENAI_API_KEY")?;
-        let tls_config = TLS_CONFIG.get_or_init(init_tls_once).clone();
-
-        let client: Client = awc::ClientBuilder::new()
-            .timeout(std::time::Duration::from_secs(120))
-            .connector(Connector::new().rustls_0_23(tls_config))
-            .finish();
-
-        let state = AppState {
-            api_key: api_key.clone(),
-            client: client.clone(),
-            password: "password".to_string(),
-            username: "username".to_string(),
-            events_repo: Box::new(FakeEventsRepo::default()),
-        };
-
-        // Actix runtime entrypoint
-        let fixed_now_utc = Utc.with_ymd_and_hms(2025, 1, 15, 17, 0, 0).unwrap();
-        // Use the public function from upload module
-        let event = crate::upload_events::parse_image_with_now(
-            Path::new("examples/dance_flyer.jpg"),
-            &state.client,
-            &state.api_key,
-            fixed_now_utc,
-        )
-        .await?;
-        assert_eq!(event.name, "Dance Therapy");
-
-        // "Database" behavior: verify we can "persist" it via the repo without touching Postgres.
-        let id = state.events_repo.insert(&event).await?;
-        let saved_event = state.events_repo.get(id).await?.expect("saved event");
-        let mut expected_event = event.clone();
-        expected_event.id = Some(id);
-        assert_eq!(saved_event, expected_event);
-
-        Ok(())
-    }
-
-    #[actix_web::test]
     async fn test_index_filters_by_category() -> Result<()> {
         let tls_config = TLS_CONFIG.get_or_init(init_tls_once).clone();
 
@@ -271,11 +229,10 @@ mod tests {
             id: Some(1),
             name: "Art Show".to_string(),
             full_description: "Paintings galore".to_string(),
-            start_date: Some(mk_local(local_dt(today_local, 11, 0)).with_timezone(&Utc)),
+            start_date: mk_local(local_dt(today_local, 11, 0)).with_timezone(&Utc),
             end_date: None,
             location: Some("Gallery".to_string()),
             event_type: Some("Art".to_string()),
-            additional_details: None,
             confidence: 1.0,
         };
 
@@ -283,11 +240,10 @@ mod tests {
             id: Some(2),
             name: "Music Night".to_string(),
             full_description: "Jazz and blues".to_string(),
-            start_date: Some(mk_local(local_dt(today_local, 19, 0)).with_timezone(&Utc)),
+            start_date: mk_local(local_dt(today_local, 19, 0)).with_timezone(&Utc),
             end_date: None,
             location: Some("Club".to_string()),
             event_type: Some("Music".to_string()),
-            additional_details: None,
             confidence: 1.0,
         };
 
@@ -347,11 +303,10 @@ mod tests {
             id: Some(1),
             name: "Past Event".to_string(),
             full_description: "Should not render".to_string(),
-            start_date: Some(mk_local(local_dt(yesterday_local, 10, 0)).with_timezone(&Utc)),
+            start_date: mk_local(local_dt(yesterday_local, 10, 0)).with_timezone(&Utc),
             end_date: Some(mk_local(local_dt(yesterday_local, 11, 0)).with_timezone(&Utc)),
             location: Some("Somewhere".to_string()),
             event_type: None,
-            additional_details: None,
             confidence: 1.0,
         };
 
@@ -360,11 +315,10 @@ mod tests {
             id: Some(2),
             name: "Ongoing No End".to_string(),
             full_description: "Should render once".to_string(),
-            start_date: Some(mk_local(local_dt(today_local, 9, 0)).with_timezone(&Utc)),
+            start_date: mk_local(local_dt(today_local, 9, 0)).with_timezone(&Utc),
             end_date: None,
             location: Some("Somerville".to_string()),
             event_type: None,
-            additional_details: None,
             confidence: 1.0,
         };
 
@@ -374,11 +328,10 @@ mod tests {
             id: Some(7),
             name: "Yesterday No End".to_string(),
             full_description: "Should render under yesterday".to_string(),
-            start_date: Some(mk_local(local_dt(yesterday_local, 15, 0)).with_timezone(&Utc)),
+            start_date: mk_local(local_dt(yesterday_local, 15, 0)).with_timezone(&Utc),
             end_date: None,
             location: Some("Somerville".to_string()),
             event_type: None,
-            additional_details: None,
             confidence: 1.0,
         };
 
@@ -387,12 +340,11 @@ mod tests {
             id: Some(5),
             name: "Same Day 1".to_string(),
             full_description: "First event on the same day".to_string(),
-            start_date: Some(mk_local(local_dt(today_local, 10, 0)).with_timezone(&Utc)),
+            start_date: mk_local(local_dt(today_local, 10, 0)).with_timezone(&Utc),
             // No end_date so this test doesn't become time-of-day dependent.
             end_date: None,
             location: Some("Union".to_string()),
             event_type: None,
-            additional_details: None,
             confidence: 1.0,
         };
 
@@ -400,12 +352,11 @@ mod tests {
             id: Some(6),
             name: "Same Day 2".to_string(),
             full_description: "Second event on the same day".to_string(),
-            start_date: Some(mk_local(local_dt(today_local, 12, 0)).with_timezone(&Utc)),
+            start_date: mk_local(local_dt(today_local, 12, 0)).with_timezone(&Utc),
             // No end_date so this test doesn't become time-of-day dependent.
             end_date: None,
             location: Some("Magoun".to_string()),
             event_type: None,
-            additional_details: None,
             confidence: 1.0,
         };
 
@@ -414,31 +365,16 @@ mod tests {
             id: Some(3),
             name: "Multi Day".to_string(),
             full_description: "Spans multiple days".to_string(),
-            start_date: Some(mk_local(local_dt(tomorrow_local, 12, 0)).with_timezone(&Utc)),
+            start_date: mk_local(local_dt(tomorrow_local, 12, 0)).with_timezone(&Utc),
             end_date: Some(mk_local(local_dt(day_after_tomorrow_local, 13, 0)).with_timezone(&Utc)),
             location: Some("Davis".to_string()),
             event_type: None,
-            additional_details: None,
-            confidence: 1.0,
-        };
-
-        // Missing start: should be excluded entirely.
-        let missing_start = Event {
-            id: Some(4),
-            name: "Missing Start".to_string(),
-            full_description: "Not an event".to_string(),
-            start_date: None,
-            end_date: Some(mk_local(local_dt(tomorrow_local, 10, 0)).with_timezone(&Utc)),
-            location: None,
-            event_type: None,
-            additional_details: None,
             confidence: 1.0,
         };
 
         // Intentionally shuffled to ensure server-side sorting/grouping is doing the work.
         let fake_repo = FakeEventsRepo::new(vec![
             multi_day,
-            missing_start,
             past_event,
             same_day_2,
             ongoing_no_end,
@@ -473,7 +409,6 @@ mod tests {
         let body_str = std::str::from_utf8(&body)?;
 
         assert!(body_str.contains("Somerville Events"));
-        assert!(!body_str.contains("Missing Start"));
         assert!(!body_str.contains("Past Event"));
 
         let document = Html::parse_document(body_str);
@@ -573,11 +508,10 @@ mod tests {
             id: Some(1),
             name: "ICal Event".to_string(),
             full_description: "Description for ICal".to_string(),
-            start_date: Some(mk_local(local_dt(today_local, 10, 0)).with_timezone(&Utc)),
+            start_date: mk_local(local_dt(today_local, 10, 0)).with_timezone(&Utc),
             end_date: Some(mk_local(local_dt(today_local, 11, 0)).with_timezone(&Utc)),
             location: Some("Virtual".to_string()),
             event_type: None,
-            additional_details: None,
             confidence: 1.0,
         };
 

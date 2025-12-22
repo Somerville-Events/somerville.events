@@ -11,6 +11,17 @@ use schemars::schema_for;
 use serde_json::json;
 use std::{fs, path::Path};
 
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+pub struct ImageEventExtraction {
+    pub name: Option<String>,
+    pub full_description: Option<String>,
+    pub start_date: Option<DateTime<Utc>>,
+    pub end_date: Option<DateTime<Utc>>,
+    pub location: Option<String>,
+    pub event_type: Option<String>,
+    pub confidence: f64,
+}
+
 #[derive(Debug, MultipartForm)]
 pub struct Upload {
     pub image: TempFile,
@@ -270,7 +281,7 @@ pub async fn save(
 
     actix_web::rt::spawn(async move {
         match parse_image(&dest_path_clone, &state.client, &state.api_key).await {
-            Ok(event) => match state.events_repo.insert(&event).await {
+            Ok(Some(event)) => match state.events_repo.insert(&event).await {
                 Ok(id) => {
                     log::info!("Saved event to database with id: {}", id);
                 }
@@ -278,6 +289,9 @@ pub async fn save(
                     log::error!("Failed to save event to database: {e:#}");
                 }
             },
+            Ok(None) => {
+                log::info!("Image processed but no event found (or missing date)");
+            }
             Err(e) => {
                 log::error!("parse_image failed: {e:#}");
             }
@@ -320,7 +334,11 @@ pub async fn success() -> HttpResponse {
         ))
 }
 
-pub async fn parse_image(image_path: &Path, client: &Client, api_key: &str) -> Result<Event> {
+pub async fn parse_image(
+    image_path: &Path,
+    client: &Client,
+    api_key: &str,
+) -> Result<Option<Event>> {
     parse_image_with_now(image_path, client, api_key, Utc::now()).await
 }
 
@@ -329,7 +347,7 @@ pub async fn parse_image_with_now(
     client: &Client,
     api_key: &str,
     now: DateTime<Utc>,
-) -> Result<Event> {
+) -> Result<Option<Event>> {
     // Read file
     let bytes =
         fs::read(image_path).map_err(|e| anyhow!("Failed to read file: {image_path:?} - {e}"))?;
@@ -344,7 +362,7 @@ pub async fn parse_image_with_now(
     let b64_data = b64.encode(&bytes);
     let data_url = format!("data:{mime_type};base64,{b64_data}");
 
-    let schema = schema_for!(Event);
+    let schema = schema_for!(ImageEventExtraction);
     let schema_str = serde_json::to_string_pretty(&schema).unwrap();
     let now_str = now.to_rfc3339();
 
@@ -360,18 +378,20 @@ pub async fn parse_image_with_now(
                     r#"You are an expert at extracting event information from images.
                     You must respond with a JSON object that matches this exact schema:
                     {schema_str}
-                    The text field should contain all readable text from the image.
-                    The confidence should be a number between 0.0 and 1.0 indicating how confident you are in the extraction.
-                    Focus on extracting event-related information like the name, date, time, location, and description.
-                    Never return multiple locations.
-                    Never return multiple event types.
-                    Today's date is {now_str}.
-                    The start_date and end_date must be RFC 3339 formatted date and time strings.
-                    Assume the event is in the future unless the text clearly indicates it is in the past.
-                    Assume the event is in the timezone of the location if provided.
-                    Assume the event is nearest to today's date if the date is ambiguous in any way.
-                    Be thorough but accurate. Return only valid JSON.
-                    Do not return the schema in your response.
+                    
+                    Instructions:
+                    - Extract as much information as possible from the image.
+                    - The full_description field should contain all readable text from the image.
+                    - The confidence should be a number between 0.0 and 1.0 indicating how confident you are in the extraction.
+                    - Focus on extracting event-related information like the name, date, time, location, and description.
+                    - Today's date is {now_str}.
+                    - The start_date and end_date must be RFC 3339 formatted date and time strings.
+                    - Assume the event is in the future unless the text clearly indicates it is in the past.
+                    - Assume the event is in the timezone of the location if provided.
+                    - If the date is ambiguous (e.g. "Friday"), assume it is the next occurrence after today's date ({now_str}).
+                    - DO NOT default the date to {now_str} if no date is found; return null instead.
+                    - Be thorough but accurate. Return only valid JSON.
+                    - Do not return the schema in your response.
                     "#
                 )
             },
@@ -416,65 +436,168 @@ pub async fn parse_image_with_now(
         .trim()
         .to_string();
 
-    log::debug!("Debug: Extracted content: {}", content);
-    // Parse and validate the structured response
+    log::debug!("Extracted content: {}", content);
     let event = parse_and_validate_response(&content)?;
     Ok(event)
 }
 
-fn parse_and_validate_response(content: &str) -> Result<Event> {
-    // First try to parse as the exact struct
-    if let Ok(result) = serde_json::from_str::<Event>(content) {
-        return Ok(result);
+fn parse_and_validate_response(content: &str) -> Result<Option<Event>> {
+    let extraction: ImageEventExtraction = match serde_json::from_str(content) {
+        Ok(e) => e,
+        Err(_e) => {
+            // If serde_json::from_str::<ImageEventExtraction>(content) fails, the error message
+            // can sometimes be ambiguous about whether the input was garbage text or just a
+            // mismatched field. This block is mostly useful for getting slightly more granular error
+            // messages for debugging.
+            let json: serde_json::Value = serde_json::from_str(content)
+                .map_err(|e| anyhow!("Failed to parse JSON: {}", e))?;
+            serde_json::from_value(json)
+                .map_err(|e| anyhow!("Failed to parse into ImageEventExtraction: {}", e))?
+        }
+    };
+
+    let name = match extraction.name {
+        Some(n) if !n.trim().is_empty() => n,
+        _ => {
+            log::info!("Extraction missing name, treating as no event");
+            return Ok(None);
+        }
+    };
+
+    let start_date = match extraction.start_date {
+        Some(d) => d,
+        None => {
+            log::info!("Extraction missing start_date, treating as no event");
+            return Ok(None);
+        }
+    };
+
+    Ok(Some(Event {
+        name,
+        start_date,
+        full_description: extraction.full_description.unwrap_or_default(),
+        end_date: extraction.end_date,
+        location: extraction.location,
+        event_type: extraction.event_type,
+        confidence: extraction.confidence,
+        id: None,
+    }))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use awc::Connector;
+    use chrono::TimeZone;
+    use dotenvy::dotenv;
+    use std::env;
+    use std::sync::{Arc, OnceLock};
+
+    static TLS_CONFIG: OnceLock<Arc<rustls::ClientConfig>> = OnceLock::new();
+
+    fn init_tls_once() -> Arc<rustls::ClientConfig> {
+        use rustls_platform_verifier::ConfigVerifierExt as _;
+
+        // Ignore error if already installed (e.g. by another test)
+        let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
+
+        let client_config = rustls::ClientConfig::with_platform_verifier()
+            .expect("Failed to create TLS client config.");
+        Arc::new(client_config)
     }
 
-    // If that fails, parse as generic JSON and clean it up
-    let mut json: serde_json::Value =
-        serde_json::from_str(content).map_err(|e| anyhow!("Failed to parse JSON: {}", e))?;
+    #[actix_web::test]
+    async fn test_parse_image() -> Result<()> {
+        dotenv().ok();
+        let api_key = env::var("OPENAI_API_KEY")?;
+        let tls_config = TLS_CONFIG.get_or_init(init_tls_once).clone();
 
-    // Remove any extra fields not in our struct
-    let allowed_fields = [
-        "name",
-        "full_description",
-        "start_date",
-        "end_date",
-        "location",
-        "event_type",
-        "additional_details",
-        "confidence",
-    ];
+        let client: Client = awc::ClientBuilder::new()
+            .timeout(std::time::Duration::from_secs(120))
+            .connector(Connector::new().rustls_0_23(tls_config))
+            .finish();
 
-    if let Some(obj) = json.as_object_mut() {
-        // Keep only allowed fields
-        let keys: Vec<String> = obj.keys().cloned().collect();
-        for key in keys {
-            if !allowed_fields.contains(&key.as_str()) {
-                obj.remove(&key);
-            }
-        }
+        let fixed_now_utc = Utc.with_ymd_and_hms(2025, 1, 15, 17, 0, 0).unwrap();
+        let event_opt = parse_image_with_now(
+            Path::new("examples/dance_flyer.jpg"),
+            &client,
+            &api_key,
+            fixed_now_utc,
+        )
+        .await?;
+        let event = event_opt.expect("Expected an event to be parsed");
+        assert!(
+            event.name.eq_ignore_ascii_case("Dance Therapy"),
+            "Name mismatch: {}",
+            event.name
+        );
+        assert_eq!(
+            event.start_date,
+            Utc.with_ymd_and_hms(2025, 6, 23, 0, 0, 0).unwrap()
+        );
 
-        // Convert lists to single values where appropriate
-        if let Some(location) = obj.get("location") {
-            if location.is_array() {
-                if let Some(arr) = location.as_array() {
-                    if !arr.is_empty() {
-                        obj.insert("location".to_string(), arr[0].clone());
-                    }
-                }
-            }
-        }
-
-        if let Some(event_type) = obj.get("event_type") {
-            if event_type.is_array() {
-                if let Some(arr) = event_type.as_array() {
-                    if !arr.is_empty() {
-                        obj.insert("event_type".to_string(), arr[0].clone());
-                    }
-                }
-            }
-        }
+        Ok(())
     }
 
-    // Now try to parse the cleaned JSON
-    serde_json::from_value(json).map_err(|e| anyhow!("Failed to parse cleaned response: {}", e))
+    #[actix_web::test]
+    async fn test_parse_not_an_event_selfie() -> Result<()> {
+        dotenv().ok();
+        let api_key = env::var("OPENAI_API_KEY")?;
+        let tls_config = TLS_CONFIG.get_or_init(init_tls_once).clone();
+
+        let client: Client = awc::ClientBuilder::new()
+            .timeout(std::time::Duration::from_secs(120))
+            .connector(Connector::new().rustls_0_23(tls_config))
+            .finish();
+
+        let fixed_now_utc = Utc.with_ymd_and_hms(2025, 1, 15, 17, 0, 0).unwrap();
+
+        // This image should NOT be parsed as an event
+        let event_opt = parse_image_with_now(
+            Path::new("examples/selfie.jpg"),
+            &client,
+            &api_key,
+            fixed_now_utc,
+        )
+        .await?;
+
+        assert!(
+            event_opt.is_none(),
+            "Expected None for selfie.jpg, but got {:?}",
+            event_opt
+        );
+
+        Ok(())
+    }
+
+    #[actix_web::test]
+    async fn test_parse_not_an_event_soda_ad() -> Result<()> {
+        dotenv().ok();
+        let api_key = env::var("OPENAI_API_KEY")?;
+        let tls_config = TLS_CONFIG.get_or_init(init_tls_once).clone();
+
+        let client: Client = awc::ClientBuilder::new()
+            .timeout(std::time::Duration::from_secs(120))
+            .connector(Connector::new().rustls_0_23(tls_config))
+            .finish();
+
+        let fixed_now_utc = Utc.with_ymd_and_hms(2025, 1, 15, 17, 0, 0).unwrap();
+
+        // This image should NOT be parsed as an event
+        let event_opt = parse_image_with_now(
+            Path::new("examples/soda_ad.jpg"),
+            &client,
+            &api_key,
+            fixed_now_utc,
+        )
+        .await?;
+
+        assert!(
+            event_opt.is_none(),
+            "Expected None for soda_ad.jpg, but got {:?}",
+            event_opt
+        );
+
+        Ok(())
+    }
 }

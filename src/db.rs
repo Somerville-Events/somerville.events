@@ -29,7 +29,6 @@ impl EventsRepo for EventsDatabase {
                 end_date,
                 location,
                 event_type,
-                additional_details,
                 confidence
             FROM app.events
             ORDER BY start_date ASC NULLS LAST
@@ -52,7 +51,6 @@ impl EventsRepo for EventsDatabase {
                 end_date,
                 location,
                 event_type,
-                additional_details,
                 confidence
             FROM app.events
             WHERE id = $1
@@ -116,10 +114,9 @@ where
             end_date,
             location,
             event_type,
-            additional_details,
             confidence
         )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+        VALUES ($1, $2, $3, $4, $5, $6, $7)
         RETURNING id
         "#,
         event.name,
@@ -128,7 +125,6 @@ where
         event.end_date,
         event.location,
         event.event_type,
-        event.additional_details.as_deref(),
         event.confidence
     )
     .fetch_one(executor)

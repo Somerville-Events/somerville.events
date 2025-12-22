@@ -162,35 +162,25 @@ pub fn render_event_html(
     is_details_view: bool,
     extra_controls: Option<&str>,
 ) -> String {
-    let when = match (event.start_date, event.end_date) {
-        (Some(start), Some(end)) => {
-            format!("{} – {}", format_datetime(start), format_datetime(end))
-        }
-        (Some(start), None) => format_datetime(start),
-        (None, Some(end)) => format_datetime(end),
-        (None, None) => "TBD".to_string(),
-    };
-
-    let when_html = match (event.start_date, event.end_date) {
-        (Some(start), Some(end)) => format!(
+    let when_html = match event.end_date {
+        Some(end) => format!(
             r#"<time datetime="{start_dt}">{start_label}</time> – <time datetime="{end_dt}">{end_label}</time>"#,
             start_dt = html_escape::encode_double_quoted_attribute(
-                &start.with_timezone(&New_York).to_rfc3339()
+                &event.start_date.with_timezone(&New_York).to_rfc3339()
             ),
-            start_label = html_escape::encode_text(&format_datetime(start)),
+            start_label = html_escape::encode_text(&format_datetime(event.start_date)),
             end_dt = html_escape::encode_double_quoted_attribute(
                 &end.with_timezone(&New_York).to_rfc3339()
             ),
             end_label = html_escape::encode_text(&format_datetime(end)),
         ),
-        (Some(start), None) => format!(
+        None => format!(
             r#"<time datetime="{start_dt}">{start_label}</time>"#,
             start_dt = html_escape::encode_double_quoted_attribute(
-                &start.with_timezone(&New_York).to_rfc3339()
+                &event.start_date.with_timezone(&New_York).to_rfc3339()
             ),
-            start_label = html_escape::encode_text(&format_datetime(start)),
+            start_label = html_escape::encode_text(&format_datetime(event.start_date)),
         ),
-        _ => html_escape::encode_text(&when).to_string(),
     };
 
     let id = event.id.unwrap_or_default();
