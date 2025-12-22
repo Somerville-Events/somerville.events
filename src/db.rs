@@ -8,6 +8,7 @@ pub trait EventsRepo: Send + Sync {
     async fn get(&self, id: i64) -> Result<Option<Event>>;
     async fn claim_idempotency_key(&self, idempotency_key: uuid::Uuid) -> Result<bool>;
     async fn insert(&self, event: &Event) -> Result<i64>;
+    async fn delete(&self, id: i64) -> Result<()>;
 }
 
 pub struct EventsDatabase {
@@ -17,22 +18,21 @@ pub struct EventsDatabase {
 #[async_trait]
 impl EventsRepo for EventsDatabase {
     async fn list(&self) -> Result<Vec<Event>> {
-        let events = sqlx::query_as!(
-            Event,
+        let events = sqlx::query_as::<_, Event>(
             r#"
-            SELECT
-                id,
-                name,
-                full_description,
-                start_date,
-                end_date,
-                location,
-                event_type,
-                additional_details,
-                confidence
-            FROM app.events
-            ORDER BY start_date ASC NULLS LAST
-            "#
+                    SELECT
+                        id,
+                        name,
+                        full_description,
+                        start_date,
+                        end_date,
+                        location,
+                        event_type,
+                        additional_details,
+                        confidence
+                    FROM app.events
+                    ORDER BY start_date ASC
+                "#,
         )
         .fetch_all(&self.pool)
         .await?;
@@ -40,39 +40,38 @@ impl EventsRepo for EventsDatabase {
     }
 
     async fn get(&self, id: i64) -> Result<Option<Event>> {
-        let event = sqlx::query_as!(
-            Event,
+        let event = sqlx::query_as::<_, Event>(
             r#"
-            SELECT
-                id,
-                name,
-                full_description,
-                start_date,
-                end_date,
-                location,
-                event_type,
-                additional_details,
-                confidence
-            FROM app.events
-            WHERE id = $1
-            "#,
-            id
+                    SELECT
+                        id,
+                        name,
+                        full_description,
+                        start_date,
+                        end_date,
+                        location,
+                        event_type,
+                        additional_details,
+                        confidence
+                    FROM app.events
+                    WHERE id = $1
+                "#,
         )
+        .bind(id)
         .fetch_optional(&self.pool)
         .await?;
         Ok(event)
     }
 
     async fn claim_idempotency_key(&self, idempotency_key: uuid::Uuid) -> Result<bool> {
-        let insert_result = sqlx::query!(
+        let insert_result = sqlx::query(
             r#"
-            INSERT INTO app.idempotency_keys (idempotency_key)
-            VALUES ($1)
-            ON CONFLICT DO NOTHING
-            RETURNING idempotency_key
+                INSERT INTO app.idempotency_keys (idempotency_key)
+                VALUES ($1)
+                ON CONFLICT DO NOTHING
+                RETURNING idempotency_key
             "#,
-            idempotency_key
         )
+        .bind(idempotency_key)
         .fetch_optional(&self.pool)
         .await?;
 
@@ -82,13 +81,31 @@ impl EventsRepo for EventsDatabase {
     async fn insert(&self, event: &Event) -> Result<i64> {
         save_event_to_db(&self.pool, event).await
     }
+
+    async fn delete(&self, id: i64) -> Result<()> {
+        let result = sqlx::query(
+            r#"
+                DELETE FROM app.events
+                WHERE id = $1
+            "#,
+        )
+        .bind(id)
+        .execute(&self.pool)
+        .await?;
+
+        if result.rows_affected() == 0 {
+            return Err(anyhow!("Event with id {} not found", id));
+        }
+
+        Ok(())
+    }
 }
 
 pub async fn save_event_to_db<'e, E>(executor: E, event: &Event) -> Result<i64>
 where
     E: sqlx::PgExecutor<'e>,
 {
-    let id = sqlx::query_scalar!(
+    let id = sqlx::query_scalar(
         r#"
         INSERT INTO app.events (
             name,
@@ -103,15 +120,15 @@ where
         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
         RETURNING id
         "#,
-        event.name,
-        event.full_description,
-        event.start_date,
-        event.end_date,
-        event.location,
-        event.event_type,
-        event.additional_details.as_deref(),
-        event.confidence
     )
+    .bind(&event.name)
+    .bind(&event.full_description)
+    .bind(event.start_date)
+    .bind(event.end_date)
+    .bind(&event.location)
+    .bind(&event.event_type)
+    .bind(event.additional_details.as_deref())
+    .bind(event.confidence)
     .fetch_one(executor)
     .await
     .map_err(|e| anyhow!("Database insert failed: {e}"))?;

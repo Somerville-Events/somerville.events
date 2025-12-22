@@ -1,88 +1,45 @@
+use crate::common_ui::{render_event_html, COMMON_STYLES};
 use crate::models::Event;
-use crate::{AppState, COMMON_STYLES};
+use crate::AppState;
 use actix_web::{http::header::ContentType, web, web::Data, HttpResponse};
 use chrono::{DateTime, Duration, NaiveDate, Utc};
 use chrono_tz::America::New_York;
 use icalendar::{Calendar, CalendarDateTime, Component, Event as IcalEvent, EventLike};
+use serde::Deserialize;
 use std::collections::BTreeMap;
 
-pub fn format_datetime(dt: DateTime<Utc>) -> String {
-    // Somerville, MA observes DST, so we use a real TZ database instead of a fixed offset.
-    dt.with_timezone(&New_York)
-        .format("%A, %B %d, %Y at %I:%M %p")
-        .to_string()
+#[derive(Deserialize)]
+pub struct IndexQuery {
+    pub category: Option<String>,
 }
 
-fn render_event_html(event: &Event, is_details_view: bool) -> String {
-    let when = match (event.start_date, event.end_date) {
-        (Some(start), Some(end)) => {
-            format!("{} – {}", format_datetime(start), format_datetime(end))
-        }
-        (Some(start), None) => format_datetime(start),
-        (None, Some(end)) => format_datetime(end),
-        (None, None) => "TBD".to_string(),
-    };
-
-    let when_html = match (event.start_date, event.end_date) {
-        (Some(start), Some(end)) => format!(
-            r#"<time datetime="{start_dt}">{start_label}</time> – <time datetime="{end_dt}">{end_label}</time>"#,
-            start_dt = html_escape::encode_double_quoted_attribute(
-                &start.with_timezone(&New_York).to_rfc3339()
-            ),
-            start_label = html_escape::encode_text(&format_datetime(start)),
-            end_dt = html_escape::encode_double_quoted_attribute(
-                &end.with_timezone(&New_York).to_rfc3339()
-            ),
-            end_label = html_escape::encode_text(&format_datetime(end)),
-        ),
-        (Some(start), None) => format!(
-            r#"<time datetime="{start_dt}">{start_label}</time>"#,
-            start_dt = html_escape::encode_double_quoted_attribute(
-                &start.with_timezone(&New_York).to_rfc3339()
-            ),
-            start_label = html_escape::encode_text(&format_datetime(start)),
-        ),
-        _ => html_escape::encode_text(&when).to_string(),
-    };
-
-    let id = event.id.unwrap_or_default();
-    let name = html_escape::encode_text(&event.name);
-    let loc_str = event.location.as_deref().unwrap_or("");
-    let location = html_escape::encode_text(loc_str);
-    let description = html_escape::encode_text(&event.full_description);
-
-    let title_html = if is_details_view {
-        format!("<h1>{}</h1>", name)
-    } else {
-        format!(r#"<h3><a href="/event/{id}.html">{name}</a></h3>"#)
-    };
-
-    format!(
-        r#"
-        <article>
-            {title_html}
-            <dl>
-                <dt>When</dt>
-                <dd>{when_html}</dd>
-                <dt>Location</dt>
-                <dd>{location}</dd>
-            </dl>
-            <p>{description}</p>
-            <p><a href="/event/{id}.ical" class="button">Add to calendar</a></p>
-        </article>
-        "#
-    )
+pub async fn index(state: Data<AppState>, query: web::Query<IndexQuery>) -> HttpResponse {
+    index_with_now(state, Utc::now(), query.into_inner().category).await
 }
 
-pub async fn index(state: Data<AppState>) -> HttpResponse {
-    index_with_now(state, Utc::now()).await
-}
-
-pub async fn index_with_now(state: Data<AppState>, now_utc: DateTime<Utc>) -> HttpResponse {
+pub async fn index_with_now(
+    state: Data<AppState>,
+    now_utc: DateTime<Utc>,
+    category: Option<String>,
+) -> HttpResponse {
     let events = state.events_repo.list().await;
 
     match events {
         Ok(events) => {
+            let filtered_events: Vec<Event> = if let Some(ref category_filter) = category {
+                events
+                    .into_iter()
+                    .filter(|event| {
+                        event
+                            .event_type
+                            .as_ref()
+                            .map(|c| c.eq_ignore_ascii_case(category_filter))
+                            .unwrap_or(false)
+                    })
+                    .collect()
+            } else {
+                events
+            };
             // We normally hide anything too far in the past, but we allow a small look-back
             // window so "no end date" events from yesterday still show up.
             let earliest_day_to_render: NaiveDate = (now_utc - Duration::days(1))
@@ -91,12 +48,8 @@ pub async fn index_with_now(state: Data<AppState>, now_utc: DateTime<Utc>) -> Ht
 
             let mut events_by_day: BTreeMap<NaiveDate, Vec<Event>> = BTreeMap::new();
 
-            for event in events {
-                // If we don't have a start date, we can't show it on a calendar-like "by day" view.
-                let Some(start) = event.start_date else {
-                    continue;
-                };
-
+            for event in filtered_events {
+                let start = event.start_date;
                 let start_day = start.with_timezone(&New_York).date_naive();
                 let (end_day, visibility_end) = match event.end_date {
                     // Events without an end date render only once (on their start day), but they
@@ -149,11 +102,21 @@ pub async fn index_with_now(state: Data<AppState>, now_utc: DateTime<Utc>) -> Ht
                 ));
 
                 for event in day_events {
-                    events_html.push_str(&render_event_html(&event, false));
+                    events_html.push_str(&render_event_html(&event, false, None));
                 }
 
                 events_html.push_str("</section>");
             }
+
+            let (page_title, filter_badge) = if let Some(ref category_filter) = category {
+                let category_label = html_escape::encode_text(category_filter);
+                (
+                    format!("Somerville {} Events", category_label),
+                    r#"<p><a class="button" href="/">Show all events</a></p>"#.to_string(),
+                )
+            } else {
+                ("Somerville Events".to_string(), String::new())
+            };
 
             HttpResponse::Ok().content_type(ContentType::html()).body(format!(
                 r#"<!doctype html>
@@ -161,24 +124,27 @@ pub async fn index_with_now(state: Data<AppState>, now_utc: DateTime<Utc>) -> Ht
                 <head>
                     <meta name="color-scheme" content="light dark">
                     <meta name="viewport" content="width=device-width, minimum-scale=1, initial-scale=1">
-                    <title>Somerville Events</title>
+                    <title>{page_title}</title>
                     <style>
                         {common_styles}
                     </style>
                 </head>
                 <body>
                     <header>
-                        <h1>Somerville Events</h1>
+                        <h1>{page_title}</h1>
                         <nav aria-label="Site">
                             <a href="/upload" class="button primary">Upload new event</a>
                         </nav>
                     </header>
                     <main>
+                        {filter_badge}
                         {events_html}
                     </main>
                 </body>
                 </html>"#,
+                page_title = page_title,
                 common_styles = COMMON_STYLES,
+                filter_badge = filter_badge,
                 events_html = events_html
             ))
         }
@@ -189,7 +155,7 @@ pub async fn index_with_now(state: Data<AppState>, now_utc: DateTime<Utc>) -> Ht
     }
 }
 
-pub async fn event_details(state: Data<AppState>, path: web::Path<i64>) -> HttpResponse {
+pub async fn show(state: Data<AppState>, path: web::Path<i64>) -> HttpResponse {
     let id = path.into_inner();
     let event = state.events_repo.get(id).await;
 
@@ -213,7 +179,7 @@ pub async fn event_details(state: Data<AppState>, path: web::Path<i64>) -> HttpR
                 </html>"#,
                 name = html_escape::encode_text(&event.name),
                 common_styles = COMMON_STYLES,
-                event_html = render_event_html(&event, true)
+                event_html = render_event_html(&event, true, None)
             ))
         }
         Ok(None) => HttpResponse::NotFound().body("Event not found"),
@@ -224,7 +190,7 @@ pub async fn event_details(state: Data<AppState>, path: web::Path<i64>) -> HttpR
     }
 }
 
-pub async fn event_ical(state: Data<AppState>, path: web::Path<i64>) -> HttpResponse {
+pub async fn ical(state: Data<AppState>, path: web::Path<i64>) -> HttpResponse {
     let id = path.into_inner();
     let event_res = state.events_repo.get(id).await;
 
@@ -239,19 +205,17 @@ pub async fn event_ical(state: Data<AppState>, path: web::Path<i64>) -> HttpResp
                 ical_event.location(&location);
             }
 
-            if let Some(start) = event.start_date {
-                let start_et = start.with_timezone(&New_York);
-                ical_event.starts(CalendarDateTime::from_date_time(start_et));
-                if let Some(end) = event.end_date {
-                    ical_event.ends(CalendarDateTime::from_date_time(
-                        end.with_timezone(&New_York),
-                    ));
-                } else {
-                    // Default to 1 hour duration if no end date
-                    ical_event.ends(CalendarDateTime::from_date_time(
-                        start_et + chrono::Duration::hours(1),
-                    ));
-                }
+            let start_et = event.start_date.with_timezone(&New_York);
+            ical_event.starts(CalendarDateTime::from_date_time(start_et));
+            if let Some(end) = event.end_date {
+                ical_event.ends(CalendarDateTime::from_date_time(
+                    end.with_timezone(&New_York),
+                ));
+            } else {
+                // Default to 1 hour duration if no end date
+                ical_event.ends(CalendarDateTime::from_date_time(
+                    start_et + chrono::Duration::hours(1),
+                ));
             }
 
             let calendar = Calendar::new().push(ical_event).done();

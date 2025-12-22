@@ -1,4 +1,6 @@
+mod common_ui;
 mod db;
+mod edit_events;
 mod models;
 mod upload_events;
 mod view_events;
@@ -11,6 +13,7 @@ use actix_web::{
     App, Error, HttpServer,
 };
 use actix_web_httpauth::{extractors::basic::BasicAuth, middleware::HttpAuthentication};
+use actix_web_query_method_middleware::QueryMethod;
 use anyhow::Result;
 use awc::{Client, Connector};
 use db::{EventsDatabase, EventsRepo};
@@ -21,144 +24,6 @@ use std::{
     env,
     sync::{Arc, OnceLock},
 };
-use upload_events::{upload, upload_success, upload_ui};
-use view_events::{event_details, event_ical, index};
-
-pub const COMMON_STYLES: &str = r#"
-    :root {
-        --link-color: light-dark(rgb(27, 50, 100),rgb(125, 148, 197));
-        
-        /* Button Colors - Adjusted for dark mode */
-        --button-bg: light-dark(#e0e0e0, #333);
-        --button-text: light-dark(#333, #eee);
-        --button-shadow-light: light-dark(rgba(255, 255, 255, 0.8), rgba(255, 255, 255, 0.1));
-        --button-shadow-dark: rgba(0, 0, 0, 0.1);
-        --button-border: light-dark(#a0a0a0, #555);
-        
-        --primary-bg: #d13a26;
-        --primary-text: #fff;
-        --primary-shadow: #8c2415;
-    }
-
-    body {
-        font-family: system-ui, sans-serif;
-        max-width: 800px;
-        margin: 0 auto;
-        padding: 1rem;
-        line-height: 1.5;
-    }
-
-    a {
-        text-decoration: none;
-        color: var(--link-color);
-    }
-
-    a:hover {
-        text-decoration: underline;
-    }
-
-    header {
-        display: flex;
-        align-items: baseline;
-        justify-content: space-between;
-        gap: 1rem;
-        flex-wrap: wrap;
-        margin-bottom: 2rem;
-    }
-
-    header h1 {
-        margin: 0;
-        font-size: 2em; 
-    }
-
-    h1 { margin-bottom: 1rem; }
-    h2 { margin-top: 2.5rem; }
-
-    section {
-        margin-bottom: 2.5rem;
-    }
-
-    article {
-        padding: 1rem 0;
-        border-top: 1px solid color-mix(in srgb, currentColor 15%, transparent);
-    }
-
-    article:first-child {
-        border-top: 0;
-    }
-
-    article dl {
-        margin: 0.5rem 0 0.75rem 0;
-        display: grid;
-        grid-template-columns: 7rem 1fr;
-        gap: 0.25rem 1rem;
-    }
-
-    article dt {
-        font-weight: 600;
-    }
-    
-    article dd {
-        margin: 0;
-    }
-
-    article p {
-        margin: 0.75rem 0;
-    }
-
-    /* Button Styling */
-    button, 
-    .button, 
-    input[type=file]::file-selector-button {
-        display: inline-block;
-        padding: 0.8rem 1.4rem;
-        font-family: system-ui, sans-serif;
-        font-size: 1rem;
-        font-weight: 600;
-        text-decoration: none;
-        text-align: center;
-        color: var(--button-text);
-        background-color: var(--button-bg);
-        border: none;
-        border-radius: 4px;
-        box-shadow: 
-            inset 1px 1px 0px var(--button-shadow-light),
-            inset -1px -1px 0px var(--button-shadow-dark),
-            0 4px 0 var(--button-border),
-            0 5px 8px rgba(0,0,0,0.2);
-        cursor: pointer;
-        transition: transform 0.1s, box-shadow 0.1s;
-    }
-
-    button:active,
-    .button:active,
-    input[type=file]::file-selector-button:active {
-        transform: translateY(4px);
-        box-shadow: 
-            inset 2px 2px 5px rgba(0, 0, 0, 0.1),
-            0 0 0 var(--button-border);
-    }
-
-    .button.primary, button.primary, button[type=submit] {
-        background-color: var(--primary-bg);
-        color: var(--primary-text);
-        box-shadow: 
-            inset 1px 1px 0px rgba(255, 255, 255, 0.2),
-            inset -1px -1px 0px rgba(0, 0, 0, 0.2),
-            0 4px 0 var(--primary-shadow),
-            0 5px 8px rgba(0,0,0,0.3);
-    }
-
-    .button.primary:active, button.primary:active, button[type=submit]:active {
-        box-shadow: 
-            inset 2px 2px 5px rgba(0, 0, 0, 0.2),
-            0 0 0 var(--primary-shadow);
-    }
-
-    .hidden {
-        display: none !important;
-    }
-    "#;
 
 pub struct AppState {
     pub api_key: String,
@@ -250,18 +115,29 @@ async fn main() -> Result<()> {
 
         App::new()
             .app_data(Data::new(state))
+            .wrap(QueryMethod::default())
             .wrap(middleware::Logger::default())
             .service(actix_files::Files::new("/static", &static_file_dir).show_files_listing())
-            .route("/", web::get().to(index))
-            .route("/event/{id}.html", web::get().to(event_details))
-            .route("/event/{id}.ical", web::get().to(event_ical))
+            .route("/", web::get().to(view_events::index))
+            .route("/event/{id}.ical", web::get().to(view_events::ical))
+            .route("/event/{id}", web::get().to(view_events::show))
             .service(
                 web::resource("/upload")
-                    .wrap(auth_middleware)
-                    .route(web::get().to(upload_ui))
-                    .route(web::post().to(upload)),
+                    .wrap(auth_middleware.clone())
+                    .route(web::get().to(upload_events::index))
+                    .route(web::post().to(upload_events::save)),
             )
-            .route("/upload-success", web::get().to(upload_success))
+            .service(
+                web::resource("/event/{id}")
+                    .wrap(auth_middleware.clone())
+                    .route(web::delete().to(edit_events::delete)),
+            )
+            .service(
+                web::scope("/edit")
+                    .wrap(auth_middleware)
+                    .route("", web::get().to(edit_events::index)),
+            )
+            .route("/upload-success", web::get().to(upload_events::success))
     })
     .bind((host, 8080))?
     .run()
@@ -282,10 +158,74 @@ mod tests {
     use std::path::Path;
     use std::sync::{Arc, Mutex};
 
+    #[derive(Clone, Default)]
+    struct FakeEventsRepo {
+        events: Arc<Mutex<Vec<Event>>>,
+        next_id: Arc<Mutex<i64>>,
+    }
+
+    impl FakeEventsRepo {
+        fn new(events: Vec<Event>) -> Self {
+            let max_id = events.iter().filter_map(|e| e.id).max().unwrap_or(0);
+            Self {
+                events: Arc::new(Mutex::new(events)),
+                next_id: Arc::new(Mutex::new(max_id)),
+            }
+        }
+    }
+
+    #[async_trait]
+    impl EventsRepo for FakeEventsRepo {
+        async fn list(&self) -> Result<Vec<Event>> {
+            Ok(self.events.lock().unwrap().clone())
+        }
+
+        async fn get(&self, id: i64) -> Result<Option<Event>> {
+            Ok(self
+                .events
+                .lock()
+                .unwrap()
+                .iter()
+                .find(|e| e.id == Some(id))
+                .cloned())
+        }
+
+        async fn claim_idempotency_key(&self, _idempotency_key: uuid::Uuid) -> Result<bool> {
+            Ok(true)
+        }
+
+        async fn insert(&self, event: &Event) -> Result<i64> {
+            let mut id_guard = self.next_id.lock().unwrap();
+            *id_guard += 1;
+            let id = *id_guard;
+
+            let mut stored = event.clone();
+            stored.id = Some(id);
+            self.events.lock().unwrap().push(stored);
+            Ok(id)
+        }
+
+        async fn delete(&self, id: i64) -> Result<()> {
+            let mut events = self.events.lock().unwrap();
+            let len_before = events.len();
+            events.retain(|e| e.id != Some(id));
+            if events.len() == len_before {
+                return Err(anyhow::anyhow!("Event not found"));
+            }
+            Ok(())
+        }
+    }
+
     #[actix_web::test]
     async fn test_parse_image() -> Result<()> {
         dotenv().ok();
-        let api_key = env::var("OPENAI_API_KEY")?;
+        let api_key = match env::var("OPENAI_API_KEY") {
+            Ok(key) => key,
+            Err(_) => {
+                eprintln!("Skipping test_parse_image because OPENAI_API_KEY is not set.");
+                return Ok(());
+            }
+        };
         let tls_config = TLS_CONFIG.get_or_init(init_tls_once).clone();
 
         let client: Client = awc::ClientBuilder::new()
@@ -293,55 +233,12 @@ mod tests {
             .connector(Connector::new().rustls_0_23(tls_config))
             .finish();
 
-        #[derive(Clone, Default)]
-        struct InMemoryEventsRepo {
-            inserted: Arc<Mutex<Vec<Event>>>,
-            next_id: Arc<Mutex<i64>>,
-        }
-
-        #[async_trait]
-        impl EventsRepo for InMemoryEventsRepo {
-            async fn list(&self) -> Result<Vec<Event>> {
-                Ok(self.inserted.lock().unwrap().clone())
-            }
-
-            async fn get(&self, id: i64) -> Result<Option<Event>> {
-                Ok(self
-                    .inserted
-                    .lock()
-                    .unwrap()
-                    .iter()
-                    .find(|e| e.id == Some(id))
-                    .cloned())
-            }
-
-            async fn claim_idempotency_key(&self, _idempotency_key: uuid::Uuid) -> Result<bool> {
-                Ok(true)
-            }
-
-            async fn insert(&self, event: &Event) -> Result<i64> {
-                let mut id_guard = self.next_id.lock().unwrap();
-                *id_guard += 1;
-                let id = *id_guard;
-
-                let mut stored = event.clone();
-                stored.id = Some(id);
-                self.inserted.lock().unwrap().push(stored);
-                Ok(id)
-            }
-        }
-
-        let repo = InMemoryEventsRepo {
-            inserted: Arc::new(Mutex::new(Vec::new())),
-            next_id: Arc::new(Mutex::new(0)),
-        };
-
         let state = AppState {
             api_key: api_key.clone(),
             client: client.clone(),
             password: "password".to_string(),
             username: "username".to_string(),
-            events_repo: Box::new(repo.clone()),
+            events_repo: Box::new(FakeEventsRepo::default()),
         };
 
         // Actix runtime entrypoint
@@ -353,7 +250,8 @@ mod tests {
             &state.api_key,
             fixed_now_utc,
         )
-        .await?;
+        .await?
+        .expect("expected an event to be parsed");
         assert_eq!(event.name, "Dance Therapy");
 
         // "Database" behavior: verify we can "persist" it via the repo without touching Postgres.
@@ -367,34 +265,80 @@ mod tests {
     }
 
     #[actix_web::test]
+    async fn test_index_filters_by_category() -> Result<()> {
+        let tls_config = TLS_CONFIG.get_or_init(init_tls_once).clone();
+
+        let now_utc = Utc.with_ymd_and_hms(2025, 1, 15, 17, 0, 0).unwrap();
+        let today_local = now_utc.with_timezone(&New_York).date_naive();
+        let mk_local = |d: NaiveDateTime| New_York.from_local_datetime(&d).single().unwrap();
+        let local_dt =
+            |date, h, m| NaiveDateTime::new(date, NaiveTime::from_hms_opt(h, m, 0).unwrap());
+
+        let art_event = Event {
+            id: Some(1),
+            name: "Art Show".to_string(),
+            full_description: "Paintings galore".to_string(),
+            start_date: mk_local(local_dt(today_local, 11, 0)).with_timezone(&Utc),
+            end_date: None,
+            location: Some("Gallery".to_string()),
+            event_type: Some("Art".to_string()),
+            additional_details: None,
+            confidence: 1.0,
+        };
+
+        let music_event = Event {
+            id: Some(2),
+            name: "Music Night".to_string(),
+            full_description: "Jazz and blues".to_string(),
+            start_date: mk_local(local_dt(today_local, 19, 0)).with_timezone(&Utc),
+            end_date: None,
+            location: Some("Club".to_string()),
+            event_type: Some("Music".to_string()),
+            additional_details: None,
+            confidence: 1.0,
+        };
+
+        let state = AppState {
+            api_key: "dummy".to_string(),
+            client: awc::ClientBuilder::new()
+                .connector(Connector::new().rustls_0_23(tls_config))
+                .finish(),
+            username: "user".to_string(),
+            password: "pass".to_string(),
+            events_repo: Box::new(FakeEventsRepo::new(vec![art_event.clone(), music_event])),
+        };
+
+        let fixed_now_utc = now_utc;
+        let filter = Some("Art".to_string());
+        let app = test::init_service(App::new().app_data(Data::new(state)).route(
+            "/",
+            web::get().to(move |state: Data<AppState>| {
+                crate::view_events::index_with_now(state, fixed_now_utc.clone(), filter.clone())
+            }),
+        ))
+        .await;
+
+        let req = test::TestRequest::get().uri("/?category=Art").to_request();
+        let resp = test::call_service(&app, req).await;
+        assert_eq!(resp.status(), actix_web::http::StatusCode::OK);
+
+        let body = test::read_body(resp).await;
+        let body_str = std::str::from_utf8(&body)?;
+
+        assert!(body_str.contains("Art Show"));
+        assert!(!body_str.contains("Music Night"));
+        assert!(body_str.contains(r#"<a href="/?category=Art">Art</a>"#));
+        assert!(body_str.contains("Somerville Art Events"));
+        assert!(body_str.contains(r#"<a class="button" href="/">Show all events</a>"#));
+
+        Ok(())
+    }
+
+    #[actix_web::test]
     async fn test_index() -> Result<()> {
         // Ensure the rustls process-level CryptoProvider is installed for tests too.
         // Otherwise, awc/rustls can panic when it first touches TLS-related internals.
         let tls_config = TLS_CONFIG.get_or_init(init_tls_once).clone();
-
-        #[derive(Clone)]
-        struct FakeEventsRepo {
-            events: Arc<Vec<Event>>,
-        }
-
-        #[async_trait]
-        impl EventsRepo for FakeEventsRepo {
-            async fn list(&self) -> Result<Vec<Event>> {
-                Ok(self.events.as_ref().clone())
-            }
-
-            async fn get(&self, id: i64) -> Result<Option<Event>> {
-                Ok(self.events.iter().find(|e| e.id == Some(id)).cloned())
-            }
-
-            async fn claim_idempotency_key(&self, _idempotency_key: uuid::Uuid) -> Result<bool> {
-                Ok(true)
-            }
-
-            async fn insert(&self, _event: &Event) -> Result<i64> {
-                Ok(1)
-            }
-        }
 
         let now_utc = Utc.with_ymd_and_hms(2025, 1, 15, 17, 0, 0).unwrap();
         let today_local = now_utc.with_timezone(&New_York).date_naive();
@@ -410,7 +354,7 @@ mod tests {
             id: Some(1),
             name: "Past Event".to_string(),
             full_description: "Should not render".to_string(),
-            start_date: Some(mk_local(local_dt(yesterday_local, 10, 0)).with_timezone(&Utc)),
+            start_date: mk_local(local_dt(yesterday_local, 10, 0)).with_timezone(&Utc),
             end_date: Some(mk_local(local_dt(yesterday_local, 11, 0)).with_timezone(&Utc)),
             location: Some("Somewhere".to_string()),
             event_type: None,
@@ -423,7 +367,7 @@ mod tests {
             id: Some(2),
             name: "Ongoing No End".to_string(),
             full_description: "Should render once".to_string(),
-            start_date: Some(mk_local(local_dt(today_local, 9, 0)).with_timezone(&Utc)),
+            start_date: mk_local(local_dt(today_local, 9, 0)).with_timezone(&Utc),
             end_date: None,
             location: Some("Somerville".to_string()),
             event_type: None,
@@ -437,7 +381,7 @@ mod tests {
             id: Some(7),
             name: "Yesterday No End".to_string(),
             full_description: "Should render under yesterday".to_string(),
-            start_date: Some(mk_local(local_dt(yesterday_local, 15, 0)).with_timezone(&Utc)),
+            start_date: mk_local(local_dt(yesterday_local, 15, 0)).with_timezone(&Utc),
             end_date: None,
             location: Some("Somerville".to_string()),
             event_type: None,
@@ -450,7 +394,7 @@ mod tests {
             id: Some(5),
             name: "Same Day 1".to_string(),
             full_description: "First event on the same day".to_string(),
-            start_date: Some(mk_local(local_dt(today_local, 10, 0)).with_timezone(&Utc)),
+            start_date: mk_local(local_dt(today_local, 10, 0)).with_timezone(&Utc),
             // No end_date so this test doesn't become time-of-day dependent.
             end_date: None,
             location: Some("Union".to_string()),
@@ -463,7 +407,7 @@ mod tests {
             id: Some(6),
             name: "Same Day 2".to_string(),
             full_description: "Second event on the same day".to_string(),
-            start_date: Some(mk_local(local_dt(today_local, 12, 0)).with_timezone(&Utc)),
+            start_date: mk_local(local_dt(today_local, 12, 0)).with_timezone(&Utc),
             // No end_date so this test doesn't become time-of-day dependent.
             end_date: None,
             location: Some("Magoun".to_string()),
@@ -477,7 +421,7 @@ mod tests {
             id: Some(3),
             name: "Multi Day".to_string(),
             full_description: "Spans multiple days".to_string(),
-            start_date: Some(mk_local(local_dt(tomorrow_local, 12, 0)).with_timezone(&Utc)),
+            start_date: mk_local(local_dt(tomorrow_local, 12, 0)).with_timezone(&Utc),
             end_date: Some(mk_local(local_dt(day_after_tomorrow_local, 13, 0)).with_timezone(&Utc)),
             location: Some("Davis".to_string()),
             event_type: None,
@@ -485,31 +429,15 @@ mod tests {
             confidence: 1.0,
         };
 
-        // Missing start: should be excluded entirely.
-        let missing_start = Event {
-            id: Some(4),
-            name: "Missing Start".to_string(),
-            full_description: "Not an event".to_string(),
-            start_date: None,
-            end_date: Some(mk_local(local_dt(tomorrow_local, 10, 0)).with_timezone(&Utc)),
-            location: None,
-            event_type: None,
-            additional_details: None,
-            confidence: 1.0,
-        };
-
         // Intentionally shuffled to ensure server-side sorting/grouping is doing the work.
-        let fake_repo = FakeEventsRepo {
-            events: Arc::new(vec![
-                multi_day,
-                missing_start,
-                past_event,
-                same_day_2,
-                ongoing_no_end,
-                same_day_1,
-                yesterday_no_end,
-            ]),
-        };
+        let fake_repo = FakeEventsRepo::new(vec![
+            multi_day,
+            past_event,
+            same_day_2,
+            ongoing_no_end,
+            same_day_1,
+            yesterday_no_end,
+        ]);
 
         let state = AppState {
             api_key: "dummy".to_string(),
@@ -525,7 +453,7 @@ mod tests {
         let app = test::init_service(App::new().app_data(Data::new(state)).route(
             "/",
             web::get().to(move |state: Data<AppState>| {
-                crate::view_events::index_with_now(state, fixed_now_utc.clone())
+                crate::view_events::index_with_now(state, fixed_now_utc.clone(), None)
             }),
         ))
         .await;
@@ -608,8 +536,8 @@ mod tests {
             .select(&event_link_sel)
             .filter_map(|a| a.value().attr("href").map(|s| s.to_string()))
             .collect();
-        assert!(links.iter().any(|h| h == "/event/2.html"));
-        assert!(links.iter().any(|h| h == "/event/3.html"));
+        assert!(links.iter().any(|h| h == "/event/2"));
+        assert!(links.iter().any(|h| h == "/event/3"));
 
         // Best-effort check that sections contain articles (semantic structure).
         assert!(
@@ -620,6 +548,97 @@ mod tests {
             }),
             "Expected section to contain article"
         );
+
+        Ok(())
+    }
+
+    #[actix_web::test]
+    async fn test_ical_endpoint() -> Result<()> {
+        let tls_config = TLS_CONFIG.get_or_init(init_tls_once).clone();
+
+        let now_utc = Utc.with_ymd_and_hms(2025, 1, 15, 17, 0, 0).unwrap();
+        let today_local = now_utc.with_timezone(&New_York).date_naive();
+        let mk_local = |d: NaiveDateTime| New_York.from_local_datetime(&d).single().unwrap();
+        let local_dt =
+            |date, h, m| NaiveDateTime::new(date, NaiveTime::from_hms_opt(h, m, 0).unwrap());
+
+        let event = Event {
+            id: Some(1),
+            name: "ICal Event".to_string(),
+            full_description: "Description for ICal".to_string(),
+            start_date: mk_local(local_dt(today_local, 10, 0)).with_timezone(&Utc),
+            end_date: Some(mk_local(local_dt(today_local, 11, 0)).with_timezone(&Utc)),
+            location: Some("Virtual".to_string()),
+            event_type: None,
+            additional_details: None,
+            confidence: 1.0,
+        };
+
+        let state = AppState {
+            api_key: "dummy".to_string(),
+            client: awc::ClientBuilder::new()
+                .connector(Connector::new().rustls_0_23(tls_config))
+                .finish(),
+            username: "user".to_string(),
+            password: "pass".to_string(),
+            events_repo: Box::new(FakeEventsRepo::new(vec![event])),
+        };
+
+        let app = test::init_service(
+            App::new()
+                .app_data(Data::new(state))
+                .route("/event/{id}.ical", web::get().to(crate::view_events::ical)),
+        )
+        .await;
+
+        let req = test::TestRequest::get().uri("/event/1.ical").to_request();
+        let resp = test::call_service(&app, req).await;
+        assert_eq!(resp.status(), actix_web::http::StatusCode::OK);
+
+        let headers = resp.headers();
+        assert_eq!(headers.get("Content-Type").unwrap(), "text/calendar");
+        assert!(headers
+            .get("Content-Disposition")
+            .unwrap()
+            .to_str()?
+            .contains("filename=\"event-1.ics\""));
+
+        let body = test::read_body(resp).await;
+        let body_str = std::str::from_utf8(&body)?;
+
+        assert!(body_str.contains("BEGIN:VCALENDAR"));
+        assert!(body_str.contains("SUMMARY:ICal Event"));
+        assert!(body_str.contains("DESCRIPTION:Description for ICal"));
+        assert!(body_str.contains("LOCATION:Virtual"));
+
+        // Date verification
+        // 2025-01-15 10:00:00 EST -> 20250115T100000
+        // 2025-01-15 11:00:00 EST -> 20250115T110000
+        // We verify that DTSTART is associated with the start time and DTEND with the end time
+        // by checking that they appear on the same line or in the expected format.
+        // The icalendar crate output format is typically: DTSTART;TZID=America/New_York:20250115T100000
+
+        let start_line = body_str
+            .lines()
+            .find(|l| l.starts_with("DTSTART"))
+            .expect("DTSTART missing");
+        assert!(
+            start_line.contains("20250115T100000"),
+            "DTSTART line does not contain expected start time: {}",
+            start_line
+        );
+
+        let end_line = body_str
+            .lines()
+            .find(|l| l.starts_with("DTEND"))
+            .expect("DTEND missing");
+        assert!(
+            end_line.contains("20250115T110000"),
+            "DTEND line does not contain expected end time: {}",
+            end_line
+        );
+
+        assert!(body_str.contains("END:VCALENDAR"));
 
         Ok(())
     }
