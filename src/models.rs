@@ -9,15 +9,13 @@ pub struct Event {
     /// The full description of the event or content
     pub full_description: String,
     /// The date and time of the event
-    pub start_date: Option<DateTime<Utc>>,
+    pub start_date: DateTime<Utc>,
     /// The end date of the event
     pub end_date: Option<DateTime<Utc>>,
     /// The location of the event
     pub location: Option<String>,
     /// Type of event (e.g., "YardSale", "Art", "Dance", "Performance", "Food", "PersonalService", "CivicEvent", "Other")
     pub event_type: Option<String>,
-    /// Any additional relevant details
-    pub additional_details: Option<Vec<String>>,
     /// Confidence level of the extraction (0.0 to 1.0)
     pub confidence: f64,
     /// Database ID (optional)

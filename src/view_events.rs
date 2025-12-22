@@ -49,10 +49,7 @@ pub async fn index_with_now(
             let mut events_by_day: BTreeMap<NaiveDate, Vec<Event>> = BTreeMap::new();
 
             for event in filtered_events {
-                // If we don't have a start date, we can't show it on a calendar-like "by day" view.
-                let Some(start) = event.start_date else {
-                    continue;
-                };
+                let start = event.start_date;
 
                 let start_day = start.with_timezone(&New_York).date_naive();
                 let (end_day, visibility_end) = match event.end_date {
@@ -209,19 +206,18 @@ pub async fn ical(state: Data<AppState>, path: web::Path<i64>) -> HttpResponse {
                 ical_event.location(&location);
             }
 
-            if let Some(start) = event.start_date {
-                let start_et = start.with_timezone(&New_York);
-                ical_event.starts(CalendarDateTime::from_date_time(start_et));
-                if let Some(end) = event.end_date {
-                    ical_event.ends(CalendarDateTime::from_date_time(
-                        end.with_timezone(&New_York),
-                    ));
-                } else {
-                    // Default to 1 hour duration if no end date
-                    ical_event.ends(CalendarDateTime::from_date_time(
-                        start_et + chrono::Duration::hours(1),
-                    ));
-                }
+            let start = event.start_date;
+            let start_et = start.with_timezone(&New_York);
+            ical_event.starts(CalendarDateTime::from_date_time(start_et));
+            if let Some(end) = event.end_date {
+                ical_event.ends(CalendarDateTime::from_date_time(
+                    end.with_timezone(&New_York),
+                ));
+            } else {
+                // Default to 1 hour duration if no end date
+                ical_event.ends(CalendarDateTime::from_date_time(
+                    start_et + chrono::Duration::hours(1),
+                ));
             }
 
             let calendar = Calendar::new().push(ical_event).done();
