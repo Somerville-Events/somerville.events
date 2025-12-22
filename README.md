@@ -45,7 +45,7 @@ Push to `main`. It will automatically build, test, and deploy the new version.
 When modifying SQL queries, you must update the offline cache since the CI runner cannot connect to the database.
 
 ```bash
-cargo sqlx prepare -- --lib
+cargo sqlx prepare
 ```
 
 You must have the GitHub secrets set up properly.
