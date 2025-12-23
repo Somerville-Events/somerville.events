@@ -268,8 +268,6 @@ pub async fn index() -> HttpResponse {
                 
                 <input type="file" name="image" accept="image/*" required>
 
-                <img alt="Selected Image Preview">
-
                 <button type="submit">Upload</button>
 
                 <div class="status-panel hidden" id="upload-status">
@@ -287,6 +285,8 @@ pub async fn index() -> HttpResponse {
                         <span>Processing your image…</span>
                     </div>
                 </div>
+
+                <img alt="Selected Image Preview">
             </form>
         </body>
         </html>"#,
