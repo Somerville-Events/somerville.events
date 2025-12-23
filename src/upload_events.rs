@@ -10,6 +10,7 @@ use chrono::{DateTime, Utc};
 use schemars::schema_for;
 use serde_json::json;
 use std::{fs, path::Path};
+use url::Url;
 
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
 pub struct ImageEventExtraction {
@@ -19,6 +20,7 @@ pub struct ImageEventExtraction {
     pub end_date: Option<DateTime<Utc>>,
     pub location: Option<String>,
     pub event_type: Option<String>,
+    pub url: Option<String>,
     pub confidence: f64,
 }
 
@@ -351,6 +353,7 @@ pub async fn parse_image_with_now(
     // Read file
     let bytes =
         fs::read(image_path).map_err(|e| anyhow!("Failed to read file: {image_path:?} - {e}"))?;
+    let qr_url = extract_qr_url(&bytes);
 
     // Guess MIME type
     let mime_type = mime_guess::from_path(image_path)
@@ -383,7 +386,7 @@ pub async fn parse_image_with_now(
                     - Extract as much information as possible from the image.
                     - The full_description field should contain all readable text from the image.
                     - The confidence should be a number between 0.0 and 1.0 indicating how confident you are in the extraction.
-                    - Focus on extracting event-related information like the name, date, time, location, and description.
+                    - Focus on extracting event-related information like the name, date, time, location, url, and description.
                     - Today's date is {now_str}.
                     - The start_date and end_date must be RFC 3339 formatted date and time strings.
                     - Assume the event is in the future unless the text clearly indicates it is in the past.
@@ -437,7 +440,15 @@ pub async fn parse_image_with_now(
         .to_string();
 
     log::debug!("Extracted content: {}", content);
-    let event = parse_and_validate_response(&content)?;
+    let mut event = parse_and_validate_response(&content)?;
+
+    if let Some(qr_url) = qr_url {
+        log::info!("QR code URL detected; overriding parsed URL with {qr_url}");
+        if let Some(event) = event.as_mut() {
+            event.url = Some(qr_url.to_string());
+        }
+    }
+
     Ok(event)
 }
 
@@ -479,9 +490,21 @@ fn parse_and_validate_response(content: &str) -> Result<Option<Event>> {
         end_date: extraction.end_date,
         location: extraction.location,
         event_type: extraction.event_type,
+        url: extraction.url,
         confidence: extraction.confidence,
         id: None,
     }))
+}
+
+fn extract_qr_url(bytes: &[u8]) -> Option<Url> {
+    let img = image::load_from_memory(bytes).ok()?.to_luma8();
+    let mut prepared = rqrr::PreparedImage::prepare(img);
+
+    prepared.detect_grids().into_iter().find_map(|grid| {
+        grid.decode()
+            .ok()
+            .and_then(|(_, content)| Url::parse(&content).ok())
+    })
 }
 
 #[cfg(test)]
@@ -575,6 +598,34 @@ mod tests {
             event_opt.is_none(),
             "Expected None for soda_ad.jpg, but got {:?}",
             event_opt
+        );
+
+        Ok(())
+    }
+
+    #[actix_web::test]
+    async fn test_parse_halloween_pet_block_party() -> Result<()> {
+        dotenv().ok();
+        let api_key = env::var("OPENAI_API_KEY")?;
+        let client = get_test_client();
+
+        let fixed_now_utc = Utc.with_ymd_and_hms(2024, 10, 1, 12, 0, 0).unwrap();
+
+        let event_opt = parse_image_with_now(
+            Path::new("examples/halloween_pet_block_party.jpg"),
+            &client,
+            &api_key,
+            fixed_now_utc,
+        )
+        .await?;
+
+        let event = event_opt.expect("Expected an event to be parsed");
+        assert!(event.url.is_some(), "Expected URL to be extracted");
+        let url = event.url.unwrap();
+
+        assert_eq!(
+            url, "https://eastsomervillemainstreets.org",
+            "URL should match QR code"
         );
 
         Ok(())

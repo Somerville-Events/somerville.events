@@ -30,10 +30,11 @@ impl EventsRepo for EventsDatabase {
                 end_date,
                 location,
                 event_type,
+                url,
                 confidence
             FROM app.events
             ORDER BY start_date ASC NULLS LAST
-            "#
+            "#,
         )
         .fetch_all(&self.pool)
         .await?;
@@ -52,11 +53,12 @@ impl EventsRepo for EventsDatabase {
                 end_date,
                 location,
                 event_type,
+                url,
                 confidence
             FROM app.events
             WHERE id = $1
             "#,
-            id
+            id,
         )
         .fetch_optional(&self.pool)
         .await?;
@@ -64,15 +66,15 @@ impl EventsRepo for EventsDatabase {
     }
 
     async fn claim_idempotency_key(&self, idempotency_key: uuid::Uuid) -> Result<bool> {
-        let insert_result = sqlx::query!(
+        let insert_result = sqlx::query(
             r#"
             INSERT INTO app.idempotency_keys (idempotency_key)
             VALUES ($1)
             ON CONFLICT DO NOTHING
             RETURNING idempotency_key
             "#,
-            idempotency_key
         )
+        .bind(idempotency_key)
         .fetch_optional(&self.pool)
         .await?;
 
@@ -84,13 +86,13 @@ impl EventsRepo for EventsDatabase {
     }
 
     async fn delete(&self, id: i64) -> Result<()> {
-        let result = sqlx::query!(
+        let result = sqlx::query(
             r#"
             DELETE FROM app.events
             WHERE id = $1
             "#,
-            id
         )
+        .bind(id)
         .execute(&self.pool)
         .await?;
 
@@ -121,9 +123,10 @@ pub async fn save_event_to_db(executor: &sqlx::Pool<sqlx::Postgres>, event: &Eve
             end_date,
             location,
             event_type,
+            url,
             confidence
         )
-        VALUES ($1, $2, $3, $4, $5, $6, $7)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
         RETURNING id
         "#,
         event.name,
@@ -132,6 +135,7 @@ pub async fn save_event_to_db(executor: &sqlx::Pool<sqlx::Postgres>, event: &Eve
         event.end_date,
         event.location,
         event.event_type,
+        event.url,
         event.confidence
     )
     .fetch_one(executor)
@@ -156,6 +160,7 @@ async fn find_duplicate(
             end_date,
             location,
             event_type,
+            url,
             confidence
         FROM app.events
         WHERE start_date = $1 
@@ -204,6 +209,7 @@ mod tests {
             end_date: None,
             location: location.map(|s| s.to_string()),
             event_type: None,
+            url: None,
             confidence: 1.0,
         }
     }

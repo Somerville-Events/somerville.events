@@ -42,6 +42,9 @@ async-trait = "0.1.89"
 actix-files = "0.6.9"
 actix-web-query-method-middleware = "1.0.1"
 strsim = "0.11"
+image = "0.25.5"
+rqrr = "0.7.1"
+url = "2.5.4"
 
 [dev-dependencies]
 scraper = "0.25.0"

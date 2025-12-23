@@ -16,6 +16,8 @@ pub struct Event {
     pub location: Option<String>,
     /// Type of event (e.g., "YardSale", "Art", "Dance", "Performance", "Food", "PersonalService", "CivicEvent", "Other")
     pub event_type: Option<String>,
+    /// URL for the event, if available
+    pub url: Option<String>,
     /// Confidence level of the extraction (0.0 to 1.0)
     pub confidence: f64,
     /// Database ID (optional)
