@@ -1,0 +1,72 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT \n            id,\n            name,\n            full_description,\n            start_date,\n            end_date,\n            location,\n            event_type,\n            url,\n            confidence\n        FROM app.events\n        WHERE start_date = $1 \n          AND end_date IS NOT DISTINCT FROM $2\n          AND location IS NOT DISTINCT FROM $3\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 1,
+        "name": "name",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 2,
+        "name": "full_description",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 3,
+        "name": "start_date",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 4,
+        "name": "end_date",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 5,
+        "name": "location",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 6,
+        "name": "event_type",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 7,
+        "name": "url",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 8,
+        "name": "confidence",
+        "type_info": "Float8"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Timestamptz",
+        "Timestamptz",
+        "Text"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      true,
+      true,
+      true,
+      true,
+      false
+    ]
+  },
+  "hash": "0109c021b4d991eec938c8c80972cdac0c0f3cec6da60ef2b67cf0e695832887"
+}
