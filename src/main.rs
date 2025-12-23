@@ -230,6 +230,7 @@ mod tests {
             end_date: None,
             location: Some("Gallery".to_string()),
             event_type: Some("Art".to_string()),
+            url: None,
             confidence: 1.0,
         };
 
@@ -241,6 +242,7 @@ mod tests {
             end_date: None,
             location: Some("Club".to_string()),
             event_type: Some("Music".to_string()),
+            url: None,
             confidence: 1.0,
         };
 
@@ -298,6 +300,7 @@ mod tests {
             end_date: Some(mk_local(local_dt(yesterday_local, 11, 0)).with_timezone(&Utc)),
             location: Some("Somewhere".to_string()),
             event_type: None,
+            url: None,
             confidence: 1.0,
         };
 
@@ -310,6 +313,7 @@ mod tests {
             end_date: None,
             location: Some("Somerville".to_string()),
             event_type: None,
+            url: None,
             confidence: 1.0,
         };
 
@@ -323,6 +327,7 @@ mod tests {
             end_date: None,
             location: Some("Somerville".to_string()),
             event_type: None,
+            url: None,
             confidence: 1.0,
         };
 
@@ -336,6 +341,7 @@ mod tests {
             end_date: None,
             location: Some("Union".to_string()),
             event_type: None,
+            url: None,
             confidence: 1.0,
         };
 
@@ -348,6 +354,7 @@ mod tests {
             end_date: None,
             location: Some("Magoun".to_string()),
             event_type: None,
+            url: None,
             confidence: 1.0,
         };
 
@@ -360,6 +367,7 @@ mod tests {
             end_date: Some(mk_local(local_dt(day_after_tomorrow_local, 13, 0)).with_timezone(&Utc)),
             location: Some("Davis".to_string()),
             event_type: None,
+            url: None,
             confidence: 1.0,
         };
 
@@ -499,6 +507,7 @@ mod tests {
             end_date: Some(mk_local(local_dt(today_local, 11, 0)).with_timezone(&Utc)),
             location: Some("Virtual".to_string()),
             event_type: None,
+            url: None,
             confidence: 1.0,
         };
 

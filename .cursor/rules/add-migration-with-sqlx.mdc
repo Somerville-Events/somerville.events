@@ -2,4 +2,4 @@
 alwaysApply: true
 ---
 
-Whenever you are considering adding a database migration, generate the database migration file with `sqlx migration add <migration-name>`, then edit the resulting sql file instead of manually adding an sql file.
+Whenever you are considering adding a database migration, generate the database migration file with `sqlx migrate add <migration-name>`, then edit the resulting sql file instead of manually adding an sql file.

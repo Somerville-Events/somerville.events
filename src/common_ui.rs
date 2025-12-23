@@ -188,6 +188,18 @@ pub fn render_event_html(
     let loc_str = event.location.as_deref().unwrap_or("");
     let location = html_escape::encode_text(loc_str);
     let description = html_escape::encode_text(&event.full_description);
+    let website_html = event
+        .url
+        .as_ref()
+        .map(|url| {
+            format!(
+                r#"<dt>Website</dt>
+            <dd><a href="{href}" rel="noopener noreferrer" target="_blank">{label}</a></dd>"#,
+                href = html_escape::encode_double_quoted_attribute(url),
+                label = html_escape::encode_text(url),
+            )
+        })
+        .unwrap_or_default();
 
     let title_html = if is_details_view {
         format!("<h1>{}</h1>", name)
@@ -222,6 +234,7 @@ pub fn render_event_html(
                         <dd>{location}</dd>
                         <dt>Category</dt>
                         <dd>{category_html}</dd>
+                        {website_html}
                     </dl>
                     <p>{description}</p>
                     <p><a href="/event/{id}.ical" class="button">Add to calendar</a></p>

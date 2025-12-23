@@ -1,0 +1,1 @@
+ALTER TABLE app.events ADD COLUMN url TEXT;
