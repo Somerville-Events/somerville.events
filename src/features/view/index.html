@@ -1,0 +1,56 @@
+{% extends "common/layout.html" %}
+
+{% block content %}
+<header>
+    <h1>{{ page_title }}</h1>
+    <nav aria-label="Site">
+        <a href="/upload" class="button primary">Upload new event</a>
+    </nav>
+</header>
+<main>
+    {% if !filter_badge.is_empty() %}
+        <p><a class="button" href="/">Show all events</a></p>
+    {% endif %}
+
+    {% for day in days %}
+    <section aria-labelledby="{{ day.day_id }}">
+        <h2 id="{{ day.day_id }}">{{ day.date_header }}</h2>
+        {% for event_vm in day.events %}
+            <article>
+                <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+                    <div style="flex-grow: 1;">
+                        <h3><a href="/event/{{ event_vm.id }}">{{ event_vm.name }}</a></h3>
+                        <dl>
+                            <dt>When</dt>
+                            <dd>
+                                <time datetime="{{ event_vm.start_iso }}">{{ event_vm.start_formatted }}</time>
+                                {% if let Some(end) = event_vm.end_formatted %}
+                                    – <time datetime="{{ event_vm.end_iso }}">{{ end }}</time>
+                                {% endif %}
+                            </dd>
+                            <dt>Location</dt>
+                            <dd>{{ event_vm.location }}</dd>
+                            <dt>Category</dt>
+                            <dd>
+                                {% if let Some((url, label)) = event_vm.category_link %}
+                                    <a href="{{ url }}">{{ label }}</a>
+                                {% else %}
+                                    Not specified
+                                {% endif %}
+                            </dd>
+                            {% if let Some((url, label)) = event_vm.website_link %}
+                                <dt>Website</dt>
+                                <dd><a href="{{ url }}" rel="noopener noreferrer" target="_blank">{{ label }}</a></dd>
+                            {% endif %}
+                        </dl>
+                        <p>{{ event_vm.description }}</p>
+                        <p><a href="/event/{{ event_vm.id }}.ical" class="button">Add to calendar</a></p>
+                    </div>
+                </div>
+            </article>
+        {% endfor %}
+    </section>
+    {% endfor %}
+</main>
+{% endblock %}
+

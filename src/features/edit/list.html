@@ -1,0 +1,39 @@
+{% extends "common/layout.html" %}
+
+{% block title %}Edit Events{% endblock %}
+
+{% block content %}
+<header>
+    <h1>Edit Events</h1>
+    <nav>
+        <a href="/">Back to Home</a>
+    </nav>
+</header>
+<section>
+    {% for event in events %}
+    <article>
+        <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+            <div style="flex-grow: 1;">
+                <h3><a href="/event/{{ event.id }}">{{ event.name }}</a></h3>
+                <dl>
+                    <dt>When</dt>
+                    <dd>
+                        <time datetime="{{ event.start_iso }}">{{ event.start_formatted }}</time>
+                        {% if let Some(end) = event.end_formatted %}
+                            – <time datetime="{{ event.end_iso }}">{{ end }}</time>
+                        {% endif %}
+                    </dd>
+                    <dt>Location</dt>
+                    <dd>{{ event.location }}</dd>
+                </dl>
+                <p>{{ event.description }}</p>
+            </div>
+            <form action="/event/{{ event.id }}?_method=DELETE" method="post" style="margin-left: 1rem;">
+                <button type="submit">Delete</button>
+            </form>
+        </div>
+    </article>
+    {% endfor %}
+</section>
+{% endblock %}
+

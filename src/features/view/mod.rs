@@ -1,30 +1,102 @@
-use crate::common_ui::{render_event_html, COMMON_STYLES};
 use crate::models::Event;
 use crate::AppState;
-use actix_web::{http::header::ContentType, web, web::Data, HttpResponse};
+use actix_web::{web, HttpResponse, Responder};
+use askama::Template;
 use chrono::{DateTime, Duration, NaiveDate, Utc};
 use chrono_tz::America::New_York;
 use icalendar::{Calendar, CalendarDateTime, Component, Event as IcalEvent, EventLike};
 use serde::Deserialize;
 use std::collections::BTreeMap;
 
+#[derive(Template)]
+#[template(path = "view/index.html")]
+struct IndexTemplate {
+    page_title: String,
+    filter_badge: String,
+    days: Vec<DaySection>,
+}
+
+#[derive(Template)]
+#[template(path = "view/show.html")]
+struct ShowTemplate {
+    event: EventViewModel,
+}
+
+struct DaySection {
+    day_id: String,
+    date_header: String,
+    events: Vec<EventViewModel>,
+}
+
+#[derive(Clone)]
+struct EventViewModel {
+    id: i64,
+    name: String,
+    start_iso: String,
+    start_formatted: String,
+    end_iso: String,
+    end_formatted: Option<String>,
+    location: String,
+    category_link: Option<(String, String)>,
+    website_link: Option<(String, String)>,
+    description: String,
+}
+
+impl EventViewModel {
+    fn from_event(event: &Event) -> Self {
+        let start_ny = event.start_date.with_timezone(&New_York);
+        let start_iso = start_ny.to_rfc3339();
+        let start_formatted = start_ny.format("%A, %B %d, %Y at %I:%M %p").to_string();
+
+        let (end_iso, end_formatted) = if let Some(end) = event.end_date {
+            let end_ny = end.with_timezone(&New_York);
+            (
+                end_ny.to_rfc3339(),
+                Some(end_ny.format("%A, %B %d, %Y at %I:%M %p").to_string()),
+            )
+        } else {
+            (String::new(), None)
+        };
+
+        let category_link = event.event_type.as_ref().map(|c| {
+             let encoded = url::form_urlencoded::byte_serialize(c.as_bytes()).collect::<String>();
+             (format!("/?category={}", encoded), c.clone())
+        });
+
+        let website_link = event.url.as_ref().map(|u| (u.clone(), u.clone()));
+
+        Self {
+            id: event.id.unwrap_or_default(),
+            name: event.name.clone(),
+            start_iso,
+            start_formatted,
+            end_iso,
+            end_formatted,
+            location: event.location.clone().unwrap_or_default(),
+            category_link,
+            website_link,
+            description: event.full_description.clone(),
+        }
+    }
+}
+
 #[derive(Deserialize)]
 pub struct IndexQuery {
     pub category: Option<String>,
 }
 
-pub async fn index(state: Data<AppState>, query: web::Query<IndexQuery>) -> HttpResponse {
+pub async fn index(state: web::Data<AppState>, query: web::Query<IndexQuery>) -> impl Responder {
     index_with_now(state, Utc::now(), query.into_inner().category).await
 }
 
 pub async fn index_with_now(
-    state: Data<AppState>,
+    state: web::Data<AppState>,
     now_utc: DateTime<Utc>,
     category: Option<String>,
-) -> HttpResponse {
-    let events = state.events_repo.list().await;
+) -> impl Responder {
+    let events_result = state.events_repo.list().await;
 
-    match events {
+    match events_result {
         Ok(events) => {
             let filtered_events: Vec<Event> = if let Some(ref category_filter) = category {
                 events
@@ -40,8 +112,7 @@ pub async fn index_with_now(
             } else {
                 events
             };
-            // We normally hide anything too far in the past, but we allow a small look-back
-            // window so "no end date" events from yesterday still show up.
+
             let earliest_day_to_render: NaiveDate = (now_utc - Duration::days(1))
                 .with_timezone(&New_York)
                 .date_naive();
@@ -50,17 +121,12 @@ pub async fn index_with_now(
 
             for event in filtered_events {
                 let start = event.start_date;
-
                 let start_day = start.with_timezone(&New_York).date_naive();
                 let (end_day, visibility_end) = match event.end_date {
-                    // Events without an end date render only once (on their start day), but they
-                    // should remain visible for up to 24h after start (so "yesterday" can show).
                     None => (start_day, start + Duration::days(1)),
                     Some(end) => (end.with_timezone(&New_York).date_naive(), end),
                 };
 
-                // "End time is in the past" is our most reliable signal. For missing end dates,
-                // we approximate an end for visibility only (see above).
                 if visibility_end < now_utc {
                     continue;
                 }
@@ -73,10 +139,8 @@ pub async fn index_with_now(
 
                 loop {
                     if day >= earliest_day_to_render {
-                        // Show spanning events multiple times: once per day they touch.
                         events_by_day.entry(day).or_default().push(event.clone());
                     }
-
                     if day == last_day {
                         break;
                     }
@@ -84,70 +148,39 @@ pub async fn index_with_now(
                 }
             }
 
-            for day_events in events_by_day.values_mut() {
+            let mut days = Vec::new();
+            for (day, mut day_events) in events_by_day {
                 day_events.sort_by(|a, b| {
                     a.start_date
                         .cmp(&b.start_date)
                         .then_with(|| a.name.cmp(&b.name))
                 });
-            }
 
-            let mut events_html = String::new();
+                let vms: Vec<EventViewModel> = day_events.iter().map(EventViewModel::from_event).collect();
 
-            for (day, day_events) in events_by_day {
-                let day_id = format!("day-{}", day.format("%Y-%m-%d"));
-                events_html.push_str(&format!(
-                    r#"<section aria-labelledby="{day_id}">
-                        <h2 id="{day_id}">{}</h2>"#,
-                    day.format("%A, %B %d, %Y")
-                ));
-
-                for event in day_events {
-                    events_html.push_str(&render_event_html(&event, false, None));
-                }
-
-                events_html.push_str("</section>");
+                days.push(DaySection {
+                    day_id: format!("day-{}", day.format("%Y-%m-%d")),
+                    date_header: day.format("%A, %B %d, %Y").to_string(),
+                    events: vms,
+                });
             }
 
             let (page_title, filter_badge) = if let Some(ref category_filter) = category {
-                let category_label = html_escape::encode_text(category_filter);
                 (
-                    format!("Somerville {} Events", category_label),
-                    r#"<p><a class="button" href="/">Show all events</a></p>"#.to_string(),
+                    format!("Somerville {} Events", category_filter),
+                    category_filter.clone(),
                 )
             } else {
                 ("Somerville Events".to_string(), String::new())
             };
 
-            HttpResponse::Ok().content_type(ContentType::html()).body(format!(
-                r#"<!doctype html>
-                <html lang="en">
-                <head>
-                    <meta name="color-scheme" content="light dark">
-                    <meta name="viewport" content="width=device-width, minimum-scale=1, initial-scale=1">
-                    <title>{page_title}</title>
-                    <style>
-                        {common_styles}
-                    </style>
-                </head>
-                <body>
-                    <header>
-                        <h1>{page_title}</h1>
-                        <nav aria-label="Site">
-                            <a href="/upload" class="button primary">Upload new event</a>
-                        </nav>
-                    </header>
-                    <main>
-                        {filter_badge}
-                        {events_html}
-                    </main>
-                </body>
-                </html>"#,
-                page_title = page_title,
-                common_styles = COMMON_STYLES,
-                filter_badge = filter_badge,
-                events_html = events_html
-            ))
+            let template = IndexTemplate {
+                page_title,
+                filter_badge,
+                days,
+            };
+
+            HttpResponse::Ok().body(template.render().unwrap())
         }
         Err(e) => {
             log::error!("Failed to fetch events: {e}");
@@ -156,32 +189,14 @@ pub async fn index_with_now(
     }
 }
 
-pub async fn show(state: Data<AppState>, path: web::Path<i64>) -> HttpResponse {
+pub async fn show(state: web::Data<AppState>, path: web::Path<i64>) -> impl Responder {
     let id = path.into_inner();
-    let event = state.events_repo.get(id).await;
-
-    match event {
+    match state.events_repo.get(id).await {
         Ok(Some(event)) => {
-            HttpResponse::Ok().content_type(ContentType::html()).body(format!(
-                r#"<!doctype html>
-                <html lang="en">
-                <head>
-                    <meta name="color-scheme" content="light dark">
-                    <meta name="viewport" content="width=device-width, minimum-scale=1, initial-scale=1">
-                    <title>{name} - Somerville Events</title>
-                    <style>
-                        {common_styles}
-                    </style>
-                </head>
-                <body>
-                    <p><a href="/">&larr; Back to Events</a></p>
-                    {event_html}
-                </body>
-                </html>"#,
-                name = html_escape::encode_text(&event.name),
-                common_styles = COMMON_STYLES,
-                event_html = render_event_html(&event, true, None)
-            ))
+            let template = ShowTemplate {
+                event: EventViewModel::from_event(&event),
+            };
+            HttpResponse::Ok().body(template.render().unwrap())
         }
         Ok(None) => HttpResponse::NotFound().body("Event not found"),
         Err(e) => {
@@ -191,11 +206,9 @@ pub async fn show(state: Data<AppState>, path: web::Path<i64>) -> HttpResponse {
     }
 }
 
-pub async fn ical(state: Data<AppState>, path: web::Path<i64>) -> HttpResponse {
+pub async fn ical(state: web::Data<AppState>, path: web::Path<i64>) -> impl Responder {
     let id = path.into_inner();
-    let event_res = state.events_repo.get(id).await;
-
-    match event_res {
+    match state.events_repo.get(id).await {
         Ok(Some(event)) => {
             let mut ical_event = IcalEvent::new();
             ical_event
@@ -214,7 +227,6 @@ pub async fn ical(state: Data<AppState>, path: web::Path<i64>) -> HttpResponse {
                     end.with_timezone(&New_York),
                 ));
             } else {
-                // Default to 1 hour duration if no end date
                 ical_event.ends(CalendarDateTime::from_date_time(
                     start_et + chrono::Duration::hours(1),
                 ));
@@ -237,3 +249,4 @@ pub async fn ical(state: Data<AppState>, path: web::Path<i64>) -> HttpResponse {
         }
     }
 }
+

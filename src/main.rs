@@ -1,9 +1,8 @@
-mod common_ui;
+mod ai;
+mod config;
 mod db;
-mod edit_events;
+mod features;
 mod models;
-mod upload_events;
-mod view_events;
 
 use actix_web::{
     dev::ServiceRequest,
@@ -16,13 +15,11 @@ use actix_web_httpauth::{extractors::basic::BasicAuth, middleware::HttpAuthentic
 use actix_web_query_method_middleware::QueryMethod;
 use anyhow::Result;
 use awc::{Client, Connector};
+use config::Config;
 use db::{EventsDatabase, EventsRepo};
 use dotenvy::dotenv;
 use sqlx::postgres::PgPoolOptions;
-use std::{
-    env,
-    sync::{Arc, OnceLock},
-};
+use std::sync::{Arc, OnceLock};
 
 pub struct AppState {
     pub api_key: String,
@@ -68,42 +65,33 @@ async fn basic_auth_validator(
 
 #[actix_web::main]
 async fn main() -> Result<()> {
-    // Load .env file if present
     dotenv().ok();
     env_logger::init_from_env(env_logger::Env::new().default_filter_or("info"));
 
-    // Read env once
-    let host = env::var("HOST").expect("HOST");
-    let api_key: String = env::var("OPENAI_API_KEY").expect("OPENAI_API_KEY");
-    let username = env::var("BASIC_AUTH_USER").expect("BASIC_AUTH_USER");
-    let password = env::var("BASIC_AUTH_PASS").expect("BASIC_AUTH_PASS");
-    let db_user = env::var("DB_APP_USER").expect("DB_APP_USER");
-    let db_password = env::var("DB_APP_USER_PASS").expect("DB_APP_USER_PASS");
-    let db_name = env::var("DB_NAME").expect("DB_NAME");
-    let static_file_dir = env::var("STATIC_FILE_DIR").unwrap_or_else(|_| "./static".to_string());
-
-    // TLS config once
+    let config = Config::from_env();
     let tls_config = TLS_CONFIG.get_or_init(init_tls_once).clone();
+    let db_url = config.get_db_url();
 
-    // Create the database connection pool once
-    let db_url = format!("postgres://{db_user}:{db_password}@localhost/{db_name}");
     let db_connection_pool = PgPoolOptions::new()
         .max_connections(5)
-        .connect(db_url.as_str())
+        .connect(&db_url)
         .await?;
 
     log::info!("Starting server at http://localhost:8080");
+
+    let host = config.host.clone();
+    let static_file_dir = config.static_file_dir.clone();
+
     HttpServer::new(move || {
-        // Build a single client per worker with shared TLS config
         let client: Client = awc::ClientBuilder::new()
             .timeout(std::time::Duration::from_secs(120))
             .connector(Connector::new().rustls_0_23(tls_config.clone()))
             .finish();
 
         let state = AppState {
-            api_key: api_key.clone(),
-            username: username.clone(),
-            password: password.clone(),
+            api_key: config.api_key.clone(),
+            username: config.username.clone(),
+            password: config.password.clone(),
             events_repo: Box::new(EventsDatabase {
                 pool: db_connection_pool.clone(),
             }),
@@ -117,26 +105,26 @@ async fn main() -> Result<()> {
             .wrap(QueryMethod::default())
             .wrap(middleware::Logger::default())
             .service(actix_files::Files::new("/static", &static_file_dir).show_files_listing())
-            .route("/", web::get().to(view_events::index))
-            .route("/event/{id}.ical", web::get().to(view_events::ical))
-            .route("/event/{id}", web::get().to(view_events::show))
+            .route("/", web::get().to(features::view::index))
+            .route("/event/{id}.ical", web::get().to(features::view::ical))
+            .route("/event/{id}", web::get().to(features::view::show))
             .service(
                 web::resource("/upload")
                     .wrap(auth_middleware.clone())
-                    .route(web::get().to(upload_events::index))
-                    .route(web::post().to(upload_events::save)),
+                    .route(web::get().to(features::upload::index))
+                    .route(web::post().to(features::upload::save)),
             )
             .service(
                 web::resource("/event/{id}")
                     .wrap(auth_middleware.clone())
-                    .route(web::delete().to(edit_events::delete)),
+                    .route(web::delete().to(features::edit::delete)),
             )
             .service(
                 web::scope("/edit")
                     .wrap(auth_middleware)
-                    .route("", web::get().to(edit_events::index)),
+                    .route("", web::get().to(features::edit::index)),
             )
-            .route("/upload-success", web::get().to(upload_events::success))
+            .route("/upload-success", web::get().to(features::upload::success))
     })
     .bind((host, 8080))?
     .run()
@@ -259,7 +247,7 @@ mod tests {
         let app = test::init_service(App::new().app_data(Data::new(state)).route(
             "/",
             web::get().to(move |state: Data<AppState>| {
-                crate::view_events::index_with_now(state, fixed_now_utc, filter.clone())
+                crate::features::view::index_with_now(state, fixed_now_utc, filter.clone())
             }),
         ))
         .await;
@@ -393,7 +381,7 @@ mod tests {
         let app = test::init_service(App::new().app_data(Data::new(state)).route(
             "/",
             web::get().to(move |state: Data<AppState>| {
-                crate::view_events::index_with_now(state, fixed_now_utc, None)
+                crate::features::view::index_with_now(state, fixed_now_utc, None)
             }),
         ))
         .await;
@@ -519,11 +507,10 @@ mod tests {
             events_repo: Box::new(FakeEventsRepo::new(vec![event])),
         };
 
-        let app = test::init_service(
-            App::new()
-                .app_data(Data::new(state))
-                .route("/event/{id}.ical", web::get().to(crate::view_events::ical)),
-        )
+        let app = test::init_service(App::new().app_data(Data::new(state)).route(
+            "/event/{id}.ical",
+            web::get().to(crate::features::view::ical),
+        ))
         .await;
 
         let req = test::TestRequest::get().uri("/event/1.ical").to_request();
