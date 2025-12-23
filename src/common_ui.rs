@@ -133,6 +133,16 @@ pub const COMMON_STYLES: &str = r#"
             0 0 0 var(--primary-shadow);
     }
 
+    button:disabled,
+    .button:disabled,
+    .button.disabled,
+    input[type=file]::file-selector-button:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+        pointer-events: none;
+        box-shadow: inset 0 0 0 1px var(--button-border);
+    }
+
     .hidden {
         display: none !important;
     }
