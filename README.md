@@ -6,8 +6,7 @@ An event website for Somerville, MA.
 
 ```
 # Install the actix-cli program that we use to run db migrations
-# including rustls for tls and support for postgres
-cargo install sqlx-cli --no-default-features --features rustls,postgres
+cargo install sqlx-cli --no-default-features --features postgres
 ```
 
 Install postgresql

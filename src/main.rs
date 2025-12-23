@@ -14,12 +14,10 @@ use actix_web::{
 use actix_web_httpauth::{extractors::basic::BasicAuth, middleware::HttpAuthentication};
 use actix_web_query_method_middleware::QueryMethod;
 use anyhow::Result;
-use awc::{Client, Connector};
+use awc::Client;
 use config::Config;
 use db::{EventsDatabase, EventsRepo};
-use dotenvy::dotenv;
 use sqlx::postgres::PgPoolOptions;
-use std::sync::{Arc, OnceLock};
 
 pub struct AppState {
     pub api_key: String,
@@ -27,22 +25,6 @@ pub struct AppState {
     pub username: String,
     pub password: String,
     pub events_repo: Box<dyn EventsRepo>,
-}
-
-pub(crate) static TLS_CONFIG: OnceLock<Arc<rustls::ClientConfig>> = OnceLock::new();
-
-pub(crate) fn init_tls_once() -> Arc<rustls::ClientConfig> {
-    use rustls_platform_verifier::ConfigVerifierExt as _;
-
-    rustls::crypto::aws_lc_rs::default_provider()
-        .install_default()
-        .unwrap();
-
-    // The benefits of the platform verifier are clear; see:
-    // https://github.com/rustls/rustls-platform-verifier#readme
-    let client_config = rustls::ClientConfig::with_platform_verifier()
-        .expect("Failed to create TLS client config.");
-    Arc::new(client_config)
 }
 
 async fn basic_auth_validator(
@@ -65,11 +47,9 @@ async fn basic_auth_validator(
 
 #[actix_web::main]
 async fn main() -> Result<()> {
-    dotenv().ok();
+    let config = Config::from_env();
     env_logger::init_from_env(env_logger::Env::new().default_filter_or("info"));
 
-    let config = Config::from_env();
-    let tls_config = TLS_CONFIG.get_or_init(init_tls_once).clone();
     let db_url = config.get_db_url();
 
     let db_connection_pool = PgPoolOptions::new()
@@ -85,7 +65,6 @@ async fn main() -> Result<()> {
     HttpServer::new(move || {
         let client: Client = awc::ClientBuilder::new()
             .timeout(std::time::Duration::from_secs(120))
-            .connector(Connector::new().rustls_0_23(tls_config.clone()))
             .finish();
 
         let state = AppState {

@@ -16,7 +16,6 @@ actix-web-httpauth = "0.8.2"
 sqlx = { version = "0.8", features = [
     "postgres",
     "runtime-tokio",
-    "tls-rustls-ring-webpki",
     "chrono",
     "uuid",
 ] }

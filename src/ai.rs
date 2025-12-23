@@ -98,7 +98,8 @@ impl AiService {
         });
 
         // Send request with the shared Actix client
-        let mut resp = self.client
+        let mut resp = self
+            .client
             .post("https://api.openai.com/v1/chat/completions")
             .insert_header(("Authorization", format!("Bearer {}", self.api_key)))
             .insert_header(("Content-Type", "application/json"))
@@ -193,3 +194,111 @@ fn extract_qr_url(bytes: &[u8]) -> Option<Url> {
     })
 }
 
+#[cfg(test)]
+mod tests {
+    use crate::config::Config;
+
+    use super::*;
+    use chrono::TimeZone;
+
+    fn get_test_client() -> Client {
+        awc::ClientBuilder::new()
+            .timeout(std::time::Duration::from_secs(120))
+            .finish()
+    }
+
+    #[actix_web::test]
+    async fn test_parse_image() -> Result<()> {
+        let config = Config::from_env();
+        let client = get_test_client();
+        let ai_service = AiService::new(client, config.api_key.clone());
+
+        let fixed_now_utc = Utc.with_ymd_and_hms(2025, 1, 15, 17, 0, 0).unwrap();
+        let event_opt = ai_service
+            .parse_image_with_now(Path::new("examples/dance_flyer.jpg"), fixed_now_utc)
+            .await?;
+        let event = event_opt.expect("Expected an event to be parsed");
+        assert!(
+            event.name.eq_ignore_ascii_case("Dance Therapy"),
+            "Name mismatch: {}",
+            event.name
+        );
+        assert_eq!(
+            event.start_date,
+            Utc.with_ymd_and_hms(2025, 6, 23, 0, 0, 0).unwrap()
+        );
+
+        Ok(())
+    }
+
+    #[actix_web::test]
+    async fn test_parse_not_an_event_selfie() -> Result<()> {
+        let config = Config::from_env();
+        let client = get_test_client();
+        let ai_service = AiService::new(client, config.api_key.clone());
+
+        let fixed_now_utc = Utc.with_ymd_and_hms(2025, 1, 15, 17, 0, 0).unwrap();
+
+        // This image should NOT be parsed as an event
+        let event_opt = ai_service
+            .parse_image_with_now(Path::new("examples/selfie.jpg"), fixed_now_utc)
+            .await?;
+
+        assert!(
+            event_opt.is_none(),
+            "Expected None for selfie.jpg, but got {:?}",
+            event_opt
+        );
+
+        Ok(())
+    }
+
+    #[actix_web::test]
+    async fn test_parse_not_an_event_soda_ad() -> Result<()> {
+        let config = Config::from_env();
+        let client = get_test_client();
+        let ai_service = AiService::new(client, config.api_key.clone());
+
+        let fixed_now_utc = Utc.with_ymd_and_hms(2025, 1, 15, 17, 0, 0).unwrap();
+
+        // This image should NOT be parsed as an event
+        let event_opt = ai_service
+            .parse_image_with_now(Path::new("examples/soda_ad.jpg"), fixed_now_utc)
+            .await?;
+
+        assert!(
+            event_opt.is_none(),
+            "Expected None for soda_ad.jpg, but got {:?}",
+            event_opt
+        );
+
+        Ok(())
+    }
+
+    #[actix_web::test]
+    async fn test_parse_halloween_pet_block_party() -> Result<()> {
+        let config = Config::from_env();
+        let client = get_test_client();
+        let ai_service = AiService::new(client, config.api_key.clone());
+
+        let fixed_now_utc = Utc.with_ymd_and_hms(2024, 10, 1, 12, 0, 0).unwrap();
+
+        let event_opt = ai_service
+            .parse_image_with_now(
+                Path::new("examples/halloween_pet_block_party.jpg"),
+                fixed_now_utc,
+            )
+            .await?;
+
+        let event = event_opt.expect("Expected an event to be parsed");
+        assert!(event.url.is_some(), "Expected URL to be extracted");
+        let url = event.url.unwrap();
+
+        assert_eq!(
+            url, "https://eastsomervillemainstreets.org",
+            "URL should match QR code"
+        );
+
+        Ok(())
+    }
+}
