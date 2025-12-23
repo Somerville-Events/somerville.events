@@ -93,15 +93,9 @@ function submitFormWithFile(file) {
     };
 
     xhr.onload = () => {
-        if (xhr.status >= 200 && xhr.status < 400) {
-            const targetUrl =
-                xhr.responseURL || xhr.getResponseHeader("Location") || "/upload-success";
-            window.location.href = targetUrl;
-            return;
-        }
-
-        window.location.href =
-            "/upload-error?message=" + encodeURIComponent("Upload failed. Please try again.");
+        const targetUrl =
+            xhr.responseURL || xhr.getResponseHeader("Location") || "/upload-success";
+        window.location.href = targetUrl;
     };
 
     xhr.onerror = () => {

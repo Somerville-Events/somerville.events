@@ -370,8 +370,7 @@ pub async fn save(
     let response = match parse_image(&dest_path, &state.client, &state.api_key).await {
         Ok(Some(event)) => match state.events_repo.insert(&event).await {
             Ok(id) => {
-                log::info!("Saved event to database with id: {}", id);
-                let location = format!("/event/{id}.html");
+                let location = format!("/event/{id}");
                 HttpResponse::SeeOther()
                     .insert_header((actix_web::http::header::LOCATION, location))
                     .finish()
