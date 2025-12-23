@@ -206,40 +206,6 @@ pub async fn index() -> HttpResponse {
                     display: none;
                     border-radius: 4px;
                 }}
-
-                /* Upload Status */
-                .status-panel {{
-                    margin-top: 1rem;
-                    display: flex;
-                    flex-direction: column;
-                    gap: 0.75rem;
-                    padding: 1rem;
-                    border: 1px solid color-mix(in srgb, currentColor 15%, transparent);
-                    border-radius: 8px;
-                    background: color-mix(in srgb, canvas 70%, currentColor 2%);
-                }}
-
-                .progress {{
-                    width: 100%;
-                    height: 12px;
-                    background: color-mix(in srgb, currentColor 10%, transparent);
-                    border-radius: 999px;
-                    overflow: hidden;
-                }}
-
-                .progress-bar {{
-                    height: 100%;
-                    width: 0%;
-                    background: var(--link-color);
-                    transition: width 0.2s ease;
-                }}
-
-                .processing {{
-                    display: flex;
-                    align-items: center;
-                    gap: 0.5rem;
-                }}
-
             </style>
         </head>
         <body class="no-camera"> <!-- Default to no-camera, upgraded by JS -->
@@ -270,20 +236,9 @@ pub async fn index() -> HttpResponse {
 
                 <button type="submit">Upload</button>
 
-                <div class="status-panel hidden" id="upload-status">
-                    <div id="progress-section">
-                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.35rem;">
-                            <strong>Uploading</strong>
-                            <span id="progress-text">0%</span>
-                        </div>
-                        <div class="progress">
-                            <div class="progress-bar" id="progress-bar"></div>
-                        </div>
-                    </div>
-                    <div class="processing hidden" id="processing-section">
-                        <span class="spinner"></span>
-                        <span>Processing your image…</span>
-                    </div>
+                <div class="status-panel hidden">
+                    <progress max="100"></progress>
+                    <output>Uploading 0%</output>
                 </div>
 
                 <img alt="Selected Image Preview">

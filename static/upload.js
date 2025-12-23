@@ -9,11 +9,9 @@ const skeleton = document.querySelector(".skeleton");
 const form = document.querySelector("form");
 const fileInput = document.querySelector('input[type="file"]');
 const imagePreview = document.querySelector("form img");
-const statusPanel = document.getElementById("upload-status");
-const progressBar = document.getElementById("progress-bar");
-const progressText = document.getElementById("progress-text");
-const processingSection = document.getElementById("processing-section");
-const progressSection = document.getElementById("progress-section");
+const statusPanel = document.querySelector(".status-panel");
+const progressBar = statusPanel?.querySelector("progress");
+const progressText = statusPanel?.querySelector("output");
 
 let stream = null;
 
@@ -29,9 +27,7 @@ if (
     !imagePreview ||
     !statusPanel ||
     !progressBar ||
-    !progressText ||
-    !processingSection ||
-    !progressSection
+    !progressText
 ) {
     throw new Error("One or more elements not found");
 }
@@ -50,20 +46,25 @@ function setButtonsDisabled(disabled) {
 }
 
 function updateProgress(percent) {
-    progressBar.style.width = `${percent}%`;
-    progressText.textContent = `${percent}%`;
+    progressBar.value = percent;
+    progressText.textContent = `Uploading ${percent}%`;
 }
 
 function showUploadProgress(percent) {
     statusPanel.classList.remove("hidden");
-    progressSection.classList.remove("hidden");
-    processingSection.classList.add("hidden");
+    progressBar.removeAttribute("value"); // Ensure it's not indeterminate initially if we set a value
+    progressBar.max = 100;
     updateProgress(percent);
+
+    // Hide submit button
+    const submitBtn = form.querySelector('button[type="submit"]');
+    if (submitBtn) submitBtn.style.display = 'none';
 }
 
 function showProcessing() {
-    progressSection.classList.add("hidden");
-    processingSection.classList.remove("hidden");
+    // Switch to indeterminate state
+    progressBar.removeAttribute("value");
+    progressText.textContent = "Processing in background. You can close this app.";
 }
 
 function submitFormWithFile(file) {
