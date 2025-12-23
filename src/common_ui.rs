@@ -145,6 +145,10 @@ pub fn format_datetime(dt: DateTime<Utc>) -> String {
         .to_string()
 }
 
+fn format_time(dt: DateTime<Utc>) -> String {
+    dt.with_timezone(&New_York).format("%I:%M %p").to_string()
+}
+
 fn percent_encode_query_value(value: &str) -> String {
     value
         .bytes()
@@ -162,25 +166,45 @@ pub fn render_event_html(
     is_details_view: bool,
     extra_controls: Option<&str>,
 ) -> String {
-    let when_html = match event.end_date {
-        Some(end) => format!(
-            r#"<time datetime="{start_dt}">{start_label}</time> – <time datetime="{end_dt}">{end_label}</time>"#,
-            start_dt = html_escape::encode_double_quoted_attribute(
-                &event.start_date.with_timezone(&New_York).to_rfc3339()
+    let start_dt = event.start_date.with_timezone(&New_York);
+    let when_html = if is_details_view {
+        match event.end_date {
+            Some(end) => {
+                let end_dt = end.with_timezone(&New_York);
+                format!(
+                    r#"<time datetime="{start_dt_attr}">{start_label}</time> – <time datetime="{end_dt_attr}">{end_label}</time>"#,
+                    start_dt_attr =
+                        html_escape::encode_double_quoted_attribute(&start_dt.to_rfc3339()),
+                    start_label = html_escape::encode_text(&format_datetime(event.start_date)),
+                    end_dt_attr = html_escape::encode_double_quoted_attribute(&end_dt.to_rfc3339()),
+                    end_label = html_escape::encode_text(&format_datetime(end)),
+                )
+            }
+            None => format!(
+                r#"<time datetime="{start_dt_attr}">{start_label}</time>"#,
+                start_dt_attr = html_escape::encode_double_quoted_attribute(&start_dt.to_rfc3339()),
+                start_label = html_escape::encode_text(&format_datetime(event.start_date)),
             ),
-            start_label = html_escape::encode_text(&format_datetime(event.start_date)),
-            end_dt = html_escape::encode_double_quoted_attribute(
-                &end.with_timezone(&New_York).to_rfc3339()
+        }
+    } else {
+        match event.end_date {
+            Some(end) => {
+                let end_dt = end.with_timezone(&New_York);
+                format!(
+                    r#"<time datetime="{start_dt_attr}">{start_label}</time> – <time datetime="{end_dt_attr}">{end_label}</time>"#,
+                    start_dt_attr =
+                        html_escape::encode_double_quoted_attribute(&start_dt.to_rfc3339()),
+                    start_label = html_escape::encode_text(&format_time(event.start_date)),
+                    end_dt_attr = html_escape::encode_double_quoted_attribute(&end_dt.to_rfc3339()),
+                    end_label = html_escape::encode_text(&format_time(end)),
+                )
+            }
+            None => format!(
+                r#"<time datetime="{start_dt_attr}">{start_label}</time>"#,
+                start_dt_attr = html_escape::encode_double_quoted_attribute(&start_dt.to_rfc3339()),
+                start_label = html_escape::encode_text(&format_time(event.start_date)),
             ),
-            end_label = html_escape::encode_text(&format_datetime(end)),
-        ),
-        None => format!(
-            r#"<time datetime="{start_dt}">{start_label}</time>"#,
-            start_dt = html_escape::encode_double_quoted_attribute(
-                &event.start_date.with_timezone(&New_York).to_rfc3339()
-            ),
-            start_label = html_escape::encode_text(&format_datetime(event.start_date)),
-        ),
+        }
     };
 
     let id = event.id.unwrap_or_default();
