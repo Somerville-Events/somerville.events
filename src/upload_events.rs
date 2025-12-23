@@ -602,4 +602,32 @@ mod tests {
 
         Ok(())
     }
+
+    #[actix_web::test]
+    async fn test_parse_halloween_pet_block_party() -> Result<()> {
+        dotenv().ok();
+        let api_key = env::var("OPENAI_API_KEY")?;
+        let client = get_test_client();
+
+        let fixed_now_utc = Utc.with_ymd_and_hms(2024, 10, 1, 12, 0, 0).unwrap();
+
+        let event_opt = parse_image_with_now(
+            Path::new("examples/halloween_pet_block_party.jpg"),
+            &client,
+            &api_key,
+            fixed_now_utc,
+        )
+        .await?;
+
+        let event = event_opt.expect("Expected an event to be parsed");
+        assert!(event.url.is_some(), "Expected URL to be extracted");
+        let url = event.url.unwrap();
+
+        assert_eq!(
+            url, "https://eastsomervillemainstreets.org",
+            "URL should match QR code"
+        );
+
+        Ok(())
+    }
 }
