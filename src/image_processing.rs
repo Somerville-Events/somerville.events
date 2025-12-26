@@ -3,15 +3,14 @@ use anyhow::{anyhow, Result};
 use awc::Client;
 use base64::{engine::general_purpose::STANDARD as b64, Engine as _};
 use chrono::{DateTime, Utc};
-use image::{DynamicImage, ImageReader};
-use log::logger;
+use image::{DynamicImage, ImageFormat, ImageReader};
 use rxing::{
     common::HybridBinarizer, qrcode::QRCodeReader, BinaryBitmap, BufferedImageLuminanceSource,
     DecodeHintValue, DecodeHints, ImmutableReader,
 };
 use schemars::schema_for;
 use serde_json::json;
-use std::{path::Path, sync::LazyLock};
+use std::{io::Cursor, path::Path, sync::LazyLock};
 use url::Url;
 
 static QR_READER: LazyLock<QRCodeReader> = LazyLock::new(QRCodeReader::default);
@@ -42,25 +41,26 @@ async fn parse_image_with_now(
     client: Client,
     api_key: &str,
 ) -> Result<Option<Event>> {
-    let image_reader = ImageReader::open(image_path)?.with_guessed_format()?;
-    let format = image_reader
-        .format()
-        .ok_or(anyhow!("Unknown image format"))?;
-    let image = image_reader.decode()?;
+    let image_bytes = std::fs::read(image_path)?;
+    let image_reader = ImageReader::new(Cursor::new(&image_bytes)).with_guessed_format()?;
 
-    // Base64 encode -> data URL
-    let mime_type = format
-        .to_mime_type()
-        .strip_prefix("image/")
-        .ok_or(anyhow!("Unknown image format"))?;
-    let b64_data = b64.encode(image.as_bytes());
-    let data_url = format!("data:{mime_type};base64,{b64_data}");
+    let format = match image_reader.format() {
+        Some(f @ (ImageFormat::Jpeg | ImageFormat::Png | ImageFormat::Gif | ImageFormat::WebP)) => {
+            f
+        }
+        _ => return Err(anyhow!("Image format must be jpg, png, gif, or webp")),
+    };
+    let image = image_reader.decode()?;
 
     // Try to deterministically extract a url for the event out of
     // any QR code that may be in the image before we toss the whole
     // image into a multi-modal machine learning model.
     let qr_url: Option<Url> = extract_qr_url(image);
 
+    // Base64 encode -> data URL
+    let mime_type = format.to_mime_type();
+    let b64_data = b64.encode(&image_bytes);
+    let data_url = format!("data:{mime_type};base64,{b64_data}");
     let schema = schema_for!(ImageEventExtraction);
     let schema_str = serde_json::to_string_pretty(&schema).unwrap();
     let now_str = now.to_rfc3339();
