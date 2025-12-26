@@ -294,27 +294,26 @@ mod tests {
     }
 
     #[actix_web::test]
-    async fn test_parse_halloween_pet_block_party() -> Result<()> {
+    async fn test_flier_with_qr_code() -> Result<()> {
         let config = Config::from_env();
         let client = get_test_client();
 
         let fixed_now_utc = Utc.with_ymd_and_hms(2024, 10, 1, 12, 0, 0).unwrap();
 
-        let event_opt = parse_image_with_now(
-            Path::new("examples/halloween_pet_block_party.jpg"),
+        let event = parse_image_with_now(
+            Path::new("examples/pumpkin_smash.jpeg"),
             fixed_now_utc,
             client,
             &config.api_key,
         )
-        .await?;
+        .await?
+        .expect("Event was not parsed");
 
-        let event = event_opt.expect("Expected an event to be parsed");
-        assert!(event.url.is_some(), "Expected URL to be extracted");
-        let url = event.url.unwrap();
+        let url = event.url.expect("Failed to decode QR code");
 
         assert_eq!(
-            url, "https://www.eastsomervillemainstreets.org/event-details/halloween-block-party-pet-spooktacular-2025-2",
-            "URL should match QR code"
+            url,
+            "https://www.somervillema.gov/events/2025/11/08/pumpkin-smash",
         );
 
         Ok(())
