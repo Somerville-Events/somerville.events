@@ -80,16 +80,18 @@ async fn parse_image_with_now(
                         
                         Instructions:
                         - Extract as much information as possible from the image.
+                        - If you are uncertain about any fields, set them to null.
                         - The full_description field should contain all readable text from the image.
                         - The confidence should be a number between 0.0 and 1.0 indicating how confident you are in the extraction.
                         - Focus on extracting event-related information like the name, date, time, location, url, and description.
-                        - If there is no obvious url, do not fill it out.
                         - Today's date is {now_str}.
                         - The start_date and end_date must be RFC 3339 formatted date and time strings.
                         - Assume the event is in the future unless the text clearly indicates it is in the past.
                         - Assume the event is in the timezone of the location if provided.
                         - If the date is ambiguous (e.g. "Friday"), assume it is the next occurrence after today's date ({now_str}).
                         - DO NOT default the date to {now_str} if no date is found; return null instead.
+                        - Do not make up a URL. Only include a URL if it is explicitly written in the image.
+                        - Do not attempt to decode QR codes. Only extract URLs that are visible as text.
                         - Be thorough but accurate. Return only valid JSON.
                         - Do not return the schema in your response.
                         "#
