@@ -1,7 +1,7 @@
-mod ai;
 mod config;
-mod db;
+mod database;
 mod features;
+mod image_processing;
 mod models;
 
 use actix_web::{
@@ -16,7 +16,7 @@ use actix_web_query_method_middleware::QueryMethod;
 use anyhow::Result;
 use awc::Client;
 use config::Config;
-use db::{EventsDatabase, EventsRepo};
+use database::{EventsDatabase, EventsRepo};
 use sqlx::postgres::PgPoolOptions;
 
 pub struct AppState {
@@ -114,7 +114,7 @@ async fn main() -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::db::EventsRepo;
+    use crate::database::EventsRepo;
     use crate::models::Event;
     use actix_web::test;
     use async_trait::async_trait;

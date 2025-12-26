@@ -3,10 +3,18 @@ use anyhow::{anyhow, Result};
 use awc::Client;
 use base64::{engine::general_purpose::STANDARD as b64, Engine as _};
 use chrono::{DateTime, Utc};
+use image::{DynamicImage, ImageReader};
+use log::logger;
+use rxing::{
+    common::HybridBinarizer, qrcode::QRCodeReader, BinaryBitmap, BufferedImageLuminanceSource,
+    DecodeHintValue, DecodeHints, ImmutableReader,
+};
 use schemars::schema_for;
 use serde_json::json;
-use std::{fs, path::Path};
+use std::{path::Path, sync::LazyLock};
 use url::Url;
+
+static QR_READER: LazyLock<QRCodeReader> = LazyLock::new(QRCodeReader::default);
 
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
 pub struct ImageEventExtraction {
@@ -20,54 +28,53 @@ pub struct ImageEventExtraction {
     pub confidence: f64,
 }
 
-pub struct AiService {
-    pub client: Client,
-    pub api_key: String,
+pub async fn parse_image(
+    image_path: &Path,
+    client: Client,
+    api_key: &str,
+) -> Result<Option<Event>> {
+    parse_image_with_now(image_path, Utc::now(), client, api_key).await
 }
 
-impl AiService {
-    pub fn new(client: Client, api_key: String) -> Self {
-        Self { client, api_key }
-    }
+async fn parse_image_with_now(
+    image_path: &Path,
+    now: DateTime<Utc>,
+    client: Client,
+    api_key: &str,
+) -> Result<Option<Event>> {
+    let image_reader = ImageReader::open(image_path)?.with_guessed_format()?;
+    let format = image_reader
+        .format()
+        .ok_or(anyhow!("Unknown image format"))?;
+    let image = image_reader.decode()?;
 
-    pub async fn parse_image(&self, image_path: &Path) -> Result<Option<Event>> {
-        self.parse_image_with_now(image_path, Utc::now()).await
-    }
+    // Base64 encode -> data URL
+    let mime_type = format
+        .to_mime_type()
+        .strip_prefix("image/")
+        .ok_or(anyhow!("Unknown image format"))?;
+    let b64_data = b64.encode(image.as_bytes());
+    let data_url = format!("data:{mime_type};base64,{b64_data}");
 
-    pub async fn parse_image_with_now(
-        &self,
-        image_path: &Path,
-        now: DateTime<Utc>,
-    ) -> Result<Option<Event>> {
-        // Read file
-        let bytes = fs::read(image_path)
-            .map_err(|e| anyhow!("Failed to read file: {image_path:?} - {e}"))?;
-        let qr_url = extract_qr_url(&bytes);
+    // Try to deterministically extract a url for the event out of
+    // any QR code that may be in the image before we toss the whole
+    // image into a multi-modal machine learning model.
+    let qr_url: Option<Url> = extract_qr_url(image);
 
-        // Guess MIME type
-        let mime_type = mime_guess::from_path(image_path)
-            .first_raw()
-            .map(|m| m.to_string())
-            .unwrap_or_else(|| "image/png".to_string());
+    let schema = schema_for!(ImageEventExtraction);
+    let schema_str = serde_json::to_string_pretty(&schema).unwrap();
+    let now_str = now.to_rfc3339();
 
-        // Base64 encode -> data URL
-        let b64_data = b64.encode(&bytes);
-        let data_url = format!("data:{mime_type};base64,{b64_data}");
-
-        let schema = schema_for!(ImageEventExtraction);
-        let schema_str = serde_json::to_string_pretty(&schema).unwrap();
-        let now_str = now.to_rfc3339();
-
-        // Build Chat Completions payload with instructor format
-        let payload = json!({
-            "model": "gpt-4o-mini",
-            "temperature": 0,
-            "response_format": { "type": "json_object" },
-            "messages": [
-                {
-                    "role": "system",
-                    "content": format!(
-                        r#"You are an expert at extracting event information from images.
+    // Build Chat Completions payload with instructor format
+    let payload = json!({
+        "model": "gpt-4o-mini",
+        "temperature": 0,
+        "response_format": { "type": "json_object" },
+        "messages": [
+            {
+                "role": "system",
+                "content": format!(
+                    r#"You are an expert at extracting event information from images.
                         You must respond with a JSON object that matches this exact schema:
                         {schema_str}
                         
@@ -76,6 +83,7 @@ impl AiService {
                         - The full_description field should contain all readable text from the image.
                         - The confidence should be a number between 0.0 and 1.0 indicating how confident you are in the extraction.
                         - Focus on extracting event-related information like the name, date, time, location, url, and description.
+                        - If there is no obvious url, do not fill it out.
                         - Today's date is {now_str}.
                         - The start_date and end_date must be RFC 3339 formatted date and time strings.
                         - Assume the event is in the future unless the text clearly indicates it is in the past.
@@ -85,62 +93,60 @@ impl AiService {
                         - Be thorough but accurate. Return only valid JSON.
                         - Do not return the schema in your response.
                         "#
-                    )
-                },
-                {
-                    "role": "user",
-                    "content": [
-                        { "type": "text", "text": "Extract all text from this image and return it in the specified JSON format." },
-                        { "type": "image_url", "image_url": { "url": data_url } }
-                    ]
-                }
-            ]
-        });
-
-        // Send request with the shared Actix client
-        let mut resp = self
-            .client
-            .post("https://api.openai.com/v1/chat/completions")
-            .insert_header(("Authorization", format!("Bearer {}", self.api_key)))
-            .insert_header(("Content-Type", "application/json"))
-            .send_json(&payload)
-            .await
-            .map_err(|e| anyhow!("HTTP request failed: {e}"))?;
-
-        let body = resp
-            .body()
-            .await
-            .map_err(|e| anyhow!("Failed to read response body: {e}"))?;
-
-        if !resp.status().is_success() {
-            return Err(anyhow!(
-                "OpenAI API error ({}): {}",
-                resp.status(),
-                String::from_utf8_lossy(&body)
-            ));
-        }
-
-        let json: serde_json::Value = serde_json::from_slice(&body)
-            .map_err(|e| anyhow!("Failed to parse JSON response: {}", e))?;
-
-        let content = json["choices"][0]["message"]["content"]
-            .as_str()
-            .unwrap_or("")
-            .trim()
-            .to_string();
-
-        log::debug!("Extracted content: {}", content);
-        let mut event = parse_and_validate_response(&content)?;
-
-        if let Some(qr_url) = qr_url {
-            log::info!("QR code URL detected; overriding parsed URL with {qr_url}");
-            if let Some(event) = event.as_mut() {
-                event.url = Some(qr_url.to_string());
+                )
+            },
+            {
+                "role": "user",
+                "content": [
+                    { "type": "text", "text": "Extract all text from this image and return it in the specified JSON format." },
+                    { "type": "image_url", "image_url": { "url": data_url } }
+                ]
             }
-        }
+        ]
+    });
 
-        Ok(event)
+    // Send request with the shared Actix client
+    let mut resp = client
+        .post("https://api.openai.com/v1/chat/completions")
+        .insert_header(("Authorization", format!("Bearer {api_key}")))
+        .insert_header(("Content-Type", "application/json"))
+        .send_json(&payload)
+        .await
+        .map_err(|e| anyhow!("HTTP request failed: {e}"))?;
+
+    let body = resp
+        .body()
+        .await
+        .map_err(|e| anyhow!("Failed to read response body: {e}"))?;
+
+    if !resp.status().is_success() {
+        return Err(anyhow!(
+            "OpenAI API error ({}): {}",
+            resp.status(),
+            String::from_utf8_lossy(&body)
+        ));
     }
+
+    let json: serde_json::Value = serde_json::from_slice(&body)
+        .map_err(|e| anyhow!("Failed to parse JSON response: {}", e))?;
+
+    let content = json["choices"][0]["message"]["content"]
+        .as_str()
+        .unwrap_or("")
+        .trim()
+        .to_string();
+
+    log::debug!("Extracted content: {}", content);
+    let mut event = parse_and_validate_response(&content)?;
+
+    if let Some(qr_url) = qr_url {
+        log::info!("QR code URL detected; overriding parsed URL with {qr_url}");
+        if let Some(event) = event.as_mut() {
+            event.url = Some(qr_url.to_string());
+        }
+    }
+
+    Ok(event)
 }
 
 fn parse_and_validate_response(content: &str) -> Result<Option<Event>> {
@@ -183,15 +189,16 @@ fn parse_and_validate_response(content: &str) -> Result<Option<Event>> {
     }))
 }
 
-fn extract_qr_url(bytes: &[u8]) -> Option<Url> {
-    let img = image::load_from_memory(bytes).ok()?.to_luma8();
-    let mut prepared = rqrr::PreparedImage::prepare(img);
+fn extract_qr_url(image: DynamicImage) -> Option<Url> {
+    let luminance = BufferedImageLuminanceSource::new(image);
+    let binarizer = HybridBinarizer::new(luminance);
+    let mut binary_image = BinaryBitmap::new(binarizer);
+    let hints = DecodeHints::default().with(DecodeHintValue::TryHarder(true));
 
-    prepared.detect_grids().into_iter().find_map(|grid| {
-        grid.decode()
-            .ok()
-            .and_then(|(_, content)| Url::parse(&content).ok())
-    })
+    match QR_READER.immutable_decode_with_hints(&mut binary_image, &hints) {
+        Ok(result) => Url::parse(result.getText()).ok(),
+        Err(_) => None,
+    }
 }
 
 #[cfg(test)]
@@ -211,12 +218,15 @@ mod tests {
     async fn test_parse_image() -> Result<()> {
         let config = Config::from_env();
         let client = get_test_client();
-        let ai_service = AiService::new(client, config.api_key.clone());
 
         let fixed_now_utc = Utc.with_ymd_and_hms(2025, 1, 15, 17, 0, 0).unwrap();
-        let event_opt = ai_service
-            .parse_image_with_now(Path::new("examples/dance_flyer.jpg"), fixed_now_utc)
-            .await?;
+        let event_opt = parse_image_with_now(
+            Path::new("examples/dance_flyer.jpg"),
+            fixed_now_utc,
+            client,
+            &config.api_key,
+        )
+        .await?;
         let event = event_opt.expect("Expected an event to be parsed");
         assert!(
             event.name.eq_ignore_ascii_case("Dance Therapy"),
@@ -235,14 +245,17 @@ mod tests {
     async fn test_parse_not_an_event_selfie() -> Result<()> {
         let config = Config::from_env();
         let client = get_test_client();
-        let ai_service = AiService::new(client, config.api_key.clone());
 
         let fixed_now_utc = Utc.with_ymd_and_hms(2025, 1, 15, 17, 0, 0).unwrap();
 
         // This image should NOT be parsed as an event
-        let event_opt = ai_service
-            .parse_image_with_now(Path::new("examples/selfie.jpg"), fixed_now_utc)
-            .await?;
+        let event_opt = parse_image_with_now(
+            Path::new("examples/selfie.jpg"),
+            fixed_now_utc,
+            client,
+            &config.api_key,
+        )
+        .await?;
 
         assert!(
             event_opt.is_none(),
@@ -257,14 +270,17 @@ mod tests {
     async fn test_parse_not_an_event_soda_ad() -> Result<()> {
         let config = Config::from_env();
         let client = get_test_client();
-        let ai_service = AiService::new(client, config.api_key.clone());
 
         let fixed_now_utc = Utc.with_ymd_and_hms(2025, 1, 15, 17, 0, 0).unwrap();
 
         // This image should NOT be parsed as an event
-        let event_opt = ai_service
-            .parse_image_with_now(Path::new("examples/soda_ad.jpg"), fixed_now_utc)
-            .await?;
+        let event_opt = parse_image_with_now(
+            Path::new("examples/soda_ad.jpg"),
+            fixed_now_utc,
+            client,
+            &config.api_key,
+        )
+        .await?;
 
         assert!(
             event_opt.is_none(),
@@ -279,26 +295,35 @@ mod tests {
     async fn test_parse_halloween_pet_block_party() -> Result<()> {
         let config = Config::from_env();
         let client = get_test_client();
-        let ai_service = AiService::new(client, config.api_key.clone());
 
         let fixed_now_utc = Utc.with_ymd_and_hms(2024, 10, 1, 12, 0, 0).unwrap();
 
-        let event_opt = ai_service
-            .parse_image_with_now(
-                Path::new("examples/halloween_pet_block_party.jpg"),
-                fixed_now_utc,
-            )
-            .await?;
+        let event_opt = parse_image_with_now(
+            Path::new("examples/halloween_pet_block_party.jpg"),
+            fixed_now_utc,
+            client,
+            &config.api_key,
+        )
+        .await?;
 
         let event = event_opt.expect("Expected an event to be parsed");
         assert!(event.url.is_some(), "Expected URL to be extracted");
         let url = event.url.unwrap();
 
         assert_eq!(
-            url, "https://eastsomervillemainstreets.org",
+            url, "https://www.eastsomervillemainstreets.org/event-details/halloween-block-party-pet-spooktacular-2025-2",
             "URL should match QR code"
         );
 
+        Ok(())
+    }
+
+    #[test]
+    fn test_qr_decode_poster() -> Result<()> {
+        let img = image::open("examples/large_qr_code_poster.jpg")?;
+        let url = extract_qr_url(img).expect("Failed to decode QR code");
+        let expected = Url::parse("https://www.eastsomervillemainstreets.org/event-details/halloween-block-party-pet-spooktacular-2025-2")?;
+        assert_eq!(url, expected);
         Ok(())
     }
 }

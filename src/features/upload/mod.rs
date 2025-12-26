@@ -1,4 +1,4 @@
-use crate::ai::AiService;
+use crate::image_processing::parse_image;
 use crate::AppState;
 use actix_multipart::form::{tempfile::TempFile, MultipartForm};
 use actix_web::{web, HttpResponse, Responder};
@@ -70,10 +70,7 @@ pub async fn save(
     let dest_path_clone = dest_path.clone();
 
     actix_web::rt::spawn(async move {
-        // Construct AiService from state
-        let ai_service = AiService::new(state.client.clone(), state.api_key.clone());
-
-        match ai_service.parse_image(&dest_path_clone).await {
+        match parse_image(&dest_path_clone, state.client.clone(), &state.api_key).await {
             Ok(Some(event)) => match state.events_repo.insert(&event).await {
                 Ok(id) => {
                     log::info!("Saved event to database with id: {}", id);
@@ -90,7 +87,6 @@ pub async fn save(
             }
         }
 
-        // Cleanup
         if let Err(e) = fs::remove_file(&dest_path_clone) {
             log::warn!("Failed to remove temp file {:?}: {}", dest_path_clone, e);
         }
@@ -105,4 +101,3 @@ pub async fn success() -> impl Responder {
     let template = SuccessTemplate;
     HttpResponse::Ok().body(template.render().unwrap())
 }
-
