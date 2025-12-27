@@ -113,11 +113,15 @@ async fn main() -> Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::models::{Event, EventType};
-    use actix_web::test;
+    use super::database::EventsRepo;
+    use super::features::view::IndexQuery;
+    use super::models::{Event, EventType};
+    use super::AppState;
+    use actix_web::web::Data;
+    use actix_web::{test, web, App};
+    use anyhow::Result;
     use async_trait::async_trait;
-    use chrono::{DateTime, NaiveDateTime, NaiveTime, TimeZone, Utc};
+    use chrono::{DateTime, NaiveDateTime, NaiveTime, TimeZone, Timelike, Utc};
     use chrono_tz::America::New_York;
     use scraper::{Html, Selector};
     use std::sync::{Arc, Mutex};
@@ -211,17 +215,17 @@ mod tests {
 
     #[actix_web::test]
     async fn test_index_filters_by_category() -> Result<()> {
+        // 2025-01-15 17:00:00 UTC = 12:00:00 EST
         let now_utc = Utc.with_ymd_and_hms(2025, 1, 15, 17, 0, 0).unwrap();
-        let today_local = now_utc.with_timezone(&New_York).date_naive();
-        let mk_local = |d: NaiveDateTime| New_York.from_local_datetime(&d).single().unwrap();
-        let local_dt =
-            |date, h, m| NaiveDateTime::new(date, NaiveTime::from_hms_opt(h, m, 0).unwrap());
+
+        // Helper to create a NY datetime
+        let mk_ny = |d, h, m| New_York.with_ymd_and_hms(2025, 1, d, h, m, 0).unwrap();
 
         let art_event = Event {
             id: Some(1),
             name: "Art Show".to_string(),
             full_description: "Paintings galore".to_string(),
-            start_date: mk_local(local_dt(today_local, 11, 0)).with_timezone(&Utc),
+            start_date: mk_ny(15, 11, 0).with_timezone(&Utc),
             end_date: None,
             location: Some("Gallery".to_string()),
             event_type: Some(EventType::Art),
@@ -233,7 +237,7 @@ mod tests {
             id: Some(2),
             name: "Music Night".to_string(),
             full_description: "Jazz and blues".to_string(),
-            start_date: mk_local(local_dt(today_local, 19, 0)).with_timezone(&Utc),
+            start_date: mk_ny(15, 19, 0).with_timezone(&Utc),
             end_date: None,
             location: Some("Club".to_string()),
             event_type: Some(EventType::Music),
@@ -254,7 +258,14 @@ mod tests {
         let app = test::init_service(App::new().app_data(Data::new(state)).route(
             "/",
             web::get().to(move |state: Data<AppState>| {
-                crate::features::view::index_with_now(state, fixed_now_utc, filter.clone())
+                crate::features::view::index_with_now(
+                    state,
+                    fixed_now_utc,
+                    IndexQuery {
+                        category: filter.clone(),
+                        past: None,
+                    },
+                )
             }),
         ))
         .await;
@@ -388,7 +399,14 @@ mod tests {
         let app = test::init_service(App::new().app_data(Data::new(state)).route(
             "/",
             web::get().to(move |state: Data<AppState>| {
-                crate::features::view::index_with_now(state, fixed_now_utc, None)
+                crate::features::view::index_with_now(
+                    state,
+                    fixed_now_utc,
+                    IndexQuery {
+                        category: None,
+                        past: None,
+                    },
+                )
             }),
         ))
         .await;
@@ -488,18 +506,14 @@ mod tests {
 
     #[actix_web::test]
     async fn test_ical_endpoint() -> Result<()> {
-        let now_utc = Utc.with_ymd_and_hms(2025, 1, 15, 17, 0, 0).unwrap();
-        let today_local = now_utc.with_timezone(&New_York).date_naive();
-        let mk_local = |d: NaiveDateTime| New_York.from_local_datetime(&d).single().unwrap();
-        let local_dt =
-            |date, h, m| NaiveDateTime::new(date, NaiveTime::from_hms_opt(h, m, 0).unwrap());
+        let today_start = New_York.with_ymd_and_hms(2025, 1, 15, 0, 0, 0).unwrap();
 
         let event = Event {
             id: Some(1),
             name: "ICal Event".to_string(),
             full_description: "Description for ICal".to_string(),
-            start_date: mk_local(local_dt(today_local, 10, 0)).with_timezone(&Utc),
-            end_date: Some(mk_local(local_dt(today_local, 11, 0)).with_timezone(&Utc)),
+            start_date: today_start.with_hour(10).unwrap().with_timezone(&Utc),
+            end_date: Some(today_start.with_hour(11).unwrap().with_timezone(&Utc)),
             location: Some("Virtual".to_string()),
             event_type: None,
             url: None,
@@ -569,6 +583,61 @@ mod tests {
 
         assert!(body_str.contains("END:VCALENDAR"));
 
+        Ok(())
+    }
+
+    #[actix_web::test]
+    async fn test_event_time_display_timezone() -> Result<()> {
+        let event = Event {
+            id: Some(1),
+            name: "Pumpkin Smash".to_string(),
+            full_description: "Smash pumpkins".to_string(),
+            // Correctly stored UTC time for 10:30 AM EST is 15:30 UTC.
+            start_date: Utc.with_ymd_and_hms(2025, 11, 8, 15, 30, 0).unwrap(),
+            end_date: Some(Utc.with_ymd_and_hms(2025, 11, 8, 18, 0, 0).unwrap()),
+            location: Some("Somerville".to_string()),
+            event_type: None,
+            url: None,
+            confidence: 1.0,
+        };
+
+        let state = AppState {
+            api_key: "dummy".to_string(),
+            client: awc::Client::default(),
+            username: "user".to_string(),
+            password: "pass".to_string(),
+            events_repo: Box::new(MockEventsRepo::new(vec![event])),
+        };
+
+        let fixed_now = Utc.with_ymd_and_hms(2025, 11, 8, 8, 0, 0).unwrap();
+        let app = test::init_service(App::new().app_data(Data::new(state)).route(
+            "/",
+            web::get().to(move |state: Data<AppState>| {
+                // We use fixed_now to ensure the event is considered upcoming
+                crate::features::view::index_with_now(
+                    state,
+                    fixed_now,
+                    IndexQuery {
+                        category: None,
+                        past: None,
+                    },
+                )
+            }),
+        ))
+        .await;
+
+        let req = test::TestRequest::get().uri("/").to_request();
+        let resp = test::call_service(&app, req).await;
+        assert_eq!(resp.status(), actix_web::http::StatusCode::OK);
+
+        let body = test::read_body(resp).await;
+        let body_str = std::str::from_utf8(&body)?;
+
+        assert!(
+            body_str.contains("10:30 AM"),
+            "Body did not contain '10:30 AM'. Content: {}",
+            body_str
+        );
         Ok(())
     }
 }

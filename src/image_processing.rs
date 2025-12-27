@@ -3,7 +3,8 @@ use actix_web::web;
 use anyhow::{anyhow, Result};
 use awc::Client;
 use base64::{engine::general_purpose::STANDARD as b64, Engine as _};
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, LocalResult, NaiveDateTime, TimeZone, Utc};
+use chrono_tz::America::New_York;
 use image::{DynamicImage, ImageFormat, ImageReader};
 use rxing::{
     common::HybridBinarizer, qrcode::QRCodeReader, BinaryBitmap, BufferedImageLuminanceSource,
@@ -20,8 +21,10 @@ static QR_READER: LazyLock<QRCodeReader> = LazyLock::new(QRCodeReader::default);
 pub struct ImageEventExtraction {
     pub name: Option<String>,
     pub full_description: Option<String>,
-    pub start_date: Option<DateTime<Utc>>,
-    pub end_date: Option<DateTime<Utc>>,
+    /// Format: YYYY-MM-DDTHH:MM:SS (No timezone)
+    pub start_date: Option<NaiveDateTime>,
+    /// Format: YYYY-MM-DDTHH:MM:SS (No timezone)
+    pub end_date: Option<NaiveDateTime>,
     pub location: Option<String>,
     /// "YardSale" | "Art" | "Music" | "Dance" | "Performance" | "Food" | "PersonalService" | "Meeting" | "Government" | "Volunteer" | "Fundraiser" | "Film" | "Theater" | "Comedy" | "Literature" | "Exhibition" | "Workshop" | "Fitness" | "Market" | "Sports" | "Family" | "Social" | "Holiday" | "Religious" | "Other"
     pub event_type: Option<String>,
@@ -99,9 +102,9 @@ async fn parse_image_with_now(
                         - The confidence should be a number between 0.0 and 1.0 indicating how confident you are in the extraction.
                         - Focus on extracting event-related information like the name, date, time, location, url, and description.
                         - Today's date is {now_str}.
-                        - The start_date and end_date must be RFC 3339 formatted date and time strings.
+                        - The start_date and end_date must be formatted as ISO 8601 strings without timezone offset (e.g., "YYYY-MM-DDTHH:MM:SS").
+                        - All events are in the Somerville/Cambridge/Boston area (America/New_York timezone).
                         - Assume the event is in the future unless the text clearly indicates it is in the past.
-                        - Assume the event is in the timezone of the location if provided.
                         - If the date is ambiguous (e.g. "Friday"), assume it is the next occurrence after today's date ({now_str}).
                         - DO NOT default the date to {now_str} if no date is found; return null instead.
                         - Do not make up a URL. Only include a URL if it is explicitly written in the image.
@@ -165,6 +168,17 @@ async fn parse_image_with_now(
     Ok(event)
 }
 
+fn datetime_from_naive(naive_local: NaiveDateTime) -> Option<DateTime<Utc>> {
+    // Interpret `naive_local` as a *local wall-clock time* in the America/NewYork timezone.
+    // All our event posters should be from the Camberville area so this is a
+    // safe assumption for now.
+    match New_York.from_local_datetime(&naive_local) {
+        LocalResult::Single(datetime) => Some(datetime.with_timezone(&Utc)),
+        LocalResult::Ambiguous(earlier, _later) => Some(earlier.with_timezone(&Utc)),
+        LocalResult::None => None,
+    }
+}
+
 fn parse_and_validate_response(content: &str) -> Result<Option<Event>> {
     // Strip markdown code blocks if present.
     // LLMs like to surround code in them.
@@ -191,18 +205,35 @@ fn parse_and_validate_response(content: &str) -> Result<Option<Event>> {
     };
 
     let start_date = match extraction.start_date {
-        Some(d) => d,
+        Some(naive) => match datetime_from_naive(naive) {
+            Some(dt) => dt,
+            None => {
+                log::warn!("Invalid local time for start_date: {:?}", naive);
+                return Ok(None);
+            }
+        },
         None => {
             log::info!("Extraction missing start_date, treating as no event");
             return Ok(None);
         }
     };
 
+    let end_date = match extraction.end_date {
+        Some(naive) => match datetime_from_naive(naive) {
+            Some(dt) => Some(dt),
+            None => {
+                log::warn!("Invalid local time for end_date: {:?}", naive);
+                None
+            }
+        },
+        None => None,
+    };
+
     Ok(Some(Event {
         name,
         start_date,
         full_description: extraction.full_description.unwrap_or_default(),
-        end_date: extraction.end_date,
+        end_date,
         location: extraction.location,
         event_type: extraction.event_type.map(EventType::from),
         url: extraction.url,
@@ -257,7 +288,7 @@ mod tests {
         );
         assert_eq!(
             event.start_date,
-            Utc.with_ymd_and_hms(2025, 6, 23, 0, 0, 0).unwrap()
+            Utc.with_ymd_and_hms(2025, 6, 23, 4, 0, 0).unwrap()
         );
 
         Ok(())
@@ -334,6 +365,21 @@ mod tests {
         assert_eq!(
             url,
             "https://www.somervillema.gov/events/2025/11/08/pumpkin-smash",
+        );
+
+        // 10:30 AM EST = 15:30 UTC
+        assert_eq!(
+            event.start_date,
+            Utc.with_ymd_and_hms(2025, 11, 8, 15, 30, 0).unwrap(),
+            "Start date mismatch: {:?}",
+            event.start_date
+        );
+        // 1:00 PM EST = 13:00 EST = 18:00 UTC
+        assert_eq!(
+            event.end_date,
+            Some(Utc.with_ymd_and_hms(2025, 11, 8, 18, 0, 0).unwrap()),
+            "End date mismatch: {:?}",
+            event.end_date
         );
 
         Ok(())
