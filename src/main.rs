@@ -144,6 +144,7 @@ mod tests {
             &self,
             category: Option<String>,
             since: Option<DateTime<Utc>>,
+            until: Option<DateTime<Utc>>,
         ) -> Result<Vec<Event>> {
             let events = self.events.lock().unwrap().clone();
             Ok(events
@@ -162,7 +163,12 @@ mod tests {
                     } else {
                         true
                     };
-                    cat_match && since_match
+                    let until_match = if let Some(until_dt) = until {
+                        e.start_date <= until_dt
+                    } else {
+                        true
+                    };
+                    cat_match && since_match && until_match
                 })
                 .collect())
         }

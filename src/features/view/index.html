@@ -9,7 +9,13 @@
 </header>
 <main>
     {% if !filter_badge.is_empty() %}
-    <p><a class="button" href="/">Show all events</a></p>
+    <p>
+        <a class="button" href="/{% if is_past_view %}?past=true{% endif %}">Show all events</a>
+    </p>
+    {% endif %}
+
+    {% if is_past_view %}
+    <p><a class="button" href="/">Show upcoming events</a></p>
     {% endif %}
 
     {% for day in days %}
@@ -23,5 +29,11 @@
         {% endfor %}
     </section>
     {% endfor %}
+
+    {% if !is_past_view %}
+    <footer>
+        <a href="/?past=true" class="button secondary">View past events archive</a>
+    </footer>
+    {% endif %}
 </main>
 {% endblock %}

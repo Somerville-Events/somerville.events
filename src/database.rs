@@ -10,6 +10,7 @@ pub trait EventsRepo: Send + Sync {
         &self,
         category: Option<String>,
         since: Option<DateTime<Utc>>,
+        until: Option<DateTime<Utc>>,
     ) -> Result<Vec<Event>>;
     async fn get(&self, id: i64) -> Result<Option<Event>>;
     async fn claim_idempotency_key(&self, idempotency_key: uuid::Uuid) -> Result<bool>;
@@ -27,6 +28,7 @@ impl EventsRepo for EventsDatabase {
         &self,
         category: Option<String>,
         since: Option<DateTime<Utc>>,
+        until: Option<DateTime<Utc>>,
     ) -> Result<Vec<Event>> {
         let events = sqlx::query_as!(
             Event,
@@ -44,10 +46,12 @@ impl EventsRepo for EventsDatabase {
             FROM app.events
             WHERE ($1::text IS NULL OR event_type::text = $1::text)
             AND ($2::timestamptz IS NULL OR start_date >= $2)
+            AND ($3::timestamptz IS NULL OR start_date <= $3)
             ORDER BY start_date ASC NULLS LAST
             "#,
             category,
-            since
+            since,
+            until
         )
         .fetch_all(&self.pool)
         .await?;

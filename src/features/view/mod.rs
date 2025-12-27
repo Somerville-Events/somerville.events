@@ -15,6 +15,7 @@ struct IndexTemplate {
     page_title: String,
     filter_badge: String,
     days: Vec<DaySection>,
+    is_past_view: bool,
 }
 
 #[derive(Template)]
@@ -32,26 +33,44 @@ struct DaySection {
 #[derive(Deserialize)]
 pub struct IndexQuery {
     pub category: Option<String>,
+    pub past: Option<bool>,
 }
 
 pub async fn index(state: web::Data<AppState>, query: web::Query<IndexQuery>) -> impl Responder {
-    index_with_now(state, Utc::now(), query.into_inner().category).await
+    index_with_now(state, Utc::now(), query.into_inner()).await
 }
 
 pub async fn index_with_now(
     state: web::Data<AppState>,
     now_utc: DateTime<Utc>,
-    category: Option<String>,
+    query: IndexQuery,
 ) -> impl Responder {
-    // Only fetch events from 2 days ago onwards for performance reasons
-    let since = now_utc - Duration::days(2);
-    let events_result = state.events_repo.list(category.clone(), Some(since)).await;
+    let is_past = query.past.unwrap_or(false);
+
+    let (since, until) = if is_past {
+        // For past events, we want events that started before now.
+        (None, Some(now_utc))
+    } else {
+        // For upcoming events, we want events that started recently or are in the future.
+        // We have a buffer of 2 days ago because sometimes there are multi-day events
+        // with no specified end date.
+        (Some(now_utc - Duration::days(2)), None)
+    };
+
+    let events_result = state
+        .events_repo
+        .list(query.category.clone(), since, until)
+        .await;
 
     match events_result {
         Ok(events) => {
-            let earliest_day_to_render: NaiveDate = (now_utc - Duration::days(1))
-                .with_timezone(&New_York)
-                .date_naive();
+            let earliest_day_to_render: NaiveDate = if is_past {
+                NaiveDate::MIN
+            } else {
+                (now_utc - Duration::days(1))
+                    .with_timezone(&New_York)
+                    .date_naive()
+            };
 
             let mut events_by_day: BTreeMap<NaiveDate, Vec<Event>> = BTreeMap::new();
 
@@ -63,8 +82,17 @@ pub async fn index_with_now(
                     Some(end) => (end.with_timezone(&New_York).date_naive(), end),
                 };
 
-                if visibility_end < now_utc {
-                    continue;
+                // Filter based on visibility relative to now
+                if is_past {
+                    // In past view, show only events that have ended
+                    if visibility_end >= now_utc {
+                        continue;
+                    }
+                } else {
+                    // In upcoming view, show only events that haven't ended yet
+                    if visibility_end < now_utc {
+                        continue;
+                    }
                 }
 
                 let (mut day, last_day) = if start_day <= end_day {
@@ -85,7 +113,15 @@ pub async fn index_with_now(
             }
 
             let mut days = Vec::new();
-            for (day, mut day_events) in events_by_day {
+            // Process days. If past view, we want descending order.
+            // BTreeMap iterates in ascending order.
+            let day_iter: Box<dyn Iterator<Item = (NaiveDate, Vec<Event>)>> = if is_past {
+                Box::new(events_by_day.into_iter().rev())
+            } else {
+                Box::new(events_by_day.into_iter())
+            };
+
+            for (day, mut day_events) in day_iter {
                 day_events.sort_by(|a, b| {
                     a.start_date
                         .cmp(&b.start_date)
@@ -94,7 +130,7 @@ pub async fn index_with_now(
 
                 let vms: Vec<EventViewModel> = day_events
                     .iter()
-                    .map(|e| EventViewModel::from_event(e, DateFormat::TimeOnly))
+                    .map(|e| EventViewModel::from_event(e, DateFormat::TimeOnly, is_past))
                     .collect();
 
                 days.push(DaySection {
@@ -104,19 +140,31 @@ pub async fn index_with_now(
                 });
             }
 
-            let (page_title, filter_badge) = if let Some(ref category_filter) = category {
+            let (page_title, filter_badge) = if let Some(ref category_filter) = query.category {
                 (
-                    format!("Somerville {category_filter} Events"),
+                    if is_past {
+                        format!("Past Somerville {category_filter} Events")
+                    } else {
+                        format!("Somerville {category_filter} Events")
+                    },
                     category_filter.clone(),
                 )
             } else {
-                ("Somerville Events".to_string(), String::new())
+                (
+                    if is_past {
+                        "Past Somerville Events".to_string()
+                    } else {
+                        "Somerville Events".to_string()
+                    },
+                    String::new(),
+                )
             };
 
             let template = IndexTemplate {
                 page_title,
                 filter_badge,
                 days,
+                is_past_view: is_past,
             };
 
             HttpResponse::Ok().body(template.render().unwrap())
@@ -133,7 +181,7 @@ pub async fn show(state: web::Data<AppState>, path: web::Path<i64>) -> impl Resp
     match state.events_repo.get(id).await {
         Ok(Some(event)) => {
             let template = ShowTemplate {
-                event: EventViewModel::from_event(&event, DateFormat::FullDate),
+                event: EventViewModel::from_event(&event, DateFormat::FullDate, false),
             };
             HttpResponse::Ok().body(template.render().unwrap())
         }

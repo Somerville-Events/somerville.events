@@ -44,6 +44,14 @@ impl EventType {
     pub fn get_url(&self) -> String {
         format!("/?category={self}")
     }
+
+    pub fn get_url_with_past(&self, past: bool) -> String {
+        if past {
+            format!("/?category={self}&past=true")
+        } else {
+            self.get_url()
+        }
+    }
 }
 
 // Support conversion for sqlx query_as! compatibility

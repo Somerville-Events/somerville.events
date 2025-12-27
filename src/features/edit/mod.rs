@@ -10,11 +10,11 @@ struct EditListTemplate {
 }
 
 pub async fn index(state: web::Data<AppState>) -> impl Responder {
-    match state.events_repo.list(None, None).await {
+    match state.events_repo.list(None, None, None).await {
         Ok(events) => {
             let vms: Vec<EventViewModel> = events
                 .iter()
-                .map(|e| EventViewModel::from_event(e, DateFormat::FullDate))
+                .map(|e| EventViewModel::from_event(e, DateFormat::FullDate, false))
                 .collect();
             let template = EditListTemplate { events: vms };
             HttpResponse::Ok().body(template.render().unwrap())

@@ -21,7 +21,7 @@ pub enum DateFormat {
 }
 
 impl EventViewModel {
-    pub fn from_event(event: &Event, format: DateFormat) -> Self {
+    pub fn from_event(event: &Event, format: DateFormat, is_past_view: bool) -> Self {
         let start_ny = event.start_date.with_timezone(&New_York);
         let start_iso = start_ny.to_rfc3339();
 
@@ -44,7 +44,7 @@ impl EventViewModel {
         let category_link = event
             .event_type
             .as_ref()
-            .map(|c| (c.get_url(), c.to_string()));
+            .map(|c| (c.get_url_with_past(is_past_view), c.to_string()));
 
         Self {
             id: event.id.unwrap_or_default(),
