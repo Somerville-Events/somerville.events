@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n            SELECT\n                id,\n                name,\n                full_description,\n                start_date,\n                end_date,\n                location,\n                event_type as \"event_type: EventType\",\n                url,\n                confidence\n            FROM app.events\n            WHERE ($1::text IS NULL OR event_type::text = $1::text)\n            AND ($2::timestamptz IS NULL OR start_date >= $2)\n            ORDER BY start_date ASC NULLS LAST\n            ",
+  "query": "\n            SELECT\n                id,\n                name,\n                full_description,\n                start_date,\n                end_date,\n                location,\n                event_type as \"event_type: EventType\",\n                url,\n                confidence\n            FROM app.events\n            WHERE ($1::text IS NULL OR event_type::text = $1::text)\n            AND ($2::timestamptz IS NULL OR start_date >= $2)\n            AND ($3::timestamptz IS NULL OR start_date <= $3)\n            ORDER BY start_date ASC NULLS LAST\n            ",
   "describe": {
     "columns": [
       {
@@ -85,6 +85,7 @@
     "parameters": {
       "Left": [
         "Text",
+        "Timestamptz",
         "Timestamptz"
       ]
     },
@@ -100,5 +101,5 @@
       false
     ]
   },
-  "hash": "d0aea542c52cfb1b951ba7cf17eea20ebdffa82cda0e83782db33ac08c0358e1"
+  "hash": "0b234032006762329da9f411104fe00f82c54b390ed0fe205af412bf0fe90741"
 }
