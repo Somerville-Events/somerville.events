@@ -1,5 +1,6 @@
 use crate::features::common::{DateFormat, EventViewModel};
 use crate::AppState;
+use actix_web::http::header::ContentType;
 use actix_web::{web, HttpResponse, Responder};
 use askama::Template;
 
@@ -17,7 +18,9 @@ pub async fn index(state: web::Data<AppState>) -> impl Responder {
                 .map(|e| EventViewModel::from_event(e, DateFormat::FullDate, false))
                 .collect();
             let template = EditListTemplate { events: vms };
-            HttpResponse::Ok().body(template.render().unwrap())
+            HttpResponse::Ok()
+                .content_type(ContentType::html())
+                .body(template.render().unwrap())
         }
         Err(e) => {
             log::error!("Failed to fetch events: {e}");

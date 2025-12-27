@@ -1,7 +1,7 @@
 use crate::image_processing::parse_image;
 use crate::AppState;
 use actix_multipart::form::{tempfile::TempFile, MultipartForm};
-use actix_web::{web, HttpResponse, Responder};
+use actix_web::{http::header::ContentType, web, HttpResponse, Responder};
 use askama::Template;
 use std::fs;
 use uuid::Uuid;
@@ -25,7 +25,9 @@ pub struct UploadForm {
 pub async fn index() -> impl Responder {
     let idempotency_key = Uuid::new_v4().to_string();
     let template = UploadTemplate { idempotency_key };
-    HttpResponse::Ok().body(template.render().unwrap())
+    HttpResponse::Ok()
+        .content_type(ContentType::html())
+        .body(template.render().unwrap())
 }
 
 pub async fn save(

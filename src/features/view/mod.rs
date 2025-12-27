@@ -1,6 +1,7 @@
 use crate::features::common::{DateFormat, EventViewModel};
 use crate::models::Event;
 use crate::AppState;
+use actix_web::http::header::ContentType;
 use actix_web::{web, HttpResponse, Responder};
 use askama::Template;
 use chrono::{DateTime, Duration, NaiveDate, Utc};
@@ -167,7 +168,9 @@ pub async fn index_with_now(
                 is_past_view: is_past,
             };
 
-            HttpResponse::Ok().body(template.render().unwrap())
+            HttpResponse::Ok()
+                .content_type(ContentType::html())
+                .body(template.render().unwrap())
         }
         Err(e) => {
             log::error!("Failed to fetch events: {e}");
@@ -183,7 +186,9 @@ pub async fn show(state: web::Data<AppState>, path: web::Path<i64>) -> impl Resp
             let template = ShowTemplate {
                 event: EventViewModel::from_event(&event, DateFormat::FullDate, false),
             };
-            HttpResponse::Ok().body(template.render().unwrap())
+            HttpResponse::Ok()
+                .content_type(ContentType::html())
+                .body(template.render().unwrap())
         }
         Ok(None) => HttpResponse::NotFound().body("Event not found"),
         Err(e) => {
