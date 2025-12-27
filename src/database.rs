@@ -139,7 +139,7 @@ pub async fn save_event_to_db(executor: &sqlx::Pool<sqlx::Postgres>, event: &Eve
             url,
             confidence
         )
-        VALUES ($1, $2, $3, $4, $5, $6::event_type, $7, $8)
+        VALUES ($1, $2, $3, $4, $5, $6::app.event_type, $7, $8)
         RETURNING id
         "#,
         event.name,
@@ -385,4 +385,3 @@ mod tests {
         );
     }
 }
-

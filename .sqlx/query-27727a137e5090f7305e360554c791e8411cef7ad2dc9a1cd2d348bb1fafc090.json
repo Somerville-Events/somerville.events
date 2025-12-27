@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n        INSERT INTO app.events (\n            name,\n            full_description,\n            start_date,\n            end_date,\n            location,\n            event_type,\n            url,\n            confidence\n        )\n        VALUES ($1, $2, $3, $4, $5, $6::event_type, $7, $8)\n        RETURNING id\n        ",
+  "query": "\n        INSERT INTO app.events (\n            name,\n            full_description,\n            start_date,\n            end_date,\n            location,\n            event_type,\n            url,\n            confidence\n        )\n        VALUES ($1, $2, $3, $4, $5, $6::app.event_type, $7, $8)\n        RETURNING id\n        ",
   "describe": {
     "columns": [
       {
@@ -18,7 +18,7 @@
         "Text",
         {
           "Custom": {
-            "name": "event_type",
+            "name": "app.event_type",
             "kind": {
               "Enum": [
                 "YardSale",
@@ -58,5 +58,5 @@
       false
     ]
   },
-  "hash": "dbf722eef99224725f38080827fb5b437efa5bbc705ac253e05b426c392a44e9"
+  "hash": "27727a137e5090f7305e360554c791e8411cef7ad2dc9a1cd2d348bb1fafc090"
 }

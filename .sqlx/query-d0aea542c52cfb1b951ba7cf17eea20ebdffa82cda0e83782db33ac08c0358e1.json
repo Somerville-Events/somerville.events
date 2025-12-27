@@ -38,7 +38,7 @@
         "name": "event_type: EventType",
         "type_info": {
           "Custom": {
-            "name": "event_type",
+            "name": "app.event_type",
             "kind": {
               "Enum": [
                 "YardSale",

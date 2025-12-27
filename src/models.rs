@@ -7,7 +7,7 @@ use strum::{Display, EnumString};
 #[derive(
     Debug, Serialize, Deserialize, JsonSchema, PartialEq, Eq, Clone, sqlx::Type, Display, EnumString,
 )]
-#[sqlx(type_name = "event_type")]
+#[sqlx(type_name = "app.event_type")]
 pub enum EventType {
     #[strum(serialize = "Yard Sale")]
     YardSale,
