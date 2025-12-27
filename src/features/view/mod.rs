@@ -188,4 +188,3 @@ pub async fn ical(state: web::Data<AppState>, path: web::Path<i64>) -> impl Resp
         }
     }
 }
-
