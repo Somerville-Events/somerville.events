@@ -80,8 +80,6 @@ async fn parse_image_with_now(
     let schema_str = serde_json::to_string_pretty(&schema).unwrap();
     let now_str = now.to_rfc3339();
 
-    print!("{schema_str}");
-
     // Build Chat Completions payload with instructor format
     let payload = json!({
         "model": "gpt-4o-mini",
