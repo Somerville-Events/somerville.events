@@ -114,12 +114,94 @@ async fn main() -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::database::FakeEventsRepo;
     use crate::models::{Event, EventType};
     use actix_web::test;
-    use chrono::{NaiveDateTime, NaiveTime, TimeZone, Utc};
+    use async_trait::async_trait;
+    use chrono::{DateTime, NaiveDateTime, NaiveTime, TimeZone, Utc};
     use chrono_tz::America::New_York;
     use scraper::{Html, Selector};
+    use std::sync::{Arc, Mutex};
+
+    #[derive(Clone, Default)]
+    pub struct MockEventsRepo {
+        pub events: Arc<Mutex<Vec<Event>>>,
+        pub next_id: Arc<Mutex<i64>>,
+    }
+
+    impl MockEventsRepo {
+        pub fn new(events: Vec<Event>) -> Self {
+            let max_id = events.iter().filter_map(|e| e.id).max().unwrap_or(0);
+            Self {
+                events: Arc::new(Mutex::new(events)),
+                next_id: Arc::new(Mutex::new(max_id)),
+            }
+        }
+    }
+
+    #[async_trait]
+    impl EventsRepo for MockEventsRepo {
+        async fn list(
+            &self,
+            category: Option<String>,
+            since: Option<DateTime<Utc>>,
+        ) -> Result<Vec<Event>> {
+            let events = self.events.lock().unwrap().clone();
+            Ok(events
+                .into_iter()
+                .filter(|e| {
+                    let cat_match = if let Some(cat) = &category {
+                        e.event_type
+                            .as_ref()
+                            .map(|c| c.to_string().eq_ignore_ascii_case(cat))
+                            .unwrap_or(false)
+                    } else {
+                        true
+                    };
+                    let since_match = if let Some(since_dt) = since {
+                        e.start_date >= since_dt
+                    } else {
+                        true
+                    };
+                    cat_match && since_match
+                })
+                .collect())
+        }
+
+        async fn get(&self, id: i64) -> Result<Option<Event>> {
+            Ok(self
+                .events
+                .lock()
+                .unwrap()
+                .iter()
+                .find(|e| e.id == Some(id))
+                .cloned())
+        }
+
+        async fn claim_idempotency_key(&self, _idempotency_key: uuid::Uuid) -> Result<bool> {
+            Ok(true)
+        }
+
+        async fn insert(&self, event: &Event) -> Result<i64> {
+            let mut id_guard = self.next_id.lock().unwrap();
+            *id_guard += 1;
+            let id = *id_guard;
+
+            let mut stored = event.clone();
+            stored.id = Some(id);
+            self.events.lock().unwrap().push(stored);
+            Ok(id)
+        }
+
+        async fn delete(&self, id: i64) -> Result<()> {
+            let mut events = self.events.lock().unwrap();
+            let len_before = events.len();
+            events.retain(|e| e.id != Some(id));
+            if events.len() == len_before {
+                return Err(anyhow::anyhow!("Event not found"));
+            }
+            Ok(())
+        }
+    }
 
     #[actix_web::test]
     async fn test_index_filters_by_category() -> Result<()> {
@@ -158,7 +240,7 @@ mod tests {
             client: awc::Client::default(),
             username: "user".to_string(),
             password: "pass".to_string(),
-            events_repo: Box::new(FakeEventsRepo::new(vec![art_event.clone(), music_event])),
+            events_repo: Box::new(MockEventsRepo::new(vec![art_event.clone(), music_event])),
         };
 
         let fixed_now_utc = now_utc;
@@ -279,7 +361,7 @@ mod tests {
         };
 
         // Intentionally shuffled to ensure server-side sorting/grouping is doing the work.
-        let fake_repo = FakeEventsRepo::new(vec![
+        let mock_repo = MockEventsRepo::new(vec![
             multi_day,
             past_event,
             same_day_2,
@@ -293,7 +375,7 @@ mod tests {
             client: awc::Client::default(),
             username: "user".to_string(),
             password: "pass".to_string(),
-            events_repo: Box::new(fake_repo),
+            events_repo: Box::new(mock_repo),
         };
 
         let fixed_now_utc = now_utc;
@@ -423,7 +505,7 @@ mod tests {
             client: awc::Client::default(),
             username: "user".to_string(),
             password: "pass".to_string(),
-            events_repo: Box::new(FakeEventsRepo::new(vec![event])),
+            events_repo: Box::new(MockEventsRepo::new(vec![event])),
         };
 
         let app = test::init_service(App::new().app_data(Data::new(state)).route(
