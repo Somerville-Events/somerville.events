@@ -343,7 +343,7 @@ mod tests {
     }
 
     #[actix_web::test]
-    async fn test_flier_with_qr_code() -> Result<()> {
+    async fn test_flyer_with_qr_code() -> Result<()> {
         let config = Config::from_env();
         let client = get_test_client();
 
