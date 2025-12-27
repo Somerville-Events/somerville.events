@@ -1,0 +1,104 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT\n                id,\n                name,\n                full_description,\n                start_date,\n                end_date,\n                location,\n                event_type as \"event_type: EventType\",\n                url,\n                confidence\n            FROM app.events\n            WHERE ($1::text IS NULL OR event_type::text = $1::text)\n            AND ($2::timestamptz IS NULL OR start_date >= $2)\n            ORDER BY start_date ASC NULLS LAST\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 1,
+        "name": "name",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 2,
+        "name": "full_description",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 3,
+        "name": "start_date",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 4,
+        "name": "end_date",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 5,
+        "name": "location",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 6,
+        "name": "event_type: EventType",
+        "type_info": {
+          "Custom": {
+            "name": "event_type",
+            "kind": {
+              "Enum": [
+                "YardSale",
+                "Art",
+                "Music",
+                "Dance",
+                "Performance",
+                "Food",
+                "PersonalService",
+                "Meeting",
+                "Government",
+                "Volunteer",
+                "Fundraiser",
+                "Film",
+                "Theater",
+                "Comedy",
+                "Literature",
+                "Exhibition",
+                "Workshop",
+                "Fitness",
+                "Market",
+                "Sports",
+                "Family",
+                "Social",
+                "Holiday",
+                "Religious",
+                "Other"
+              ]
+            }
+          }
+        }
+      },
+      {
+        "ordinal": 7,
+        "name": "url",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 8,
+        "name": "confidence",
+        "type_info": "Float8"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Timestamptz"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      true,
+      true,
+      true,
+      true,
+      false
+    ]
+  },
+  "hash": "d0aea542c52cfb1b951ba7cf17eea20ebdffa82cda0e83782db33ac08c0358e1"
+}

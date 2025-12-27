@@ -1,4 +1,5 @@
-use crate::models::Event;
+use crate::models::{Event, EventType};
+use actix_web::web;
 use anyhow::{anyhow, Result};
 use awc::Client;
 use base64::{engine::general_purpose::STANDARD as b64, Engine as _};
@@ -22,8 +23,10 @@ pub struct ImageEventExtraction {
     pub start_date: Option<DateTime<Utc>>,
     pub end_date: Option<DateTime<Utc>>,
     pub location: Option<String>,
+    /// "YardSale" | "Art" | "Music" | "Dance" | "Performance" | "Food" | "PersonalService" | "Meeting" | "Government" | "Volunteer" | "Fundraiser" | "Film" | "Theater" | "Comedy" | "Literature" | "Exhibition" | "Workshop" | "Fitness" | "Market" | "Sports" | "Family" | "Social" | "Holiday" | "Religious" | "Other"
     pub event_type: Option<String>,
     pub url: Option<String>,
+    /// Confidence level of the extraction (0.0 to 1.0)
     pub confidence: f64,
 }
 
@@ -41,21 +44,30 @@ async fn parse_image_with_now(
     client: Client,
     api_key: &str,
 ) -> Result<Option<Event>> {
-    let image_bytes = std::fs::read(image_path)?;
-    let image_reader = ImageReader::new(Cursor::new(&image_bytes)).with_guessed_format()?;
+    let path = image_path.to_path_buf();
 
-    let format = match image_reader.format() {
-        Some(f @ (ImageFormat::Jpeg | ImageFormat::Png | ImageFormat::Gif | ImageFormat::WebP)) => {
-            f
-        }
-        _ => return Err(anyhow!("Image format must be jpg, png, gif, or webp")),
-    };
-    let image = image_reader.decode()?;
+    // Offload blocking I/O (file read) and CPU intensive task (image decoding + QR extraction) to thread pool
+    // Note: We return ImageFormat and bytes separately to avoid re-encoding or re-reading
+    let (format, image_bytes, qr_url) = web::block(move || {
+        let bytes = std::fs::read(&path)?;
+        let reader = ImageReader::new(Cursor::new(&bytes)).with_guessed_format()?;
 
-    // Try to deterministically extract a url for the event out of
-    // any QR code that may be in the image before we toss the whole
-    // image into a multi-modal machine learning model.
-    let qr_url: Option<Url> = extract_qr_url(image);
+        let fmt = match reader.format() {
+            Some(
+                f @ (ImageFormat::Jpeg | ImageFormat::Png | ImageFormat::Gif | ImageFormat::WebP),
+            ) => f,
+            _ => return Err(anyhow!("Image format must be jpg, png, gif, or webp")),
+        };
+
+        let img = reader.decode()?;
+        // Try to deterministically extract a url for the event out of
+        // any QR code that may be in the image before we toss the whole
+        // image into a multi-modal machine learning model.
+        let url = extract_qr_url(img);
+        Ok((fmt, bytes, url))
+    })
+    .await
+    .map_err(|e| anyhow!("Blocking task failed: {}", e))??;
 
     // Base64 encode -> data URL
     let mime_type = format.to_mime_type();
@@ -64,6 +76,8 @@ async fn parse_image_with_now(
     let schema = schema_for!(ImageEventExtraction);
     let schema_str = serde_json::to_string_pretty(&schema).unwrap();
     let now_str = now.to_rfc3339();
+
+    print!("{schema_str}");
 
     // Build Chat Completions payload with instructor format
     let payload = json!({
@@ -152,15 +166,21 @@ async fn parse_image_with_now(
 }
 
 fn parse_and_validate_response(content: &str) -> Result<Option<Event>> {
-    let extraction: ImageEventExtraction = match serde_json::from_str(content) {
-        Ok(e) => e,
-        Err(_e) => {
-            let json: serde_json::Value = serde_json::from_str(content)
-                .map_err(|e| anyhow!("Failed to parse JSON: {}", e))?;
-            serde_json::from_value(json)
-                .map_err(|e| anyhow!("Failed to parse into ImageEventExtraction: {}", e))?
-        }
+    // Strip markdown code blocks if present.
+    // LLMs like to surround code in them.
+    let clean_content = if content.trim().starts_with("```") {
+        content
+            .lines()
+            .skip(1) // Skip ```json
+            .take_while(|l| !l.trim().starts_with("```"))
+            .collect::<Vec<_>>()
+            .join("\n")
+    } else {
+        content.to_string()
     };
+
+    let extraction: ImageEventExtraction = serde_json::from_str(&clean_content)
+        .map_err(|e| anyhow!("Failed to parse JSON: {} (Content: {})", e, clean_content))?;
 
     let name = match extraction.name {
         Some(n) if !n.trim().is_empty() => n,
@@ -184,7 +204,7 @@ fn parse_and_validate_response(content: &str) -> Result<Option<Event>> {
         full_description: extraction.full_description.unwrap_or_default(),
         end_date: extraction.end_date,
         location: extraction.location,
-        event_type: extraction.event_type,
+        event_type: extraction.event_type.map(EventType::from),
         url: extraction.url,
         confidence: extraction.confidence,
         id: None,

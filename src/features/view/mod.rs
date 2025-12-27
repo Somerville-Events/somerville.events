@@ -43,7 +43,9 @@ pub async fn index_with_now(
     now_utc: DateTime<Utc>,
     category: Option<String>,
 ) -> impl Responder {
-    let events_result = state.events_repo.list(category.clone()).await;
+    // Only fetch events from 2 days ago onwards for performance reasons
+    let since = now_utc - Duration::days(2);
+    let events_result = state.events_repo.list(category.clone(), Some(since)).await;
 
     match events_result {
         Ok(events) => {
@@ -186,3 +188,4 @@ pub async fn ical(state: web::Data<AppState>, path: web::Path<i64>) -> impl Resp
         }
     }
 }
+

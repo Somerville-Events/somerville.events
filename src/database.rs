@@ -1,11 +1,17 @@
-use crate::models::Event;
+use crate::models::{Event, EventType};
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;
+use chrono::{DateTime, Utc};
+use std::sync::{Arc, Mutex};
 use strsim::jaro_winkler;
 
 #[async_trait]
 pub trait EventsRepo: Send + Sync {
-    async fn list(&self, category: Option<String>) -> Result<Vec<Event>>;
+    async fn list(
+        &self,
+        category: Option<String>,
+        since: Option<DateTime<Utc>>,
+    ) -> Result<Vec<Event>>;
     async fn get(&self, id: i64) -> Result<Option<Event>>;
     async fn claim_idempotency_key(&self, idempotency_key: uuid::Uuid) -> Result<bool>;
     async fn insert(&self, event: &Event) -> Result<i64>;
@@ -18,7 +24,11 @@ pub struct EventsDatabase {
 
 #[async_trait]
 impl EventsRepo for EventsDatabase {
-    async fn list(&self, category: Option<String>) -> Result<Vec<Event>> {
+    async fn list(
+        &self,
+        category: Option<String>,
+        since: Option<DateTime<Utc>>,
+    ) -> Result<Vec<Event>> {
         let events = sqlx::query_as!(
             Event,
             r#"
@@ -29,14 +39,16 @@ impl EventsRepo for EventsDatabase {
                 start_date,
                 end_date,
                 location,
-                event_type,
+                event_type as "event_type: EventType",
                 url,
                 confidence
             FROM app.events
-            WHERE ($1::text IS NULL OR event_type ILIKE $1)
+            WHERE ($1::text IS NULL OR event_type::text = $1::text)
+            AND ($2::timestamptz IS NULL OR start_date >= $2)
             ORDER BY start_date ASC NULLS LAST
             "#,
-            category
+            category,
+            since
         )
         .fetch_all(&self.pool)
         .await?;
@@ -54,7 +66,7 @@ impl EventsRepo for EventsDatabase {
                 start_date,
                 end_date,
                 location,
-                event_type,
+                event_type as "event_type: EventType",
                 url,
                 confidence
             FROM app.events
@@ -128,7 +140,7 @@ pub async fn save_event_to_db(executor: &sqlx::Pool<sqlx::Postgres>, event: &Eve
             url,
             confidence
         )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+        VALUES ($1, $2, $3, $4, $5, $6::event_type, $7, $8)
         RETURNING id
         "#,
         event.name,
@@ -136,7 +148,7 @@ pub async fn save_event_to_db(executor: &sqlx::Pool<sqlx::Postgres>, event: &Eve
         event.start_date,
         event.end_date,
         event.location,
-        event.event_type,
+        event.event_type.as_ref() as Option<&EventType>,
         event.url,
         event.confidence
     )
@@ -161,7 +173,7 @@ async fn find_duplicate(
             start_date,
             end_date,
             location,
-            event_type,
+            event_type as "event_type: EventType",
             url,
             confidence
         FROM app.events
@@ -195,6 +207,87 @@ fn is_duplicate(a: &Event, b: &Event) -> bool {
     let name_match = jaro_winkler(&a.name, &b.name) > 0.985;
     let desc_match = jaro_winkler(&a.full_description, &b.full_description) > 0.95;
     name_match && desc_match
+}
+
+#[derive(Clone, Default)]
+pub struct FakeEventsRepo {
+    pub events: Arc<Mutex<Vec<Event>>>,
+    pub next_id: Arc<Mutex<i64>>,
+}
+
+impl FakeEventsRepo {
+    pub fn new(events: Vec<Event>) -> Self {
+        let max_id = events.iter().filter_map(|e| e.id).max().unwrap_or(0);
+        Self {
+            events: Arc::new(Mutex::new(events)),
+            next_id: Arc::new(Mutex::new(max_id)),
+        }
+    }
+}
+
+#[async_trait]
+impl EventsRepo for FakeEventsRepo {
+    async fn list(
+        &self,
+        category: Option<String>,
+        since: Option<DateTime<Utc>>,
+    ) -> Result<Vec<Event>> {
+        let events = self.events.lock().unwrap().clone();
+        Ok(events
+            .into_iter()
+            .filter(|e| {
+                let cat_match = if let Some(cat) = &category {
+                    e.event_type
+                        .as_ref()
+                        .map(|c| c.to_string().eq_ignore_ascii_case(cat))
+                        .unwrap_or(false)
+                } else {
+                    true
+                };
+                let since_match = if let Some(since_dt) = since {
+                    e.start_date >= since_dt
+                } else {
+                    true
+                };
+                cat_match && since_match
+            })
+            .collect())
+    }
+
+    async fn get(&self, id: i64) -> Result<Option<Event>> {
+        Ok(self
+            .events
+            .lock()
+            .unwrap()
+            .iter()
+            .find(|e| e.id == Some(id))
+            .cloned())
+    }
+
+    async fn claim_idempotency_key(&self, _idempotency_key: uuid::Uuid) -> Result<bool> {
+        Ok(true)
+    }
+
+    async fn insert(&self, event: &Event) -> Result<i64> {
+        let mut id_guard = self.next_id.lock().unwrap();
+        *id_guard += 1;
+        let id = *id_guard;
+
+        let mut stored = event.clone();
+        stored.id = Some(id);
+        self.events.lock().unwrap().push(stored);
+        Ok(id)
+    }
+
+    async fn delete(&self, id: i64) -> Result<()> {
+        let mut events = self.events.lock().unwrap();
+        let len_before = events.len();
+        events.retain(|e| e.id != Some(id));
+        if events.len() == len_before {
+            return Err(anyhow::anyhow!("Event not found"));
+        }
+        Ok(())
+    }
 }
 
 #[cfg(test)]

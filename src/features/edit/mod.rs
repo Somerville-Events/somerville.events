@@ -10,7 +10,7 @@ struct EditListTemplate {
 }
 
 pub async fn index(state: web::Data<AppState>) -> impl Responder {
-    match state.events_repo.list(None).await {
+    match state.events_repo.list(None, None).await {
         Ok(events) => {
             let vms: Vec<EventViewModel> = events
                 .iter()

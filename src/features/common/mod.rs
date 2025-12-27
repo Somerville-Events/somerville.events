@@ -41,10 +41,10 @@ impl EventViewModel {
             (String::new(), None)
         };
 
-        let category_link = event.event_type.as_ref().map(|c| {
-            let encoded = url::form_urlencoded::byte_serialize(c.as_bytes()).collect::<String>();
-            (format!("/?category={}", encoded), c.clone())
-        });
+        let category_link = event
+            .event_type
+            .as_ref()
+            .map(|c| (c.get_url(), c.to_string()));
 
         Self {
             id: event.id.unwrap_or_default(),

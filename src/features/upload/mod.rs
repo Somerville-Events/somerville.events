@@ -60,10 +60,21 @@ pub async fn save(
     let temp_dir = std::env::temp_dir();
     let file_name = format!("{}.jpg", idempotency_key);
     let dest_path = temp_dir.join(&file_name);
+    let dest_path_clone = dest_path.clone();
 
-    if let Err(e) = req.image.file.persist(&dest_path) {
-        log::error!("Failed to persist uploaded file: {e}");
-        return HttpResponse::InternalServerError().body("Failed to save uploaded file");
+    // Offload blocking file persist to thread pool
+    let persist_result = web::block(move || req.image.file.persist(&dest_path_clone)).await;
+
+    match persist_result {
+        Ok(Ok(_)) => {} // Success
+        Ok(Err(e)) => {
+            log::error!("Failed to persist uploaded file: {e}");
+            return HttpResponse::InternalServerError().body("Failed to save uploaded file");
+        }
+        Err(e) => {
+            log::error!("Blocking task failed: {e}");
+            return HttpResponse::InternalServerError().body("Internal Server Error");
+        }
     }
 
     let state = state.into_inner();
@@ -87,7 +98,8 @@ pub async fn save(
             }
         }
 
-        if let Err(e) = fs::remove_file(&dest_path_clone) {
+        let path_to_remove = dest_path_clone.clone();
+        if let Err(e) = web::block(move || fs::remove_file(path_to_remove)).await {
             log::warn!("Failed to remove temp file {:?}: {}", dest_path_clone, e);
         }
     });

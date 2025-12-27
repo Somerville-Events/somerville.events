@@ -114,85 +114,12 @@ async fn main() -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::database::EventsRepo;
-    use crate::models::Event;
+    use crate::database::FakeEventsRepo;
+    use crate::models::{Event, EventType};
     use actix_web::test;
-    use async_trait::async_trait;
     use chrono::{NaiveDateTime, NaiveTime, TimeZone, Utc};
     use chrono_tz::America::New_York;
     use scraper::{Html, Selector};
-    use std::sync::{Arc, Mutex};
-
-    #[derive(Clone, Default)]
-    struct FakeEventsRepo {
-        events: Arc<Mutex<Vec<Event>>>,
-        next_id: Arc<Mutex<i64>>,
-    }
-
-    impl FakeEventsRepo {
-        fn new(events: Vec<Event>) -> Self {
-            let max_id = events.iter().filter_map(|e| e.id).max().unwrap_or(0);
-            Self {
-                events: Arc::new(Mutex::new(events)),
-                next_id: Arc::new(Mutex::new(max_id)),
-            }
-        }
-    }
-
-    #[async_trait]
-    impl EventsRepo for FakeEventsRepo {
-        async fn list(&self, category: Option<String>) -> Result<Vec<Event>> {
-            let events = self.events.lock().unwrap().clone();
-            if let Some(cat) = category {
-                Ok(events
-                    .into_iter()
-                    .filter(|e| {
-                        e.event_type
-                            .as_ref()
-                            .map(|c| c.eq_ignore_ascii_case(&cat))
-                            .unwrap_or(false)
-                    })
-                    .collect())
-            } else {
-                Ok(events)
-            }
-        }
-
-        async fn get(&self, id: i64) -> Result<Option<Event>> {
-            Ok(self
-                .events
-                .lock()
-                .unwrap()
-                .iter()
-                .find(|e| e.id == Some(id))
-                .cloned())
-        }
-
-        async fn claim_idempotency_key(&self, _idempotency_key: uuid::Uuid) -> Result<bool> {
-            Ok(true)
-        }
-
-        async fn insert(&self, event: &Event) -> Result<i64> {
-            let mut id_guard = self.next_id.lock().unwrap();
-            *id_guard += 1;
-            let id = *id_guard;
-
-            let mut stored = event.clone();
-            stored.id = Some(id);
-            self.events.lock().unwrap().push(stored);
-            Ok(id)
-        }
-
-        async fn delete(&self, id: i64) -> Result<()> {
-            let mut events = self.events.lock().unwrap();
-            let len_before = events.len();
-            events.retain(|e| e.id != Some(id));
-            if events.len() == len_before {
-                return Err(anyhow::anyhow!("Event not found"));
-            }
-            Ok(())
-        }
-    }
 
     #[actix_web::test]
     async fn test_index_filters_by_category() -> Result<()> {
@@ -209,7 +136,7 @@ mod tests {
             start_date: mk_local(local_dt(today_local, 11, 0)).with_timezone(&Utc),
             end_date: None,
             location: Some("Gallery".to_string()),
-            event_type: Some("Art".to_string()),
+            event_type: Some(EventType::Art),
             url: None,
             confidence: 1.0,
         };
@@ -221,7 +148,7 @@ mod tests {
             start_date: mk_local(local_dt(today_local, 19, 0)).with_timezone(&Utc),
             end_date: None,
             location: Some("Club".to_string()),
-            event_type: Some("Music".to_string()),
+            event_type: Some(EventType::Music),
             url: None,
             confidence: 1.0,
         };
