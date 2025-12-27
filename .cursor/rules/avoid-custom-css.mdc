@@ -1,0 +1,5 @@
+---
+alwaysApply: true
+---
+
+Avoid adding ids and classes to your html. Instead, style the generic element such as <p> or <a> directly UNLESS absolutely necessary (an element that deviates from all the other elements like it).

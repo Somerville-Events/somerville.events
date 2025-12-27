@@ -2,11 +2,16 @@ use crate::common_ui::COMMON_STYLES;
 use crate::models::Event;
 use crate::AppState;
 use actix_multipart::form::{tempfile::TempFile, MultipartForm};
-use actix_web::{http::header::ContentType, web::Data, HttpResponse};
+use actix_web::{
+    http::header::ContentType,
+    web::{Data, Query},
+    HttpResponse,
+};
 use anyhow::{anyhow, Result};
 use awc::Client;
 use base64::{engine::general_purpose::STANDARD as b64, Engine as _};
 use chrono::{DateTime, Utc};
+use html_escape::encode_safe;
 use schemars::schema_for;
 use serde_json::json;
 use std::{fs, path::Path};
@@ -28,6 +33,7 @@ pub struct ImageEventExtraction {
 pub struct Upload {
     pub image: TempFile,
     pub idempotency_key: actix_multipart::form::text::Text<uuid::Uuid>,
+    pub sync: Option<actix_multipart::form::text::Text<bool>>,
 }
 
 pub async fn index() -> HttpResponse {
@@ -200,7 +206,6 @@ pub async fn index() -> HttpResponse {
                     display: none;
                     border-radius: 4px;
                 }}
-
             </style>
         </head>
         <body class="no-camera"> <!-- Default to no-camera, upgraded by JS -->
@@ -229,9 +234,14 @@ pub async fn index() -> HttpResponse {
                 
                 <input type="file" name="image" accept="image/*" required>
 
-                <img alt="Selected Image Preview">
-
                 <button type="submit">Upload</button>
+
+                <div class="status-panel hidden">
+                    <progress max="100"></progress>
+                    <output>Uploading 0%</output>
+                </div>
+
+                <img alt="Selected Image Preview">
             </form>
         </body>
         </html>"#,
@@ -280,34 +290,66 @@ pub async fn save(
 
     let state = state.into_inner();
     let dest_path_clone = dest_path.clone();
+    let sync_requested = req.sync.as_ref().map(|flag| flag.0).unwrap_or(false);
 
-    actix_web::rt::spawn(async move {
-        match parse_image(&dest_path_clone, &state.client, &state.api_key).await {
-            Ok(Some(event)) => match state.events_repo.insert(&event).await {
-                Ok(id) => {
-                    log::info!("Saved event to database with id: {}", id);
+    if !sync_requested {
+        actix_web::rt::spawn(async move {
+            match parse_image(&dest_path_clone, &state.client, &state.api_key).await {
+                Ok(Some(event)) => match state.events_repo.insert(&event).await {
+                    Ok(id) => {
+                        log::info!("Saved event to database with id: {}", id);
+                    }
+                    Err(e) => {
+                        log::error!("Failed to save event to database: {e:#}");
+                    }
+                },
+                Ok(None) => {
+                    log::info!("Image processed but no event found (or missing date)");
                 }
                 Err(e) => {
-                    log::error!("Failed to save event to database: {e:#}");
+                    log::error!("parse_image failed: {e:#}");
                 }
-            },
-            Ok(None) => {
-                log::info!("Image processed but no event found (or missing date)");
+            }
+
+            // Cleanup
+            if let Err(e) = fs::remove_file(&dest_path_clone) {
+                log::warn!("Failed to remove temp file {:?}: {}", dest_path_clone, e);
+            }
+        });
+
+        return HttpResponse::SeeOther()
+            .insert_header((actix_web::http::header::LOCATION, "/upload-success"))
+            .finish();
+    }
+
+    let response = match parse_image(&dest_path, &state.client, &state.api_key).await {
+        Ok(Some(event)) => match state.events_repo.insert(&event).await {
+            Ok(id) => {
+                let location = format!("/event/{id}");
+                HttpResponse::SeeOther()
+                    .insert_header((actix_web::http::header::LOCATION, location))
+                    .finish()
             }
             Err(e) => {
-                log::error!("parse_image failed: {e:#}");
+                log::error!("Failed to save event to database: {e:#}");
+                redirect_error("Failed to save event to database")
             }
+        },
+        Ok(None) => {
+            log::info!("Image processed but no event found (or missing date)");
+            redirect_error("Image processed but no event found (or missing date)")
         }
-
-        // Cleanup
-        if let Err(e) = fs::remove_file(&dest_path_clone) {
-            log::warn!("Failed to remove temp file {:?}: {}", dest_path_clone, e);
+        Err(e) => {
+            log::error!("parse_image failed: {e:#}");
+            redirect_error(&format!("Failed to parse image: {e:#}"))
         }
-    });
+    };
 
-    HttpResponse::SeeOther()
-        .insert_header((actix_web::http::header::LOCATION, "/upload-success"))
-        .finish()
+    if let Err(e) = fs::remove_file(&dest_path) {
+        log::warn!("Failed to remove temp file {:?}: {}", dest_path, e);
+    }
+
+    response
 }
 
 pub async fn success() -> HttpResponse {
@@ -334,6 +376,69 @@ pub async fn success() -> HttpResponse {
         </html>"#,
             common_styles = COMMON_STYLES
         ))
+}
+
+#[derive(serde::Deserialize)]
+pub struct UploadErrorQuery {
+    message: Option<String>,
+}
+
+pub async fn error(query: Query<UploadErrorQuery>) -> HttpResponse {
+    let message = query
+        .message
+        .as_deref()
+        .map(|m| encode_safe(m).to_string())
+        .unwrap_or_else(|| "An unexpected error occurred while processing your upload.".into());
+
+    HttpResponse::Ok()
+        .content_type(ContentType::html())
+        .body(format!(
+            r#"<!doctype html>
+        <html lang="en">
+        <head>
+            <meta name="color-scheme" content="light dark">
+            <meta name="viewport" content="width=device-width, minimum-scale=1, initial-scale=1">
+            <title>Upload Failed - Somerville Events</title>
+            <style>
+                {common_styles}
+            </style>
+        </head>
+        <body>
+            <h1>Upload Failed</h1>
+            <p>{message}</p>
+            <br>
+            <a href="/" class="button">Back to Events</a>
+            <a href="/upload" class="button primary">Try Again</a>
+        </body>
+        </html>"#,
+            common_styles = COMMON_STYLES,
+            message = message
+        ))
+}
+
+fn redirect_error(message: &str) -> HttpResponse {
+    let encoded = percent_encode(message);
+    HttpResponse::SeeOther()
+        .insert_header((
+            actix_web::http::header::LOCATION,
+            format!("/upload-error?message={encoded}"),
+        ))
+        .finish()
+}
+
+fn percent_encode(input: &str) -> String {
+    let mut encoded = String::new();
+    for b in input.bytes() {
+        match b {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'.' | b'_' | b'~' => {
+                encoded.push(char::from(b));
+            }
+            _ => {
+                encoded.push_str(&format!("%{:02X}", b));
+            }
+        }
+    }
+    encoded
 }
 
 pub async fn parse_image(

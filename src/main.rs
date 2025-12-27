@@ -137,6 +137,7 @@ async fn main() -> Result<()> {
                     .route("", web::get().to(edit_events::index)),
             )
             .route("/upload-success", web::get().to(upload_events::success))
+            .route("/upload-error", web::get().to(upload_events::error))
     })
     .bind((host, 8080))?
     .run()
