@@ -1,0 +1,159 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8">
+    <meta name="color-scheme" content="light dark">
+    <meta name="viewport" content="width=device-width, minimum-scale=1, initial-scale=1">
+    <title>{% block title %}Somerville Events{% endblock %}</title>
+    <style>
+        :root {
+            --link-color: light-dark(rgb(27, 50, 100), rgb(125, 148, 197));
+
+            --button-bg: light-dark(#e0e0e0, #333);
+            --button-text: light-dark(#333, #eee);
+            --button-shadow-light: light-dark(rgba(255, 255, 255, 0.8), rgba(255, 255, 255, 0.1));
+            --button-shadow-dark: rgba(0, 0, 0, 0.1);
+            --button-border: light-dark(#a0a0a0, #555);
+
+            --primary-bg: #d13a26;
+            --primary-text: #fff;
+            --primary-shadow: #8c2415;
+        }
+
+        body {
+            font-family: system-ui, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 1rem;
+            line-height: 1.5;
+        }
+
+        a {
+            text-decoration: none;
+            color: var(--link-color);
+        }
+
+        a:hover {
+            text-decoration: underline;
+        }
+
+        header {
+            display: flex;
+            align-items: baseline;
+            justify-content: space-between;
+            gap: 1rem;
+            flex-wrap: wrap;
+            margin-bottom: 2rem;
+        }
+
+        header h1 {
+            margin: 0;
+            font-size: 2em;
+        }
+
+        h1 {
+            margin-bottom: 1rem;
+        }
+
+        h2 {
+            margin-top: 2.5rem;
+        }
+
+        section {
+            margin-bottom: 2.5rem;
+        }
+
+        article {
+            padding: 1rem 0;
+            border-top: 1px solid color-mix(in srgb, currentColor 15%, transparent);
+        }
+
+        article:first-child {
+            border-top: 0;
+        }
+
+        article dl {
+            margin: 0.5rem 0 0.75rem 0;
+            display: grid;
+            grid-template-columns: 7rem 1fr;
+            gap: 0.25rem 1rem;
+        }
+
+        article dt {
+            font-weight: 600;
+        }
+
+        article dd {
+            margin: 0;
+        }
+
+        article p {
+            margin: 0.75rem 0;
+        }
+
+        /* Button Styling */
+        button,
+        .button,
+        input[type=file]::file-selector-button {
+            display: inline-block;
+            padding: 0.8rem 1.4rem;
+            font-family: system-ui, sans-serif;
+            font-size: 1rem;
+            font-weight: 600;
+            text-decoration: none;
+            text-align: center;
+            color: var(--button-text);
+            background-color: var(--button-bg);
+            border: none;
+            border-radius: 4px;
+            box-shadow:
+                inset 1px 1px 0px var(--button-shadow-light),
+                inset -1px -1px 0px var(--button-shadow-dark),
+                0 4px 0 var(--button-border),
+                0 5px 8px rgba(0, 0, 0, 0.2);
+            cursor: pointer;
+            transition: transform 0.1s, box-shadow 0.1s;
+        }
+
+        button:active,
+        .button:active,
+        input[type=file]::file-selector-button:active {
+            transform: translateY(4px);
+            box-shadow:
+                inset 2px 2px 5px rgba(0, 0, 0, 0.1),
+                0 0 0 var(--button-border);
+        }
+
+        .button.primary,
+        button.primary,
+        button[type=submit] {
+            background-color: var(--primary-bg);
+            color: var(--primary-text);
+            box-shadow:
+                inset 1px 1px 0px rgba(255, 255, 255, 0.2),
+                inset -1px -1px 0px rgba(0, 0, 0, 0.2),
+                0 4px 0 var(--primary-shadow),
+                0 5px 8px rgba(0, 0, 0, 0.3);
+        }
+
+        .button.primary:active,
+        button.primary:active,
+        button[type=submit]:active {
+            box-shadow:
+                inset 2px 2px 5px rgba(0, 0, 0, 0.2),
+                0 0 0 var(--primary-shadow);
+        }
+
+        .hidden {
+            display: none !important;
+        }
+    </style>
+    {% block head %}{% endblock %}
+</head>
+
+<body class="{% block body_class %}{% endblock %}">
+    {% block content %}{% endblock %}
+</body>
+
+</html>

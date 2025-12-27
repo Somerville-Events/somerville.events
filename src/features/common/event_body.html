@@ -1,0 +1,24 @@
+<dl>
+    <dt>When</dt>
+    <dd>
+        <time datetime="{{ event.start_iso }}">{{ event.start_formatted }}</time>
+        {% if let Some(end) = event.end_formatted %}
+        – <time datetime="{{ event.end_iso }}">{{ end }}</time>
+        {% endif %}
+    </dd>
+
+    <dt>Location</dt>
+    <dd>{{ event.location }}</dd>
+
+    {% if let Some((url, label)) = event.category_link %}
+    <dt>Category</dt>
+    <dd><a href="{{ url }}">{{ label }}</a></dd>
+    {% endif %}
+
+    {% if let Some(url) = event.website_link %}
+    <dt>Website</dt>
+    <dd><a href="{{ url }}" rel="noopener noreferrer" target="_blank">{{ url }}</a></dd>
+    {% endif %}
+</dl>
+<p>{{ event.description }}</p>
+<p><a href="/event/{{ event.id }}.ical" class="button">Add to calendar</a></p>

@@ -1,11 +1,17 @@
-use crate::models::Event;
+use crate::models::{Event, EventType};
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;
+use chrono::{DateTime, Utc};
 use strsim::jaro_winkler;
 
 #[async_trait]
 pub trait EventsRepo: Send + Sync {
-    async fn list(&self) -> Result<Vec<Event>>;
+    async fn list(
+        &self,
+        category: Option<String>,
+        since: Option<DateTime<Utc>>,
+        until: Option<DateTime<Utc>>,
+    ) -> Result<Vec<Event>>;
     async fn get(&self, id: i64) -> Result<Option<Event>>;
     async fn claim_idempotency_key(&self, idempotency_key: uuid::Uuid) -> Result<bool>;
     async fn insert(&self, event: &Event) -> Result<i64>;
@@ -18,7 +24,12 @@ pub struct EventsDatabase {
 
 #[async_trait]
 impl EventsRepo for EventsDatabase {
-    async fn list(&self) -> Result<Vec<Event>> {
+    async fn list(
+        &self,
+        category: Option<String>,
+        since: Option<DateTime<Utc>>,
+        until: Option<DateTime<Utc>>,
+    ) -> Result<Vec<Event>> {
         let events = sqlx::query_as!(
             Event,
             r#"
@@ -29,12 +40,18 @@ impl EventsRepo for EventsDatabase {
                 start_date,
                 end_date,
                 location,
-                event_type,
+                event_type as "event_type: EventType",
                 url,
                 confidence
             FROM app.events
+            WHERE ($1::text IS NULL OR event_type::text = $1::text)
+            AND ($2::timestamptz IS NULL OR start_date >= $2)
+            AND ($3::timestamptz IS NULL OR start_date <= $3)
             ORDER BY start_date ASC NULLS LAST
             "#,
+            category,
+            since,
+            until
         )
         .fetch_all(&self.pool)
         .await?;
@@ -52,7 +69,7 @@ impl EventsRepo for EventsDatabase {
                 start_date,
                 end_date,
                 location,
-                event_type,
+                event_type as "event_type: EventType",
                 url,
                 confidence
             FROM app.events
@@ -126,7 +143,7 @@ pub async fn save_event_to_db(executor: &sqlx::Pool<sqlx::Postgres>, event: &Eve
             url,
             confidence
         )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+        VALUES ($1, $2, $3, $4, $5, $6::app.event_type, $7, $8)
         RETURNING id
         "#,
         event.name,
@@ -134,7 +151,7 @@ pub async fn save_event_to_db(executor: &sqlx::Pool<sqlx::Postgres>, event: &Eve
         event.start_date,
         event.end_date,
         event.location,
-        event.event_type,
+        event.event_type.as_ref() as Option<&EventType>,
         event.url,
         event.confidence
     )
@@ -159,7 +176,7 @@ async fn find_duplicate(
             start_date,
             end_date,
             location,
-            event_type,
+            event_type as "event_type: EventType",
             url,
             confidence
         FROM app.events

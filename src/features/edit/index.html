@@ -1,0 +1,23 @@
+{% extends "common/layout.html" %}
+
+{% block title %}Edit Events{% endblock %}
+
+{% block content %}
+<header>
+    <h1>Edit Events</h1>
+    <nav>
+        <a href="/">&larr; Back to Home</a>
+    </nav>
+</header>
+<section>
+    {% for event in events %}
+    <article>
+        <h3><a href="/event/{{ event.id }}">{{ event.name }}</a></h3>
+        {% include "common/event_body.html" %}
+        <form action="/event/{{ event.id }}?_method=DELETE" method="post">
+            <button type="submit">Delete</button>
+        </form>
+    </article>
+    {% endfor %}
+</section>
+{% endblock %}

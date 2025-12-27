@@ -1,0 +1,5 @@
+---
+alwaysApply: true
+---
+
+When writing html, always use the most specific semantic element for what you're making. If you must style it, use css selector for the element, not a custom id or class unless absolutely necessary.

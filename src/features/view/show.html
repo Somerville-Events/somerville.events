@@ -1,0 +1,11 @@
+{% extends "common/layout.html" %}
+
+{% block title %}{{ event.name }} - Somerville Events{% endblock %}
+
+{% block content %}
+<p><a href="/">&larr; Back to Events</a></p>
+<article>
+    <h1>{{ event.name }}</h1>
+    {% include "common/event_body.html" %}
+</article>
+{% endblock %}

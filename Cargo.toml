@@ -16,7 +16,6 @@ actix-web-httpauth = "0.8.2"
 sqlx = { version = "0.8", features = [
     "postgres",
     "runtime-tokio",
-    "tls-rustls-ring-webpki",
     "chrono",
     "uuid",
 ] }
@@ -45,6 +44,9 @@ strsim = "0.11"
 image = "0.25.5"
 rqrr = "0.7.1"
 url = "2.5.4"
+askama = "0.15.0"
+rxing = "0.8.3"
+strum = { version = "0.27.2", features = ["derive"] }
 
 [dev-dependencies]
 scraper = "0.25.0"

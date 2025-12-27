@@ -1,9 +1,8 @@
-mod common_ui;
-mod db;
-mod edit_events;
+mod config;
+mod database;
+mod features;
+mod image_processing;
 mod models;
-mod upload_events;
-mod view_events;
 
 use actix_web::{
     dev::ServiceRequest,
@@ -15,14 +14,10 @@ use actix_web::{
 use actix_web_httpauth::{extractors::basic::BasicAuth, middleware::HttpAuthentication};
 use actix_web_query_method_middleware::QueryMethod;
 use anyhow::Result;
-use awc::{Client, Connector};
-use db::{EventsDatabase, EventsRepo};
-use dotenvy::dotenv;
+use awc::Client;
+use config::Config;
+use database::{EventsDatabase, EventsRepo};
 use sqlx::postgres::PgPoolOptions;
-use std::{
-    env,
-    sync::{Arc, OnceLock},
-};
 
 pub struct AppState {
     pub api_key: String,
@@ -30,22 +25,6 @@ pub struct AppState {
     pub username: String,
     pub password: String,
     pub events_repo: Box<dyn EventsRepo>,
-}
-
-pub(crate) static TLS_CONFIG: OnceLock<Arc<rustls::ClientConfig>> = OnceLock::new();
-
-pub(crate) fn init_tls_once() -> Arc<rustls::ClientConfig> {
-    use rustls_platform_verifier::ConfigVerifierExt as _;
-
-    rustls::crypto::aws_lc_rs::default_provider()
-        .install_default()
-        .unwrap();
-
-    // The benefits of the platform verifier are clear; see:
-    // https://github.com/rustls/rustls-platform-verifier#readme
-    let client_config = rustls::ClientConfig::with_platform_verifier()
-        .expect("Failed to create TLS client config.");
-    Arc::new(client_config)
 }
 
 async fn basic_auth_validator(
@@ -68,42 +47,30 @@ async fn basic_auth_validator(
 
 #[actix_web::main]
 async fn main() -> Result<()> {
-    // Load .env file if present
-    dotenv().ok();
+    let config = Config::from_env();
     env_logger::init_from_env(env_logger::Env::new().default_filter_or("info"));
 
-    // Read env once
-    let host = env::var("HOST").expect("HOST");
-    let api_key: String = env::var("OPENAI_API_KEY").expect("OPENAI_API_KEY");
-    let username = env::var("BASIC_AUTH_USER").expect("BASIC_AUTH_USER");
-    let password = env::var("BASIC_AUTH_PASS").expect("BASIC_AUTH_PASS");
-    let db_user = env::var("DB_APP_USER").expect("DB_APP_USER");
-    let db_password = env::var("DB_APP_USER_PASS").expect("DB_APP_USER_PASS");
-    let db_name = env::var("DB_NAME").expect("DB_NAME");
-    let static_file_dir = env::var("STATIC_FILE_DIR").unwrap_or_else(|_| "./static".to_string());
+    let db_url = config.get_db_url();
 
-    // TLS config once
-    let tls_config = TLS_CONFIG.get_or_init(init_tls_once).clone();
-
-    // Create the database connection pool once
-    let db_url = format!("postgres://{db_user}:{db_password}@localhost/{db_name}");
     let db_connection_pool = PgPoolOptions::new()
         .max_connections(5)
-        .connect(db_url.as_str())
+        .connect(&db_url)
         .await?;
 
     log::info!("Starting server at http://localhost:8080");
+
+    let host = config.host.clone();
+    let static_file_dir = config.static_file_dir.clone();
+
     HttpServer::new(move || {
-        // Build a single client per worker with shared TLS config
         let client: Client = awc::ClientBuilder::new()
             .timeout(std::time::Duration::from_secs(120))
-            .connector(Connector::new().rustls_0_23(tls_config.clone()))
             .finish();
 
         let state = AppState {
-            api_key: api_key.clone(),
-            username: username.clone(),
-            password: password.clone(),
+            api_key: config.api_key.clone(),
+            username: config.username.clone(),
+            password: config.password.clone(),
             events_repo: Box::new(EventsDatabase {
                 pool: db_connection_pool.clone(),
             }),
@@ -117,26 +84,26 @@ async fn main() -> Result<()> {
             .wrap(QueryMethod::default())
             .wrap(middleware::Logger::default())
             .service(actix_files::Files::new("/static", &static_file_dir).show_files_listing())
-            .route("/", web::get().to(view_events::index))
-            .route("/event/{id}.ical", web::get().to(view_events::ical))
-            .route("/event/{id}", web::get().to(view_events::show))
+            .route("/", web::get().to(features::view::index))
+            .route("/event/{id}.ical", web::get().to(features::view::ical))
+            .route("/event/{id}", web::get().to(features::view::show))
             .service(
                 web::resource("/upload")
                     .wrap(auth_middleware.clone())
-                    .route(web::get().to(upload_events::index))
-                    .route(web::post().to(upload_events::save)),
+                    .route(web::get().to(features::upload::index))
+                    .route(web::post().to(features::upload::save)),
             )
             .service(
                 web::resource("/event/{id}")
                     .wrap(auth_middleware.clone())
-                    .route(web::delete().to(edit_events::delete)),
+                    .route(web::delete().to(features::edit::delete)),
             )
             .service(
                 web::scope("/edit")
                     .wrap(auth_middleware)
-                    .route("", web::get().to(edit_events::index)),
+                    .route("", web::get().to(features::edit::index)),
             )
-            .route("/upload-success", web::get().to(upload_events::success))
+            .route("/upload-success", web::get().to(features::upload::success))
     })
     .bind((host, 8080))?
     .run()
@@ -146,24 +113,27 @@ async fn main() -> Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::db::EventsRepo;
-    use crate::models::Event;
-    use actix_web::test;
+    use super::database::EventsRepo;
+    use super::features::view::IndexQuery;
+    use super::models::{Event, EventType};
+    use super::AppState;
+    use actix_web::web::Data;
+    use actix_web::{test, web, App};
+    use anyhow::Result;
     use async_trait::async_trait;
-    use chrono::{NaiveDateTime, NaiveTime, TimeZone, Utc};
+    use chrono::{DateTime, NaiveDateTime, NaiveTime, TimeZone, Timelike, Utc};
     use chrono_tz::America::New_York;
     use scraper::{Html, Selector};
     use std::sync::{Arc, Mutex};
 
     #[derive(Clone, Default)]
-    struct FakeEventsRepo {
-        events: Arc<Mutex<Vec<Event>>>,
-        next_id: Arc<Mutex<i64>>,
+    pub struct MockEventsRepo {
+        pub events: Arc<Mutex<Vec<Event>>>,
+        pub next_id: Arc<Mutex<i64>>,
     }
 
-    impl FakeEventsRepo {
-        fn new(events: Vec<Event>) -> Self {
+    impl MockEventsRepo {
+        pub fn new(events: Vec<Event>) -> Self {
             let max_id = events.iter().filter_map(|e| e.id).max().unwrap_or(0);
             Self {
                 events: Arc::new(Mutex::new(events)),
@@ -173,9 +143,38 @@ mod tests {
     }
 
     #[async_trait]
-    impl EventsRepo for FakeEventsRepo {
-        async fn list(&self) -> Result<Vec<Event>> {
-            Ok(self.events.lock().unwrap().clone())
+    impl EventsRepo for MockEventsRepo {
+        async fn list(
+            &self,
+            category: Option<String>,
+            since: Option<DateTime<Utc>>,
+            until: Option<DateTime<Utc>>,
+        ) -> Result<Vec<Event>> {
+            let events = self.events.lock().unwrap().clone();
+            Ok(events
+                .into_iter()
+                .filter(|e| {
+                    let cat_match = if let Some(cat) = &category {
+                        e.event_type
+                            .as_ref()
+                            .map(|c| c.to_string().eq_ignore_ascii_case(cat))
+                            .unwrap_or(false)
+                    } else {
+                        true
+                    };
+                    let since_match = if let Some(since_dt) = since {
+                        e.start_date >= since_dt
+                    } else {
+                        true
+                    };
+                    let until_match = if let Some(until_dt) = until {
+                        e.start_date <= until_dt
+                    } else {
+                        true
+                    };
+                    cat_match && since_match && until_match
+                })
+                .collect())
         }
 
         async fn get(&self, id: i64) -> Result<Option<Event>> {
@@ -216,20 +215,20 @@ mod tests {
 
     #[actix_web::test]
     async fn test_index_filters_by_category() -> Result<()> {
+        // 2025-01-15 17:00:00 UTC = 12:00:00 EST
         let now_utc = Utc.with_ymd_and_hms(2025, 1, 15, 17, 0, 0).unwrap();
-        let today_local = now_utc.with_timezone(&New_York).date_naive();
-        let mk_local = |d: NaiveDateTime| New_York.from_local_datetime(&d).single().unwrap();
-        let local_dt =
-            |date, h, m| NaiveDateTime::new(date, NaiveTime::from_hms_opt(h, m, 0).unwrap());
+
+        // Helper to create a NY datetime
+        let mk_ny = |d, h, m| New_York.with_ymd_and_hms(2025, 1, d, h, m, 0).unwrap();
 
         let art_event = Event {
             id: Some(1),
             name: "Art Show".to_string(),
             full_description: "Paintings galore".to_string(),
-            start_date: mk_local(local_dt(today_local, 11, 0)).with_timezone(&Utc),
+            start_date: mk_ny(15, 11, 0).with_timezone(&Utc),
             end_date: None,
             location: Some("Gallery".to_string()),
-            event_type: Some("Art".to_string()),
+            event_type: Some(EventType::Art),
             url: None,
             confidence: 1.0,
         };
@@ -238,10 +237,10 @@ mod tests {
             id: Some(2),
             name: "Music Night".to_string(),
             full_description: "Jazz and blues".to_string(),
-            start_date: mk_local(local_dt(today_local, 19, 0)).with_timezone(&Utc),
+            start_date: mk_ny(15, 19, 0).with_timezone(&Utc),
             end_date: None,
             location: Some("Club".to_string()),
-            event_type: Some("Music".to_string()),
+            event_type: Some(EventType::Music),
             url: None,
             confidence: 1.0,
         };
@@ -251,7 +250,7 @@ mod tests {
             client: awc::Client::default(),
             username: "user".to_string(),
             password: "pass".to_string(),
-            events_repo: Box::new(FakeEventsRepo::new(vec![art_event.clone(), music_event])),
+            events_repo: Box::new(MockEventsRepo::new(vec![art_event.clone(), music_event])),
         };
 
         let fixed_now_utc = now_utc;
@@ -259,7 +258,14 @@ mod tests {
         let app = test::init_service(App::new().app_data(Data::new(state)).route(
             "/",
             web::get().to(move |state: Data<AppState>| {
-                crate::view_events::index_with_now(state, fixed_now_utc, filter.clone())
+                crate::features::view::index_with_now(
+                    state,
+                    fixed_now_utc,
+                    IndexQuery {
+                        category: filter.clone(),
+                        past: None,
+                    },
+                )
             }),
         ))
         .await;
@@ -372,7 +378,7 @@ mod tests {
         };
 
         // Intentionally shuffled to ensure server-side sorting/grouping is doing the work.
-        let fake_repo = FakeEventsRepo::new(vec![
+        let mock_repo = MockEventsRepo::new(vec![
             multi_day,
             past_event,
             same_day_2,
@@ -386,14 +392,21 @@ mod tests {
             client: awc::Client::default(),
             username: "user".to_string(),
             password: "pass".to_string(),
-            events_repo: Box::new(fake_repo),
+            events_repo: Box::new(mock_repo),
         };
 
         let fixed_now_utc = now_utc;
         let app = test::init_service(App::new().app_data(Data::new(state)).route(
             "/",
             web::get().to(move |state: Data<AppState>| {
-                crate::view_events::index_with_now(state, fixed_now_utc, None)
+                crate::features::view::index_with_now(
+                    state,
+                    fixed_now_utc,
+                    IndexQuery {
+                        category: None,
+                        past: None,
+                    },
+                )
             }),
         ))
         .await;
@@ -493,18 +506,14 @@ mod tests {
 
     #[actix_web::test]
     async fn test_ical_endpoint() -> Result<()> {
-        let now_utc = Utc.with_ymd_and_hms(2025, 1, 15, 17, 0, 0).unwrap();
-        let today_local = now_utc.with_timezone(&New_York).date_naive();
-        let mk_local = |d: NaiveDateTime| New_York.from_local_datetime(&d).single().unwrap();
-        let local_dt =
-            |date, h, m| NaiveDateTime::new(date, NaiveTime::from_hms_opt(h, m, 0).unwrap());
+        let today_start = New_York.with_ymd_and_hms(2025, 1, 15, 0, 0, 0).unwrap();
 
         let event = Event {
             id: Some(1),
             name: "ICal Event".to_string(),
             full_description: "Description for ICal".to_string(),
-            start_date: mk_local(local_dt(today_local, 10, 0)).with_timezone(&Utc),
-            end_date: Some(mk_local(local_dt(today_local, 11, 0)).with_timezone(&Utc)),
+            start_date: today_start.with_hour(10).unwrap().with_timezone(&Utc),
+            end_date: Some(today_start.with_hour(11).unwrap().with_timezone(&Utc)),
             location: Some("Virtual".to_string()),
             event_type: None,
             url: None,
@@ -516,14 +525,13 @@ mod tests {
             client: awc::Client::default(),
             username: "user".to_string(),
             password: "pass".to_string(),
-            events_repo: Box::new(FakeEventsRepo::new(vec![event])),
+            events_repo: Box::new(MockEventsRepo::new(vec![event])),
         };
 
-        let app = test::init_service(
-            App::new()
-                .app_data(Data::new(state))
-                .route("/event/{id}.ical", web::get().to(crate::view_events::ical)),
-        )
+        let app = test::init_service(App::new().app_data(Data::new(state)).route(
+            "/event/{id}.ical",
+            web::get().to(crate::features::view::ical),
+        ))
         .await;
 
         let req = test::TestRequest::get().uri("/event/1.ical").to_request();
@@ -575,6 +583,61 @@ mod tests {
 
         assert!(body_str.contains("END:VCALENDAR"));
 
+        Ok(())
+    }
+
+    #[actix_web::test]
+    async fn test_event_time_display_timezone() -> Result<()> {
+        let event = Event {
+            id: Some(1),
+            name: "Pumpkin Smash".to_string(),
+            full_description: "Smash pumpkins".to_string(),
+            // Correctly stored UTC time for 10:30 AM EST is 15:30 UTC.
+            start_date: Utc.with_ymd_and_hms(2025, 11, 8, 15, 30, 0).unwrap(),
+            end_date: Some(Utc.with_ymd_and_hms(2025, 11, 8, 18, 0, 0).unwrap()),
+            location: Some("Somerville".to_string()),
+            event_type: None,
+            url: None,
+            confidence: 1.0,
+        };
+
+        let state = AppState {
+            api_key: "dummy".to_string(),
+            client: awc::Client::default(),
+            username: "user".to_string(),
+            password: "pass".to_string(),
+            events_repo: Box::new(MockEventsRepo::new(vec![event])),
+        };
+
+        let fixed_now = Utc.with_ymd_and_hms(2025, 11, 8, 8, 0, 0).unwrap();
+        let app = test::init_service(App::new().app_data(Data::new(state)).route(
+            "/",
+            web::get().to(move |state: Data<AppState>| {
+                // We use fixed_now to ensure the event is considered upcoming
+                crate::features::view::index_with_now(
+                    state,
+                    fixed_now,
+                    IndexQuery {
+                        category: None,
+                        past: None,
+                    },
+                )
+            }),
+        ))
+        .await;
+
+        let req = test::TestRequest::get().uri("/").to_request();
+        let resp = test::call_service(&app, req).await;
+        assert_eq!(resp.status(), actix_web::http::StatusCode::OK);
+
+        let body = test::read_body(resp).await;
+        let body_str = std::str::from_utf8(&body)?;
+
+        assert!(
+            body_str.contains("10:30 AM"),
+            "Body did not contain '10:30 AM'. Content: {}",
+            body_str
+        );
         Ok(())
     }
 }
