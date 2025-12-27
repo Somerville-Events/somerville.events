@@ -1,3 +1,4 @@
+use crate::features::common::{DateFormat, EventViewModel};
 use crate::models::Event;
 use crate::AppState;
 use actix_web::{web, HttpResponse, Responder};
@@ -28,58 +29,6 @@ struct DaySection {
     events: Vec<EventViewModel>,
 }
 
-#[derive(Clone)]
-struct EventViewModel {
-    id: i64,
-    name: String,
-    start_iso: String,
-    start_formatted: String,
-    end_iso: String,
-    end_formatted: Option<String>,
-    location: String,
-    category_link: Option<(String, String)>,
-    website_link: Option<(String, String)>,
-    description: String,
-}
-
-impl EventViewModel {
-    fn from_event(event: &Event) -> Self {
-        let start_ny = event.start_date.with_timezone(&New_York);
-        let start_iso = start_ny.to_rfc3339();
-        let start_formatted = start_ny.format("%A, %B %d, %Y at %I:%M %p").to_string();
-
-        let (end_iso, end_formatted) = if let Some(end) = event.end_date {
-            let end_ny = end.with_timezone(&New_York);
-            (
-                end_ny.to_rfc3339(),
-                Some(end_ny.format("%A, %B %d, %Y at %I:%M %p").to_string()),
-            )
-        } else {
-            (String::new(), None)
-        };
-
-        let category_link = event.event_type.as_ref().map(|c| {
-             let encoded = url::form_urlencoded::byte_serialize(c.as_bytes()).collect::<String>();
-             (format!("/?category={}", encoded), c.clone())
-        });
-
-        let website_link = event.url.as_ref().map(|u| (u.clone(), u.clone()));
-
-        Self {
-            id: event.id.unwrap_or_default(),
-            name: event.name.clone(),
-            start_iso,
-            start_formatted,
-            end_iso,
-            end_formatted,
-            location: event.location.clone().unwrap_or_default(),
-            category_link,
-            website_link,
-            description: event.full_description.clone(),
-        }
-    }
-}
-
 #[derive(Deserialize)]
 pub struct IndexQuery {
     pub category: Option<String>,
@@ -94,32 +43,17 @@ pub async fn index_with_now(
     now_utc: DateTime<Utc>,
     category: Option<String>,
 ) -> impl Responder {
-    let events_result = state.events_repo.list().await;
+    let events_result = state.events_repo.list(category.clone()).await;
 
     match events_result {
         Ok(events) => {
-            let filtered_events: Vec<Event> = if let Some(ref category_filter) = category {
-                events
-                    .into_iter()
-                    .filter(|event| {
-                        event
-                            .event_type
-                            .as_ref()
-                            .map(|c| c.eq_ignore_ascii_case(category_filter))
-                            .unwrap_or(false)
-                    })
-                    .collect()
-            } else {
-                events
-            };
-
             let earliest_day_to_render: NaiveDate = (now_utc - Duration::days(1))
                 .with_timezone(&New_York)
                 .date_naive();
 
             let mut events_by_day: BTreeMap<NaiveDate, Vec<Event>> = BTreeMap::new();
 
-            for event in filtered_events {
+            for event in events {
                 let start = event.start_date;
                 let start_day = start.with_timezone(&New_York).date_naive();
                 let (end_day, visibility_end) = match event.end_date {
@@ -156,7 +90,10 @@ pub async fn index_with_now(
                         .then_with(|| a.name.cmp(&b.name))
                 });
 
-                let vms: Vec<EventViewModel> = day_events.iter().map(EventViewModel::from_event).collect();
+                let vms: Vec<EventViewModel> = day_events
+                    .iter()
+                    .map(|e| EventViewModel::from_event(e, DateFormat::TimeOnly))
+                    .collect();
 
                 days.push(DaySection {
                     day_id: format!("day-{}", day.format("%Y-%m-%d")),
@@ -167,7 +104,7 @@ pub async fn index_with_now(
 
             let (page_title, filter_badge) = if let Some(ref category_filter) = category {
                 (
-                    format!("Somerville {} Events", category_filter),
+                    format!("Somerville {category_filter} Events"),
                     category_filter.clone(),
                 )
             } else {
@@ -194,7 +131,7 @@ pub async fn show(state: web::Data<AppState>, path: web::Path<i64>) -> impl Resp
     match state.events_repo.get(id).await {
         Ok(Some(event)) => {
             let template = ShowTemplate {
-                event: EventViewModel::from_event(&event),
+                event: EventViewModel::from_event(&event, DateFormat::FullDate),
             };
             HttpResponse::Ok().body(template.render().unwrap())
         }
@@ -249,4 +186,3 @@ pub async fn ical(state: web::Data<AppState>, path: web::Path<i64>) -> impl Resp
         }
     }
 }
-

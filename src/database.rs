@@ -5,7 +5,7 @@ use strsim::jaro_winkler;
 
 #[async_trait]
 pub trait EventsRepo: Send + Sync {
-    async fn list(&self) -> Result<Vec<Event>>;
+    async fn list(&self, category: Option<String>) -> Result<Vec<Event>>;
     async fn get(&self, id: i64) -> Result<Option<Event>>;
     async fn claim_idempotency_key(&self, idempotency_key: uuid::Uuid) -> Result<bool>;
     async fn insert(&self, event: &Event) -> Result<i64>;
@@ -18,7 +18,7 @@ pub struct EventsDatabase {
 
 #[async_trait]
 impl EventsRepo for EventsDatabase {
-    async fn list(&self) -> Result<Vec<Event>> {
+    async fn list(&self, category: Option<String>) -> Result<Vec<Event>> {
         let events = sqlx::query_as!(
             Event,
             r#"
@@ -33,8 +33,10 @@ impl EventsRepo for EventsDatabase {
                 url,
                 confidence
             FROM app.events
+            WHERE ($1::text IS NULL OR event_type ILIKE $1)
             ORDER BY start_date ASC NULLS LAST
             "#,
+            category
         )
         .fetch_all(&self.pool)
         .await?;

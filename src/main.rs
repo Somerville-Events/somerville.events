@@ -141,8 +141,21 @@ mod tests {
 
     #[async_trait]
     impl EventsRepo for FakeEventsRepo {
-        async fn list(&self) -> Result<Vec<Event>> {
-            Ok(self.events.lock().unwrap().clone())
+        async fn list(&self, category: Option<String>) -> Result<Vec<Event>> {
+            let events = self.events.lock().unwrap().clone();
+            if let Some(cat) = category {
+                Ok(events
+                    .into_iter()
+                    .filter(|e| {
+                        e.event_type
+                            .as_ref()
+                            .map(|c| c.eq_ignore_ascii_case(&cat))
+                            .unwrap_or(false)
+                    })
+                    .collect())
+            } else {
+                Ok(events)
+            }
         }
 
         async fn get(&self, id: i64) -> Result<Option<Event>> {
