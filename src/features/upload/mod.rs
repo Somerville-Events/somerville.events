@@ -58,7 +58,14 @@ pub async fn save(
     }
 
     let temp_dir = std::env::temp_dir();
-    let file_name = format!("{}.jpg", idempotency_key);
+    let extension = req
+        .image
+        .file_name
+        .as_ref()
+        .and_then(|name| std::path::Path::new(name).extension())
+        .and_then(|ext| ext.to_str())
+        .unwrap_or("jpg");
+    let file_name = format!("{}.{}", idempotency_key, extension);
     let dest_path = temp_dir.join(&file_name);
     let dest_path_clone = dest_path.clone();
 
