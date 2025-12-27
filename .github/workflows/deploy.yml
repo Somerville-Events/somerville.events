@@ -33,6 +33,12 @@ jobs:
       - name: Run Tests
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          HOST: 127.0.0.1
+          BASIC_AUTH_USER: test
+          BASIC_AUTH_PASS: test
+          DB_APP_USER: test
+          DB_APP_USER_PASS: test
+          DB_NAME: test
         run: cargo test
 
       - name: Build Release
