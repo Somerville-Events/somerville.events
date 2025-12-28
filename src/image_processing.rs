@@ -41,14 +41,14 @@ pub struct ImageEventExtraction {
     pub events: Vec<SingleEventExtraction>,
 }
 
-pub async fn parse_image(image_path: &Path, client: Client, api_key: &str) -> Result<Vec<Event>> {
+pub async fn parse_image(image_path: &Path, client: &Client, api_key: &str) -> Result<Vec<Event>> {
     parse_image_with_now(image_path, Utc::now(), client, api_key).await
 }
 
 async fn parse_image_with_now(
     image_path: &Path,
     now: DateTime<Utc>,
-    client: Client,
+    client: &Client,
     api_key: &str,
 ) -> Result<Vec<Event>> {
     let path = image_path.to_path_buf();
@@ -301,7 +301,7 @@ mod tests {
         let events = parse_image_with_now(
             Path::new("examples/dance_flyer.jpg"),
             fixed_now_utc,
-            client,
+            &client,
             &config.openai_api_key,
         )
         .await?;
@@ -336,7 +336,7 @@ mod tests {
         let events = parse_image_with_now(
             Path::new("examples/selfie.jpg"),
             fixed_now_utc,
-            client,
+            &client,
             &config.openai_api_key,
         )
         .await?;
@@ -361,7 +361,7 @@ mod tests {
         let events = parse_image_with_now(
             Path::new("examples/soda_ad.jpg"),
             fixed_now_utc,
-            client,
+            &client,
             &config.openai_api_key,
         )
         .await?;
@@ -385,7 +385,7 @@ mod tests {
         let events = parse_image_with_now(
             Path::new("examples/pumpkin_smash.jpeg"),
             fixed_now_utc,
-            client,
+            &client,
             &config.openai_api_key,
         )
         .await?;
@@ -438,7 +438,7 @@ mod tests {
         let events = parse_image_with_now(
             Path::new("examples/dsnc_flyer.png"),
             fixed_now_utc,
-            client,
+            &client,
             &config.openai_api_key,
         )
         .await?;

@@ -92,21 +92,13 @@ pub async fn save(
     let dest_path_clone = dest_path.clone();
 
     actix_web::rt::spawn(async move {
-        match parse_image(
-            &dest_path_clone,
-            state.client.clone(),
-            &state.openai_api_key,
-        )
-        .await
-        {
+        match parse_image(&dest_path_clone, &state.client, &state.openai_api_key).await {
             Ok(mut events) => {
                 if events.is_empty() {
                     log::info!("Image processed but no events found");
                 } else {
-                    let client = state.client.clone();
-                    let key = state.google_maps_api_key.clone();
-
-                    hydrate_event_locations(&mut events, &client, &key).await;
+                    hydrate_event_locations(&mut events, &state.client, &state.google_maps_api_key)
+                        .await;
 
                     for event in &mut events {
                         match state.events_repo.insert(event).await {
