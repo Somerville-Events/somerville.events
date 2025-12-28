@@ -8,7 +8,7 @@
     </dd>
 
     <dt>Location</dt>
-    <dd>{{ event.location }}</dd>
+    <dd><address>{{ event.location }}</address></dd>
 
     {% if let Some((url, label)) = event.category_link %}
     <dt>Category</dt>

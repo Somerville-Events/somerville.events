@@ -6,7 +6,8 @@ use dotenvy::dotenv;
 #[derive(Debug)]
 pub struct Config {
     pub host: String,
-    pub api_key: String,
+    pub openai_api_key: String,
+    pub google_maps_api_key: String,
     pub username: String,
     pub password: String,
     pub db_user: String,
@@ -21,7 +22,9 @@ impl Config {
         CONFIG.get_or_init(|| {
             dotenv().ok();
             let host = env::var("HOST").expect("HOST must be set");
-            let api_key = env::var("OPENAI_API_KEY").expect("OPENAI_API_KEY must be set");
+            let openai_api_key = env::var("OPENAI_API_KEY").expect("OPENAI_API_KEY must be set");
+            let google_maps_api_key =
+                env::var("GOOGLE_MAPS_API_KEY").expect("GOOGLE_MAPS_API_KEY must be set");
             let username = env::var("BASIC_AUTH_USER").expect("BASIC_AUTH_USER must be set");
             let password = env::var("BASIC_AUTH_PASS").expect("BASIC_AUTH_PASS must be set");
             let db_user = env::var("DB_APP_USER").expect("DB_APP_USER must be set");
@@ -32,7 +35,8 @@ impl Config {
 
             Self {
                 host,
-                api_key,
+                openai_api_key,
+                google_maps_api_key,
                 username,
                 password,
                 db_user,

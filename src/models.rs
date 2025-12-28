@@ -68,6 +68,10 @@ pub struct Event {
     pub start_date: DateTime<Utc>,
     pub end_date: Option<DateTime<Utc>>,
     pub location: Option<String>,
+    #[serde(skip_deserializing)]
+    pub original_location: Option<String>,
+    pub google_place_id: Option<String>,
+    pub location_name: Option<String>,
     pub event_type: Option<EventType>,
     pub url: Option<String>,
     /// Confidence level of the extraction (0.0 to 1.0)

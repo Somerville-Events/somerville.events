@@ -40,6 +40,9 @@ impl EventsRepo for EventsDatabase {
                 start_date,
                 end_date,
                 location,
+                original_location,
+                google_place_id,
+                location_name,
                 event_type as "event_type: EventType",
                 url,
                 confidence
@@ -69,6 +72,9 @@ impl EventsRepo for EventsDatabase {
                 start_date,
                 end_date,
                 location,
+                original_location,
+                google_place_id,
+                location_name,
                 event_type as "event_type: EventType",
                 url,
                 confidence
@@ -99,7 +105,13 @@ impl EventsRepo for EventsDatabase {
     }
 
     async fn insert(&self, event: &Event) -> Result<i64> {
-        save_event_to_db(&self.pool, event).await
+        let mut event_to_save = event.clone();
+        if let Some(loc) = &event_to_save.location {
+            if event_to_save.original_location.is_none() {
+                event_to_save.original_location = Some(loc.clone());
+            }
+        }
+        save_event_to_db(&self.pool, &event_to_save).await
     }
 
     async fn delete(&self, id: i64) -> Result<()> {
@@ -139,11 +151,14 @@ pub async fn save_event_to_db(executor: &sqlx::Pool<sqlx::Postgres>, event: &Eve
             start_date,
             end_date,
             location,
+            original_location,
+            google_place_id,
+            location_name,
             event_type,
             url,
             confidence
         )
-        VALUES ($1, $2, $3, $4, $5, $6::app.event_type, $7, $8)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::app.event_type, $10, $11)
         RETURNING id
         "#,
         event.name,
@@ -151,6 +166,9 @@ pub async fn save_event_to_db(executor: &sqlx::Pool<sqlx::Postgres>, event: &Eve
         event.start_date,
         event.end_date,
         event.location,
+        event.original_location,
+        event.google_place_id,
+        event.location_name,
         event.event_type.as_ref() as Option<&EventType>,
         event.url,
         event.confidence
@@ -176,6 +194,9 @@ async fn find_duplicate(
             start_date,
             end_date,
             location,
+            original_location,
+            google_place_id,
+            location_name,
             event_type as "event_type: EventType",
             url,
             confidence
@@ -225,6 +246,9 @@ mod tests {
             start_date: Utc.timestamp_opt(1672531200, 0).unwrap(), // 2023-01-01
             end_date: None,
             location: location.map(|s| s.to_string()),
+            original_location: location.map(|s| s.to_string()),
+            google_place_id: None,
+            location_name: None,
             event_type: None,
             url: None,
             confidence: 1.0,

@@ -53,7 +53,11 @@ impl EventViewModel {
             start_formatted,
             end_iso,
             end_formatted,
-            location: event.location.clone().unwrap_or_default(),
+            location: event
+                .location
+                .clone()
+                .or(event.original_location.clone())
+                .unwrap_or_default(),
             description: event.full_description.clone(),
             category_link,
             website_link: event.url.clone(),

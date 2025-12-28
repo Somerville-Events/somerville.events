@@ -232,7 +232,10 @@ fn parse_and_validate_response(content: &str) -> Result<Option<Event>> {
         start_date,
         full_description: extraction.full_description.unwrap_or_default(),
         end_date,
-        location: extraction.location,
+        location: None,
+        original_location: extraction.location,
+        google_place_id: None,
+        location_name: None,
         event_type: extraction.event_type.map(EventType::from),
         url: extraction.url,
         confidence: extraction.confidence,
@@ -275,7 +278,7 @@ mod tests {
             Path::new("examples/dance_flyer.jpg"),
             fixed_now_utc,
             client,
-            &config.api_key,
+            &config.openai_api_key,
         )
         .await?;
         let event = event_opt.expect("Expected an event to be parsed");
@@ -304,7 +307,7 @@ mod tests {
             Path::new("examples/selfie.jpg"),
             fixed_now_utc,
             client,
-            &config.api_key,
+            &config.openai_api_key,
         )
         .await?;
 
@@ -329,7 +332,7 @@ mod tests {
             Path::new("examples/soda_ad.jpg"),
             fixed_now_utc,
             client,
-            &config.api_key,
+            &config.openai_api_key,
         )
         .await?;
 
@@ -353,10 +356,12 @@ mod tests {
             Path::new("examples/pumpkin_smash.jpeg"),
             fixed_now_utc,
             client,
-            &config.api_key,
+            &config.openai_api_key,
         )
         .await?
         .expect("Event was not parsed");
+
+        print!("{event:?}");
 
         let url = event.url.expect("Failed to decode QR code");
 

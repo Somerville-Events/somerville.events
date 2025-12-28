@@ -90,15 +90,40 @@ pub async fn save(
     let dest_path_clone = dest_path.clone();
 
     actix_web::rt::spawn(async move {
-        match parse_image(&dest_path_clone, state.client.clone(), &state.api_key).await {
-            Ok(Some(event)) => match state.events_repo.insert(&event).await {
-                Ok(id) => {
-                    log::info!("Saved event to database with id: {}", id);
+        match parse_image(
+            &dest_path_clone,
+            state.client.clone(),
+            &state.openai_api_key,
+        )
+        .await
+        {
+            Ok(Some(mut event)) => {
+                if let Some(loc) = &event.original_location {
+                    match crate::geocoding::canonicalize_address(
+                        &state.client,
+                        loc,
+                        &state.google_maps_api_key,
+                    )
+                    .await
+                    {
+                        Ok(Some(canon)) => {
+                            event.location = Some(canon.formatted_address);
+                            event.google_place_id = Some(canon.place_id);
+                            event.location_name = Some(canon.name);
+                        }
+                        Ok(None) => {}
+                        Err(e) => log::warn!("Geocoding failed for '{}': {}", loc, e),
+                    }
                 }
-                Err(e) => {
-                    log::error!("Failed to save event to database: {e:#}");
+                match state.events_repo.insert(&event).await {
+                    Ok(id) => {
+                        log::info!("Saved event to database with id: {}", id);
+                    }
+                    Err(e) => {
+                        log::error!("Failed to save event to database: {e:#}");
+                    }
                 }
-            },
+            }
             Ok(None) => {
                 log::info!("Image processed but no event found (or missing date)");
             }

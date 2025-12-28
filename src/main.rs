@@ -1,6 +1,7 @@
 mod config;
 mod database;
 mod features;
+pub mod geocoding;
 mod image_processing;
 mod models;
 
@@ -20,7 +21,8 @@ use database::{EventsDatabase, EventsRepo};
 use sqlx::postgres::PgPoolOptions;
 
 pub struct AppState {
-    pub api_key: String,
+    pub openai_api_key: String,
+    pub google_maps_api_key: String,
     pub client: Client,
     pub username: String,
     pub password: String,
@@ -68,7 +70,8 @@ async fn main() -> Result<()> {
             .finish();
 
         let state = AppState {
-            api_key: config.api_key.clone(),
+            openai_api_key: config.openai_api_key.clone(),
+            google_maps_api_key: config.google_maps_api_key.clone(),
             username: config.username.clone(),
             password: config.password.clone(),
             events_repo: Box::new(EventsDatabase {
@@ -228,6 +231,9 @@ mod tests {
             start_date: mk_ny(15, 11, 0).with_timezone(&Utc),
             end_date: None,
             location: Some("Gallery".to_string()),
+            original_location: Some("Gallery".to_string()),
+            google_place_id: None,
+            location_name: None,
             event_type: Some(EventType::Art),
             url: None,
             confidence: 1.0,
@@ -240,13 +246,17 @@ mod tests {
             start_date: mk_ny(15, 19, 0).with_timezone(&Utc),
             end_date: None,
             location: Some("Club".to_string()),
+            original_location: Some("Club".to_string()),
+            google_place_id: None,
+            location_name: None,
             event_type: Some(EventType::Music),
             url: None,
             confidence: 1.0,
         };
 
         let state = AppState {
-            api_key: "dummy".to_string(),
+            openai_api_key: "dummy".to_string(),
+            google_maps_api_key: "dummy".to_string(),
             client: awc::Client::default(),
             username: "user".to_string(),
             password: "pass".to_string(),
@@ -305,6 +315,9 @@ mod tests {
             start_date: mk_local(local_dt(yesterday_local, 10, 0)).with_timezone(&Utc),
             end_date: Some(mk_local(local_dt(yesterday_local, 11, 0)).with_timezone(&Utc)),
             location: Some("Somewhere".to_string()),
+            original_location: Some("Somewhere".to_string()),
+            google_place_id: None,
+            location_name: None,
             event_type: None,
             url: None,
             confidence: 1.0,
@@ -318,6 +331,9 @@ mod tests {
             start_date: mk_local(local_dt(today_local, 9, 0)).with_timezone(&Utc),
             end_date: None,
             location: Some("Somerville".to_string()),
+            original_location: Some("Somerville".to_string()),
+            google_place_id: None,
+            location_name: None,
             event_type: None,
             url: None,
             confidence: 1.0,
@@ -332,6 +348,9 @@ mod tests {
             start_date: mk_local(local_dt(yesterday_local, 15, 0)).with_timezone(&Utc),
             end_date: None,
             location: Some("Somerville".to_string()),
+            original_location: Some("Somerville".to_string()),
+            google_place_id: None,
+            location_name: None,
             event_type: None,
             url: None,
             confidence: 1.0,
@@ -346,6 +365,9 @@ mod tests {
             // No end_date so this test doesn't become time-of-day dependent.
             end_date: None,
             location: Some("Union".to_string()),
+            original_location: Some("Union".to_string()),
+            google_place_id: None,
+            location_name: None,
             event_type: None,
             url: None,
             confidence: 1.0,
@@ -359,6 +381,9 @@ mod tests {
             // No end_date so this test doesn't become time-of-day dependent.
             end_date: None,
             location: Some("Magoun".to_string()),
+            original_location: Some("Magoun".to_string()),
+            google_place_id: None,
+            location_name: None,
             event_type: None,
             url: None,
             confidence: 1.0,
@@ -372,6 +397,9 @@ mod tests {
             start_date: mk_local(local_dt(tomorrow_local, 12, 0)).with_timezone(&Utc),
             end_date: Some(mk_local(local_dt(day_after_tomorrow_local, 13, 0)).with_timezone(&Utc)),
             location: Some("Davis".to_string()),
+            original_location: Some("Davis".to_string()),
+            google_place_id: None,
+            location_name: None,
             event_type: None,
             url: None,
             confidence: 1.0,
@@ -388,7 +416,8 @@ mod tests {
         ]);
 
         let state = AppState {
-            api_key: "dummy".to_string(),
+            openai_api_key: "dummy".to_string(),
+            google_maps_api_key: "dummy".to_string(),
             client: awc::Client::default(),
             username: "user".to_string(),
             password: "pass".to_string(),
@@ -515,13 +544,17 @@ mod tests {
             start_date: today_start.with_hour(10).unwrap().with_timezone(&Utc),
             end_date: Some(today_start.with_hour(11).unwrap().with_timezone(&Utc)),
             location: Some("Virtual".to_string()),
+            original_location: Some("Virtual".to_string()),
+            google_place_id: None,
+            location_name: None,
             event_type: None,
             url: None,
             confidence: 1.0,
         };
 
         let state = AppState {
-            api_key: "dummy".to_string(),
+            openai_api_key: "dummy".to_string(),
+            google_maps_api_key: "dummy".to_string(),
             client: awc::Client::default(),
             username: "user".to_string(),
             password: "pass".to_string(),
@@ -596,13 +629,17 @@ mod tests {
             start_date: Utc.with_ymd_and_hms(2025, 11, 8, 15, 30, 0).unwrap(),
             end_date: Some(Utc.with_ymd_and_hms(2025, 11, 8, 18, 0, 0).unwrap()),
             location: Some("Somerville".to_string()),
+            original_location: Some("Somerville".to_string()),
+            google_place_id: None,
+            location_name: None,
             event_type: None,
             url: None,
             confidence: 1.0,
         };
 
         let state = AppState {
-            api_key: "dummy".to_string(),
+            openai_api_key: "dummy".to_string(),
+            google_maps_api_key: "dummy".to_string(),
             client: awc::Client::default(),
             username: "user".to_string(),
             password: "pass".to_string(),
