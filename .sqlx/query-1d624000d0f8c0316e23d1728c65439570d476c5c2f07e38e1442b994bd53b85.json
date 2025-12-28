@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n            SELECT\n                id,\n                name,\n                full_description,\n                start_date,\n                end_date,\n                location,\n                original_location,\n                google_place_id,\n                location_name,\n                event_type as \"event_type: EventType\",\n                url,\n                confidence\n            FROM app.events\n            WHERE id = $1\n            ",
+  "query": "\n            SELECT\n                id,\n                name,\n                full_description,\n                start_date,\n                end_date,\n                address,\n                original_location,\n                google_place_id,\n                location_name,\n                event_type as \"event_type: EventType\",\n                url,\n                confidence\n            FROM app.events\n            WHERE ($1::text IS NULL OR event_type::text = $1::text)\n            AND ($2::timestamptz IS NULL OR start_date >= $2)\n            AND ($3::timestamptz IS NULL OR start_date <= $3)\n            ORDER BY start_date ASC NULLS LAST\n            ",
   "describe": {
     "columns": [
       {
@@ -30,7 +30,7 @@
       },
       {
         "ordinal": 5,
-        "name": "location",
+        "name": "address",
         "type_info": "Text"
       },
       {
@@ -99,7 +99,9 @@
     ],
     "parameters": {
       "Left": [
-        "Int8"
+        "Text",
+        "Timestamptz",
+        "Timestamptz"
       ]
     },
     "nullable": [
@@ -117,5 +119,5 @@
       false
     ]
   },
-  "hash": "bcf2ab6c6524bc7afe2afdcb8fd482df70392c00b56d5576070186130e0f434a"
+  "hash": "1d624000d0f8c0316e23d1728c65439570d476c5c2f07e38e1442b994bd53b85"
 }
