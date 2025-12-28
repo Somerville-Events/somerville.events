@@ -13,10 +13,19 @@ use rxing::{
 };
 use schemars::schema_for;
 use serde_json::json;
-use std::{io::Cursor, path::Path, sync::LazyLock};
+use std::{
+    io::Cursor,
+    path::Path,
+    sync::{Arc, LazyLock},
+};
 use url::Url;
 
 static QR_READER: LazyLock<QRCodeReader> = LazyLock::new(QRCodeReader::default);
+
+static SCHEMA_STR: LazyLock<String> = LazyLock::new(|| {
+    let schema = schema_for!(ImageEventExtraction);
+    serde_json::to_string_pretty(&schema).unwrap()
+});
 
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
 pub struct SingleEventExtraction {
@@ -58,7 +67,11 @@ async fn parse_image_with_now(
         .await
         .map_err(|e| anyhow!("Blocking task failed: {}", e))??;
 
-    let format = ImageReader::new(Cursor::new(&bytes))
+    // Wrap the image in a reference counter to share it between tasks
+    // without copying the image data. Saves us some memory and overhead.
+    let bytes = Arc::new(bytes);
+
+    let format = ImageReader::new(Cursor::new(bytes.as_slice()))
         .with_guessed_format()
         .map_err(|e| anyhow!("Failed to guess image format: {}", e))?
         .format()
@@ -72,23 +85,20 @@ async fn parse_image_with_now(
     // Concurrently process image with
     //   A) QR Code extraction (CPU intensive)
     //   B) LLM (Network intensive)
-    let bytes_for_qr = bytes.clone();
-    let bytes_for_llm = bytes;
 
     // Task A: QR Code Extraction (CPU intensive)
+    let bytes_for_qr = bytes.clone();
     let qr_future = web::block(move || {
-        let reader = ImageReader::new(Cursor::new(&bytes_for_qr)).with_guessed_format()?;
-        // This decode is the heavy part
+        let reader =
+            ImageReader::new(Cursor::new(bytes_for_qr.as_slice())).with_guessed_format()?;
         let img = reader.decode()?;
         Ok::<Option<Url>, anyhow::Error>(extract_qr_url(img))
     });
 
     // Task B: LLM Extraction (Network intensive)
-    let schema = schema_for!(ImageEventExtraction);
-    let schema_str = serde_json::to_string_pretty(&schema).unwrap();
     let now_str = now.to_rfc3339();
     let mime_type = format.to_mime_type();
-    let b64_data = b64.encode(&bytes_for_llm);
+    let b64_data = b64.encode(bytes.as_slice());
     let data_url = format!("data:{mime_type};base64,{b64_data}");
     let payload = json!({
         "model": "gpt-4o-mini",
@@ -121,7 +131,7 @@ async fn parse_image_with_now(
                         - Be thorough but accurate. Return only valid JSON.
                         - Do not return the schema in your response.
                         "#
-                )
+                , schema_str = *SCHEMA_STR)
             },
             {
                 "role": "user",
