@@ -235,9 +235,13 @@ mod tests {
         )
         .await
         .unwrap();
-        assert!(result.is_some());
-        let loc = result.unwrap();
-        assert!(loc.name.contains("Community Growing Center"));
-        assert!(loc.formatted_address.contains("Vinal Ave"));
+        assert_eq!(
+            result,
+            Some(GeocodedLocation {
+                formatted_address: "22 Vinal Ave, Somerville, MA 02143, USA".to_string(),
+                place_id: "ChIJqY2aUDN344kRMn87E8bG4ZY".to_string(),
+                name: "Somerville Community Growing Center".to_string()
+            })
+        );
     }
 }
