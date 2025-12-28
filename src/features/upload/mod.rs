@@ -3,6 +3,7 @@ use crate::AppState;
 use actix_multipart::form::{tempfile::TempFile, MultipartForm};
 use actix_web::{http::header::ContentType, web, HttpResponse, Responder};
 use askama::Template;
+use awc::Client;
 use futures_util::future;
 use std::collections::{HashMap, HashSet};
 use std::fs;
@@ -34,6 +35,7 @@ pub async fn index() -> impl Responder {
 
 pub async fn save(
     state: web::Data<AppState>,
+    client: web::Data<Client>,
     MultipartForm(req): MultipartForm<UploadForm>,
 ) -> impl Responder {
     let idempotency_key = req.idempotency_key.0;
@@ -89,16 +91,15 @@ pub async fn save(
     }
 
     let state = state.into_inner();
-    let dest_path_clone = dest_path.clone();
+    let client = client.into_inner();
 
     actix_web::rt::spawn(async move {
-        match parse_image(&dest_path_clone, &state.client, &state.openai_api_key).await {
+        match parse_image(&dest_path, &client, &state.openai_api_key).await {
             Ok(mut events) => {
                 if events.is_empty() {
                     log::info!("Image processed but no events found");
                 } else {
-                    hydrate_event_locations(&mut events, &state.client, &state.google_maps_api_key)
-                        .await;
+                    hydrate_event_locations(&mut events, &client, &state.google_maps_api_key).await;
 
                     for event in &mut events {
                         match state.events_repo.insert(event).await {
@@ -124,9 +125,9 @@ pub async fn save(
             }
         }
 
-        let path_to_remove = dest_path_clone.clone();
+        let path_to_remove = dest_path.clone();
         if let Err(e) = web::block(move || fs::remove_file(path_to_remove)).await {
-            log::warn!("Failed to remove temp file {:?}: {}", dest_path_clone, e);
+            log::warn!("Failed to remove temp file {:?}: {}", dest_path, e);
         }
     });
 
