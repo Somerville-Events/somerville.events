@@ -64,7 +64,8 @@ impl From<String> for EventType {
 #[derive(Debug, Serialize, Deserialize, JsonSchema, PartialEq, Clone, sqlx::FromRow)]
 pub struct Event {
     pub name: String,
-    pub full_description: String,
+    pub description: String,
+    pub full_text: String,
     pub start_date: DateTime<Utc>,
     pub end_date: Option<DateTime<Utc>>,
     pub address: Option<String>,

@@ -21,7 +21,8 @@ pub struct EventViewModel {
     pub end_iso: String,
     pub end_formatted: Option<String>,
     pub location: EventLocation,
-    pub description_paragraphs: Vec<String>,
+    pub description: String,
+    pub full_text_paragraphs: Vec<String>,
     pub category_link: Option<(String, String)>,
     pub website_link: Option<String>,
 }
@@ -81,8 +82,9 @@ impl EventViewModel {
             end_iso,
             end_formatted,
             location,
-            description_paragraphs: event
-                .full_description
+            description: event.description.clone(),
+            full_text_paragraphs: event
+                .full_text
                 .split('\n')
                 .map(|s| s.trim().to_string())
                 .filter(|s| !s.is_empty())

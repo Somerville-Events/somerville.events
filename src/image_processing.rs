@@ -20,7 +20,9 @@ static QR_READER: LazyLock<QRCodeReader> = LazyLock::new(QRCodeReader::default);
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
 pub struct ImageEventExtraction {
     pub name: Option<String>,
-    pub full_description: Option<String>,
+    pub description: Option<String>,
+    /// All readable text in the image
+    pub full_text: Option<String>,
     /// Format: YYYY-MM-DDTHH:MM:SS (No timezone)
     pub start_date: Option<NaiveDateTime>,
     /// Format: YYYY-MM-DDTHH:MM:SS (No timezone)
@@ -96,7 +98,8 @@ async fn parse_image_with_now(
                         Instructions:
                         - Extract as much information as possible from the image.
                         - If you are uncertain about any fields, set them to null.
-                        - The full_description field should contain all readable text from the image.
+                        - The full_text field should contain all readable text from the image.
+                        - The description field should be the description of the event.
                         - The confidence should be a number between 0.0 and 1.0 indicating how confident you are in the extraction.
                         - Focus on extracting event-related information like the name, date, time, location, url, and description.
                         - Today's date is {now_str}.
@@ -230,7 +233,8 @@ fn parse_and_validate_response(content: &str) -> Result<Option<Event>> {
     Ok(Some(Event {
         name,
         start_date,
-        full_description: extraction.full_description.unwrap_or_default(),
+        description: extraction.description.unwrap_or_default(),
+        full_text: extraction.full_text.unwrap_or_default(),
         end_date,
         address: None,
         original_location: extraction.location,

@@ -227,7 +227,8 @@ mod tests {
         let art_event = Event {
             id: Some(1),
             name: "Art Show".to_string(),
-            full_description: "Paintings galore".to_string(),
+            description: "Paintings galore".to_string(),
+            full_text: "Paintings galore".to_string(),
             start_date: mk_ny(15, 11, 0).with_timezone(&Utc),
             end_date: None,
             address: Some("Gallery".to_string()),
@@ -242,7 +243,8 @@ mod tests {
         let music_event = Event {
             id: Some(2),
             name: "Music Night".to_string(),
-            full_description: "Jazz and blues".to_string(),
+            description: "Jazz and blues".to_string(),
+            full_text: "Jazz and blues".to_string(),
             start_date: mk_ny(15, 19, 0).with_timezone(&Utc),
             end_date: None,
             address: Some("Club".to_string()),
@@ -311,7 +313,8 @@ mod tests {
         let past_event = Event {
             id: Some(1),
             name: "Past Event".to_string(),
-            full_description: "Should not render".to_string(),
+            description: "Should not render".to_string(),
+            full_text: "Should not render".to_string(),
             start_date: mk_local(local_dt(yesterday_local, 10, 0)).with_timezone(&Utc),
             end_date: Some(mk_local(local_dt(yesterday_local, 11, 0)).with_timezone(&Utc)),
             address: Some("Somewhere".to_string()),
@@ -327,7 +330,8 @@ mod tests {
         let ongoing_no_end = Event {
             id: Some(2),
             name: "Ongoing No End".to_string(),
-            full_description: "Should render once".to_string(),
+            description: "Should render once".to_string(),
+            full_text: "Should render once".to_string(),
             start_date: mk_local(local_dt(today_local, 9, 0)).with_timezone(&Utc),
             end_date: None,
             address: Some("Somerville".to_string()),
@@ -344,7 +348,8 @@ mod tests {
         let yesterday_no_end = Event {
             id: Some(7),
             name: "Yesterday No End".to_string(),
-            full_description: "Should render under yesterday".to_string(),
+            description: "Should render under yesterday".to_string(),
+            full_text: "Should render under yesterday".to_string(),
             start_date: mk_local(local_dt(yesterday_local, 15, 0)).with_timezone(&Utc),
             end_date: None,
             address: Some("Somerville".to_string()),
@@ -360,7 +365,8 @@ mod tests {
         let same_day_1 = Event {
             id: Some(5),
             name: "Same Day 1".to_string(),
-            full_description: "First event on the same day".to_string(),
+            description: "First event on the same day".to_string(),
+            full_text: "First event on the same day".to_string(),
             start_date: mk_local(local_dt(today_local, 10, 0)).with_timezone(&Utc),
             // No end_date so this test doesn't become time-of-day dependent.
             end_date: None,
@@ -376,7 +382,8 @@ mod tests {
         let same_day_2 = Event {
             id: Some(6),
             name: "Same Day 2".to_string(),
-            full_description: "Second event on the same day".to_string(),
+            description: "Second event on the same day".to_string(),
+            full_text: "Second event on the same day".to_string(),
             start_date: mk_local(local_dt(today_local, 12, 0)).with_timezone(&Utc),
             // No end_date so this test doesn't become time-of-day dependent.
             end_date: None,
@@ -393,7 +400,8 @@ mod tests {
         let multi_day = Event {
             id: Some(3),
             name: "Multi Day".to_string(),
-            full_description: "Spans multiple days".to_string(),
+            description: "Spans multiple days".to_string(),
+            full_text: "Spans multiple days".to_string(),
             start_date: mk_local(local_dt(tomorrow_local, 12, 0)).with_timezone(&Utc),
             end_date: Some(mk_local(local_dt(day_after_tomorrow_local, 13, 0)).with_timezone(&Utc)),
             address: Some("Davis".to_string()),
@@ -540,7 +548,8 @@ mod tests {
         let event = Event {
             id: Some(1),
             name: "ICal Event".to_string(),
-            full_description: "Description for ICal".to_string(),
+            description: "Description for ICal".to_string(),
+            full_text: "Description for ICal".to_string(),
             start_date: today_start.with_hour(10).unwrap().with_timezone(&Utc),
             end_date: Some(today_start.with_hour(11).unwrap().with_timezone(&Utc)),
             address: Some("Virtual".to_string()),
@@ -624,7 +633,8 @@ mod tests {
         let event = Event {
             id: Some(1),
             name: "Pumpkin Smash".to_string(),
-            full_description: "Smash pumpkins".to_string(),
+            description: "Smash pumpkins".to_string(),
+            full_text: "Smash pumpkins".to_string(),
             // Correctly stored UTC time for 10:30 AM EST is 15:30 UTC.
             start_date: Utc.with_ymd_and_hms(2025, 11, 8, 15, 30, 0).unwrap(),
             end_date: Some(Utc.with_ymd_and_hms(2025, 11, 8, 18, 0, 0).unwrap()),

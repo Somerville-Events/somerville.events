@@ -205,7 +205,7 @@ pub async fn ical(state: web::Data<AppState>, path: web::Path<i64>) -> impl Resp
             let mut ical_event = IcalEvent::new();
             ical_event
                 .summary(&event.name)
-                .description(&event.full_description);
+                .description(&event.full_text);
 
             let location = if let (Some(name), Some(addr)) = (&event.location_name, &event.address)
             {

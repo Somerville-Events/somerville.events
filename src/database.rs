@@ -36,7 +36,8 @@ impl EventsRepo for EventsDatabase {
             SELECT
                 id,
                 name,
-                full_description,
+                description,
+                full_text,
                 start_date,
                 end_date,
                 address,
@@ -68,7 +69,8 @@ impl EventsRepo for EventsDatabase {
             SELECT
                 id,
                 name,
-                full_description,
+                description,
+                full_text,
                 start_date,
                 end_date,
                 address,
@@ -141,7 +143,8 @@ pub async fn save_event_to_db(executor: &sqlx::Pool<sqlx::Postgres>, event: &Eve
         r#"
         INSERT INTO app.events (
             name,
-            full_description,
+            description,
+            full_text,
             start_date,
             end_date,
             address,
@@ -152,11 +155,12 @@ pub async fn save_event_to_db(executor: &sqlx::Pool<sqlx::Postgres>, event: &Eve
             url,
             confidence
         )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::app.event_type, $10, $11)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::app.event_type, $11, $12)
         RETURNING id
         "#,
         event.name,
-        event.full_description,
+        event.description,
+        event.full_text,
         event.start_date,
         event.end_date,
         event.address,
@@ -184,7 +188,8 @@ async fn find_duplicate(
         SELECT 
             id,
             name,
-            full_description,
+            description,
+            full_text,
             start_date,
             end_date,
             address,
@@ -223,7 +228,7 @@ fn is_duplicate(a: &Event, b: &Event) -> bool {
     // High threshold for name to avoid false positives (Workshop A vs B)
     // 0.98 matches "Workshop A" vs "Workshop B", so we need > 0.98.
     let name_match = jaro_winkler(&a.name, &b.name) > 0.985;
-    let desc_match = jaro_winkler(&a.full_description, &b.full_description) > 0.95;
+    let desc_match = jaro_winkler(&a.description, &b.description) > 0.95;
     name_match && desc_match
 }
 
@@ -236,7 +241,8 @@ mod tests {
         Event {
             id: None,
             name: name.to_string(),
-            full_description: description.to_string(),
+            description: description.to_string(),
+            full_text: description.to_string(),
             start_date: Utc.timestamp_opt(1672531200, 0).unwrap(), // 2023-01-01
             end_date: None,
             address: address.map(|s| s.to_string()),
