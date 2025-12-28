@@ -5,6 +5,7 @@ use awc::Client;
 use base64::{engine::general_purpose::STANDARD as b64, Engine as _};
 use chrono::{DateTime, LocalResult, NaiveDateTime, TimeZone, Utc};
 use chrono_tz::America::New_York;
+use futures_util::future;
 use image::{DynamicImage, ImageFormat, ImageReader};
 use rxing::{
     common::HybridBinarizer, qrcode::QRCodeReader, BinaryBitmap, BufferedImageLuminanceSource,
@@ -18,11 +19,9 @@ use url::Url;
 static QR_READER: LazyLock<QRCodeReader> = LazyLock::new(QRCodeReader::default);
 
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
-pub struct ImageEventExtraction {
+pub struct SingleEventExtraction {
     pub name: Option<String>,
     pub description: Option<String>,
-    /// All readable text in the image
-    pub full_text: Option<String>,
     /// Format: YYYY-MM-DDTHH:MM:SS (No timezone)
     pub start_date: Option<NaiveDateTime>,
     /// Format: YYYY-MM-DDTHH:MM:SS (No timezone)
@@ -35,11 +34,14 @@ pub struct ImageEventExtraction {
     pub confidence: f64,
 }
 
-pub async fn parse_image(
-    image_path: &Path,
-    client: Client,
-    api_key: &str,
-) -> Result<Option<Event>> {
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+pub struct ImageEventExtraction {
+    /// All readable text in the image
+    pub full_text: Option<String>,
+    pub events: Vec<SingleEventExtraction>,
+}
+
+pub async fn parse_image(image_path: &Path, client: Client, api_key: &str) -> Result<Vec<Event>> {
     parse_image_with_now(image_path, Utc::now(), client, api_key).await
 }
 
@@ -48,41 +50,46 @@ async fn parse_image_with_now(
     now: DateTime<Utc>,
     client: Client,
     api_key: &str,
-) -> Result<Option<Event>> {
+) -> Result<Vec<Event>> {
     let path = image_path.to_path_buf();
 
-    // Offload blocking I/O (file read) and CPU intensive task (image decoding + QR extraction) to thread pool
-    // Note: We return ImageFormat and bytes separately to avoid re-encoding or re-reading
-    let (format, image_bytes, qr_url) = web::block(move || {
-        let bytes = std::fs::read(&path)?;
-        let reader = ImageReader::new(Cursor::new(&bytes)).with_guessed_format()?;
+    // Offload blocking I/O (file read) to thread pool
+    let bytes = web::block(move || std::fs::read(&path))
+        .await
+        .map_err(|e| anyhow!("Blocking task failed: {}", e))??;
 
-        let fmt = match reader.format() {
-            Some(
-                f @ (ImageFormat::Jpeg | ImageFormat::Png | ImageFormat::Gif | ImageFormat::WebP),
-            ) => f,
-            _ => return Err(anyhow!("Image format must be jpg, png, gif, or webp")),
-        };
+    let format = ImageReader::new(Cursor::new(&bytes))
+        .with_guessed_format()
+        .map_err(|e| anyhow!("Failed to guess image format: {}", e))?
+        .format()
+        .ok_or_else(|| anyhow!("Unknown image format"))?;
 
+    match format {
+        ImageFormat::Jpeg | ImageFormat::Png | ImageFormat::Gif | ImageFormat::WebP => {}
+        _ => return Err(anyhow!("Image format must be jpg, png, gif, or webp")),
+    };
+
+    // Concurrently process image with
+    //   A) QR Code extraction (CPU intensive)
+    //   B) LLM (Network intensive)
+    let bytes_for_qr = bytes.clone();
+    let bytes_for_llm = bytes;
+
+    // Task A: QR Code Extraction (CPU intensive)
+    let qr_future = web::block(move || {
+        let reader = ImageReader::new(Cursor::new(&bytes_for_qr)).with_guessed_format()?;
+        // This decode is the heavy part
         let img = reader.decode()?;
-        // Try to deterministically extract a url for the event out of
-        // any QR code that may be in the image before we toss the whole
-        // image into a multi-modal machine learning model.
-        let url = extract_qr_url(img);
-        Ok((fmt, bytes, url))
-    })
-    .await
-    .map_err(|e| anyhow!("Blocking task failed: {}", e))??;
+        Ok::<Option<Url>, anyhow::Error>(extract_qr_url(img))
+    });
 
-    // Base64 encode -> data URL
-    let mime_type = format.to_mime_type();
-    let b64_data = b64.encode(&image_bytes);
-    let data_url = format!("data:{mime_type};base64,{b64_data}");
+    // Task B: LLM Extraction (Network intensive)
     let schema = schema_for!(ImageEventExtraction);
     let schema_str = serde_json::to_string_pretty(&schema).unwrap();
     let now_str = now.to_rfc3339();
-
-    // Build Chat Completions payload with instructor format
+    let mime_type = format.to_mime_type();
+    let b64_data = b64.encode(&bytes_for_llm);
+    let data_url = format!("data:{mime_type};base64,{b64_data}");
     let payload = json!({
         "model": "gpt-4o-mini",
         "temperature": 0,
@@ -96,7 +103,8 @@ async fn parse_image_with_now(
                         {schema_str}
                         
                         Instructions:
-                        - Extract as much information as possible from the image.
+                        - Extract all distinct events found in the image.
+                        - If a poster lists multiple dates for the same event (e.g. a series), treat each date as a separate event in the `events` list.
                         - If you are uncertain about any fields, set them to null.
                         - The full_text field should contain all readable text from the image.
                         - The description field should be the description of the event.
@@ -118,21 +126,23 @@ async fn parse_image_with_now(
             {
                 "role": "user",
                 "content": [
-                    { "type": "text", "text": "Extract all text from this image and return it in the specified JSON format." },
+                    { "type": "text", "text": "Extract all text and events from this image and return it in the specified JSON format." },
                     { "type": "image_url", "image_url": { "url": data_url } }
                 ]
             }
         ]
     });
-
-    // Send request with the shared Actix client
-    let mut resp = client
+    let llm_future = client
         .post("https://api.openai.com/v1/chat/completions")
         .insert_header(("Authorization", format!("Bearer {api_key}")))
         .insert_header(("Content-Type", "application/json"))
-        .send_json(&payload)
-        .await
-        .map_err(|e| anyhow!("HTTP request failed: {e}"))?;
+        .send_json(&payload);
+
+    // Save some time by doing QR Parsing and making
+    // a network request to the LLM at the same time
+    let (qr_result, llm_result) = future::join(qr_future, llm_future).await;
+
+    let mut resp = llm_result.map_err(|e| anyhow!("HTTP request failed: {e}"))?;
 
     let body = resp
         .body()
@@ -157,16 +167,19 @@ async fn parse_image_with_now(
         .to_string();
 
     log::debug!("Extracted content: {}", content);
-    let mut event = parse_and_validate_response(&content)?;
+
+    let mut events = parse_and_validate_response(&content)?;
+
+    let qr_url = qr_result.map_err(|e| anyhow!("QR task failed: {}", e))??;
 
     if let Some(qr_url) = qr_url {
-        log::info!("QR code URL detected; overriding parsed URL with {qr_url}");
-        if let Some(event) = event.as_mut() {
+        log::info!("QR code URL detected: {qr_url}");
+        for event in &mut events {
             event.url = Some(qr_url.to_string());
         }
     }
 
-    Ok(event)
+    Ok(events)
 }
 
 fn datetime_from_naive(naive_local: NaiveDateTime) -> Option<DateTime<Utc>> {
@@ -180,7 +193,7 @@ fn datetime_from_naive(naive_local: NaiveDateTime) -> Option<DateTime<Utc>> {
     }
 }
 
-fn parse_and_validate_response(content: &str) -> Result<Option<Event>> {
+fn parse_and_validate_response(content: &str) -> Result<Vec<Event>> {
     // Strip markdown code blocks if present.
     // LLMs like to surround code in them.
     let clean_content = if content.trim().starts_with("```") {
@@ -197,54 +210,61 @@ fn parse_and_validate_response(content: &str) -> Result<Option<Event>> {
     let extraction: ImageEventExtraction = serde_json::from_str(&clean_content)
         .map_err(|e| anyhow!("Failed to parse JSON: {} (Content: {})", e, clean_content))?;
 
-    let name = match extraction.name {
-        Some(n) if !n.trim().is_empty() => n,
-        _ => {
-            log::info!("Extraction missing name, treating as no event");
-            return Ok(None);
-        }
-    };
+    let full_text = extraction.full_text.unwrap_or_default();
+    let mut valid_events = Vec::new();
 
-    let start_date = match extraction.start_date {
-        Some(naive) => match datetime_from_naive(naive) {
-            Some(dt) => dt,
-            None => {
-                log::warn!("Invalid local time for start_date: {:?}", naive);
-                return Ok(None);
+    for extracted_event in extraction.events {
+        let name = match extracted_event.name {
+            Some(n) if !n.trim().is_empty() => n,
+            _ => {
+                log::info!("Skipping event extraction missing name");
+                continue;
             }
-        },
-        None => {
-            log::info!("Extraction missing start_date, treating as no event");
-            return Ok(None);
-        }
-    };
+        };
 
-    let end_date = match extraction.end_date {
-        Some(naive) => match datetime_from_naive(naive) {
-            Some(dt) => Some(dt),
+        let start_date = match extracted_event.start_date {
+            Some(naive) => match datetime_from_naive(naive) {
+                Some(dt) => dt,
+                None => {
+                    log::warn!("Invalid local time for start_date: {:?}", naive);
+                    continue;
+                }
+            },
             None => {
-                log::warn!("Invalid local time for end_date: {:?}", naive);
-                None
+                log::info!("Skipping event extraction missing start_date");
+                continue;
             }
-        },
-        None => None,
-    };
+        };
 
-    Ok(Some(Event {
-        name,
-        start_date,
-        description: extraction.description.unwrap_or_default(),
-        full_text: extraction.full_text.unwrap_or_default(),
-        end_date,
-        address: None,
-        original_location: extraction.location,
-        google_place_id: None,
-        location_name: None,
-        event_type: extraction.event_type.map(EventType::from),
-        url: extraction.url,
-        confidence: extraction.confidence,
-        id: None,
-    }))
+        let end_date = match extracted_event.end_date {
+            Some(naive) => match datetime_from_naive(naive) {
+                Some(dt) => Some(dt),
+                None => {
+                    log::warn!("Invalid local time for end_date: {:?}", naive);
+                    None
+                }
+            },
+            None => None,
+        };
+
+        valid_events.push(Event {
+            name,
+            start_date,
+            description: extracted_event.description.unwrap_or_default(),
+            full_text: full_text.clone(),
+            end_date,
+            address: None,
+            original_location: extracted_event.location,
+            google_place_id: None,
+            location_name: None,
+            event_type: extracted_event.event_type.map(EventType::from),
+            url: extracted_event.url,
+            confidence: extracted_event.confidence,
+            id: None,
+        });
+    }
+
+    Ok(valid_events)
 }
 
 fn extract_qr_url(image: DynamicImage) -> Option<Url> {
@@ -273,19 +293,25 @@ mod tests {
     }
 
     #[actix_web::test]
-    async fn test_parse_image() -> Result<()> {
+    async fn test_parse_single_event() -> Result<()> {
         let config = Config::from_env();
         let client = get_test_client();
 
         let fixed_now_utc = Utc.with_ymd_and_hms(2025, 1, 15, 17, 0, 0).unwrap();
-        let event_opt = parse_image_with_now(
+        let events = parse_image_with_now(
             Path::new("examples/dance_flyer.jpg"),
             fixed_now_utc,
             client,
             &config.openai_api_key,
         )
         .await?;
-        let event = event_opt.expect("Expected an event to be parsed");
+
+        assert!(
+            !events.is_empty(),
+            "Expected at least one event to be parsed"
+        );
+        let event = &events[0];
+
         assert!(
             event.name.eq_ignore_ascii_case("Dance Therapy"),
             "Name mismatch: {}",
@@ -307,7 +333,7 @@ mod tests {
         let fixed_now_utc = Utc.with_ymd_and_hms(2025, 1, 15, 17, 0, 0).unwrap();
 
         // This image should NOT be parsed as an event
-        let event_opt = parse_image_with_now(
+        let events = parse_image_with_now(
             Path::new("examples/selfie.jpg"),
             fixed_now_utc,
             client,
@@ -316,9 +342,9 @@ mod tests {
         .await?;
 
         assert!(
-            event_opt.is_none(),
-            "Expected None for selfie.jpg, but got {:?}",
-            event_opt
+            events.is_empty(),
+            "Expected empty list for selfie.jpg, but got {:?}",
+            events
         );
 
         Ok(())
@@ -332,7 +358,7 @@ mod tests {
         let fixed_now_utc = Utc.with_ymd_and_hms(2025, 1, 15, 17, 0, 0).unwrap();
 
         // This image should NOT be parsed as an event
-        let event_opt = parse_image_with_now(
+        let events = parse_image_with_now(
             Path::new("examples/soda_ad.jpg"),
             fixed_now_utc,
             client,
@@ -341,9 +367,9 @@ mod tests {
         .await?;
 
         assert!(
-            event_opt.is_none(),
-            "Expected None for soda_ad.jpg, but got {:?}",
-            event_opt
+            events.is_empty(),
+            "Expected empty list for soda_ad.jpg, but got {:?}",
+            events
         );
 
         Ok(())
@@ -356,18 +382,18 @@ mod tests {
 
         let fixed_now_utc = Utc.with_ymd_and_hms(2024, 10, 1, 12, 0, 0).unwrap();
 
-        let event = parse_image_with_now(
+        let events = parse_image_with_now(
             Path::new("examples/pumpkin_smash.jpeg"),
             fixed_now_utc,
             client,
             &config.openai_api_key,
         )
-        .await?
-        .expect("Event was not parsed");
+        .await?;
 
-        print!("{event:?}");
+        assert!(!events.is_empty(), "Expected event to be parsed");
+        let event = &events[0];
 
-        let url = event.url.expect("Failed to decode QR code");
+        let url = event.url.as_ref().expect("Failed to decode QR code");
 
         assert_eq!(
             url,
@@ -398,6 +424,59 @@ mod tests {
         let url = extract_qr_url(img).expect("Failed to decode QR code");
         let expected = Url::parse("https://www.eastsomervillemainstreets.org/event-details/halloween-block-party-pet-spooktacular-2025-2")?;
         assert_eq!(url, expected);
+        Ok(())
+    }
+
+    #[actix_web::test]
+    async fn test_parse_multiple_events() -> Result<()> {
+        let config = Config::from_env();
+        let client = get_test_client();
+
+        // Saturday, August 16th is in 2025
+        let fixed_now_utc = Utc.with_ymd_and_hms(2025, 1, 1, 12, 0, 0).unwrap();
+
+        let events = parse_image_with_now(
+            Path::new("examples/dsnc_flyer.png"),
+            fixed_now_utc,
+            client,
+            &config.openai_api_key,
+        )
+        .await?;
+
+        assert_eq!(events.len(), 3, "Expected 3 events");
+
+        let expected_times = [
+            (
+                Utc.with_ymd_and_hms(2025, 8, 16, 13, 0, 0).unwrap(),
+                Some(Utc.with_ymd_and_hms(2025, 8, 16, 17, 0, 0).unwrap()),
+            ),
+            (
+                Utc.with_ymd_and_hms(2025, 8, 23, 13, 0, 0).unwrap(),
+                Some(Utc.with_ymd_and_hms(2025, 8, 23, 17, 0, 0).unwrap()),
+            ),
+            (
+                Utc.with_ymd_and_hms(2025, 8, 25, 13, 0, 0).unwrap(),
+                Some(Utc.with_ymd_and_hms(2025, 8, 25, 22, 0, 0).unwrap()),
+            ),
+        ];
+
+        for (i, event) in events.iter().enumerate() {
+            assert!(event
+                .name
+                .to_lowercase()
+                .contains("neighborhood council election"),);
+            assert_eq!(event.start_date, expected_times[i].0,);
+            assert_eq!(event.end_date, expected_times[i].1,);
+            assert_eq!(
+                event.original_location.as_deref(),
+                Some("Somerville Library West Branch"),
+            );
+            assert_eq!(
+                event.url,
+                Some("https://sites.google.com/view/davissquarenc/elections".to_string())
+            )
+        }
+
         Ok(())
     }
 }
