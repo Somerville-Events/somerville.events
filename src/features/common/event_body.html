@@ -10,9 +10,9 @@
     <dt>Location</dt>
     <dd>
         {% match event.location %}
-        {% when EventLocation::Structured with { name, address } %}
+        {% when EventLocation::Structured with { name, address, google_maps_link } %}
         <strong>{{ name }}</strong><br>
-        {{ address }}
+        <a href="{{ google_maps_link }}" target="_blank" rel="noopener noreferrer">{{ address }}</a>
         {% when EventLocation::Unstructured with (original) %}
         {{ original }}
         {% when EventLocation::Unknown %}

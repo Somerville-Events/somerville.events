@@ -3,7 +3,11 @@ use chrono_tz::America::New_York;
 
 #[derive(Clone)]
 pub enum EventLocation {
-    Structured { name: String, address: String },
+    Structured {
+        name: String,
+        address: String,
+        google_maps_link: String,
+    },
     Unstructured(String),
     Unknown,
 }
@@ -53,10 +57,15 @@ impl EventViewModel {
             .as_ref()
             .map(|c| (c.get_url_with_past(is_past_view), c.to_string()));
 
-        let location = if let (Some(name), Some(addr)) = (&event.location_name, &event.address) {
+        let location = if let (Some(name), Some(addr), Some(google_place_id)) =
+            (&event.location_name, &event.address, &event.google_place_id)
+        {
+            let encoded_addr: String =
+                url::form_urlencoded::byte_serialize(addr.as_bytes()).collect();
             EventLocation::Structured {
                 name: name.clone(),
                 address: addr.clone(),
+                google_maps_link: format!("https://www.google.com/maps/search/?api=1&query={encoded_addr}&query_place_id={google_place_id}")
             }
         } else if let Some(orig) = &event.original_location {
             EventLocation::Unstructured(orig.clone())
