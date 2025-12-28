@@ -18,12 +18,8 @@ pub trait EventsRepo: Send + Sync {
     async fn delete(&self, id: i64) -> Result<()>;
 }
 
-pub struct EventsDatabase {
-    pub pool: sqlx::Pool<sqlx::Postgres>,
-}
-
 #[async_trait]
-impl EventsRepo for EventsDatabase {
+impl EventsRepo for sqlx::Pool<sqlx::Postgres> {
     async fn list(
         &self,
         category: Option<String>,
@@ -57,7 +53,7 @@ impl EventsRepo for EventsDatabase {
             since,
             until
         )
-        .fetch_all(&self.pool)
+        .fetch_all(self)
         .await?;
         Ok(events)
     }
@@ -85,7 +81,7 @@ impl EventsRepo for EventsDatabase {
             "#,
             id,
         )
-        .fetch_optional(&self.pool)
+        .fetch_optional(self)
         .await?;
         Ok(event)
     }
@@ -100,14 +96,14 @@ impl EventsRepo for EventsDatabase {
             "#,
         )
         .bind(idempotency_key)
-        .fetch_optional(&self.pool)
+        .fetch_optional(self)
         .await?;
 
         Ok(insert_result.is_some())
     }
 
     async fn insert(&self, event: &Event) -> Result<i64> {
-        save_event_to_db(&self.pool, event).await
+        save_event_to_db(self, event).await
     }
 
     async fn delete(&self, id: i64) -> Result<()> {
@@ -118,7 +114,7 @@ impl EventsRepo for EventsDatabase {
             "#,
         )
         .bind(id)
-        .execute(&self.pool)
+        .execute(self)
         .await?;
 
         if result.rows_affected() == 0 {

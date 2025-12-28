@@ -15,15 +15,13 @@ use actix_web::{
 use actix_web_httpauth::{extractors::basic::BasicAuth, middleware::HttpAuthentication};
 use actix_web_query_method_middleware::QueryMethod;
 use anyhow::Result;
-use awc::Client;
 use config::Config;
-use database::{EventsDatabase, EventsRepo};
+use database::EventsRepo;
 use sqlx::postgres::PgPoolOptions;
 
 pub struct AppState {
     pub openai_api_key: String,
     pub google_maps_api_key: String,
-    pub client: Client,
     pub username: String,
     pub password: String,
     pub events_repo: Box<dyn EventsRepo>,
@@ -64,26 +62,25 @@ async fn main() -> Result<()> {
     let host = config.host.clone();
     let static_file_dir = config.static_file_dir.clone();
 
+    let state = AppState {
+        openai_api_key: config.openai_api_key.clone(),
+        google_maps_api_key: config.google_maps_api_key.clone(),
+        username: config.username.clone(),
+        password: config.password.clone(),
+        events_repo: Box::new(db_connection_pool),
+    };
+    let app_state = Data::new(state);
+
     HttpServer::new(move || {
-        let client: Client = awc::ClientBuilder::new()
+        let auth_middleware = HttpAuthentication::basic(basic_auth_validator);
+
+        let client = awc::ClientBuilder::new()
             .timeout(std::time::Duration::from_secs(120))
             .finish();
 
-        let state = AppState {
-            openai_api_key: config.openai_api_key.clone(),
-            google_maps_api_key: config.google_maps_api_key.clone(),
-            username: config.username.clone(),
-            password: config.password.clone(),
-            events_repo: Box::new(EventsDatabase {
-                pool: db_connection_pool.clone(),
-            }),
-            client,
-        };
-
-        let auth_middleware = HttpAuthentication::basic(basic_auth_validator);
-
         App::new()
-            .app_data(Data::new(state))
+            .app_data(app_state.clone())
+            .app_data(Data::new(client))
             .wrap(QueryMethod::default())
             .wrap(middleware::Logger::default())
             .service(actix_files::Files::new("/static", &static_file_dir).show_files_listing())
@@ -259,7 +256,6 @@ mod tests {
         let state = AppState {
             openai_api_key: "dummy".to_string(),
             google_maps_api_key: "dummy".to_string(),
-            client: awc::Client::default(),
             username: "user".to_string(),
             password: "pass".to_string(),
             events_repo: Box::new(MockEventsRepo::new(vec![art_event.clone(), music_event])),
@@ -426,7 +422,6 @@ mod tests {
         let state = AppState {
             openai_api_key: "dummy".to_string(),
             google_maps_api_key: "dummy".to_string(),
-            client: awc::Client::default(),
             username: "user".to_string(),
             password: "pass".to_string(),
             events_repo: Box::new(mock_repo),
@@ -564,7 +559,6 @@ mod tests {
         let state = AppState {
             openai_api_key: "dummy".to_string(),
             google_maps_api_key: "dummy".to_string(),
-            client: awc::Client::default(),
             username: "user".to_string(),
             password: "pass".to_string(),
             events_repo: Box::new(MockEventsRepo::new(vec![event])),
@@ -651,7 +645,6 @@ mod tests {
         let state = AppState {
             openai_api_key: "dummy".to_string(),
             google_maps_api_key: "dummy".to_string(),
-            client: awc::Client::default(),
             username: "user".to_string(),
             password: "pass".to_string(),
             events_repo: Box::new(MockEventsRepo::new(vec![event])),
