@@ -39,7 +39,7 @@ impl EventsRepo for EventsDatabase {
                 full_description,
                 start_date,
                 end_date,
-                location,
+                address,
                 original_location,
                 google_place_id,
                 location_name,
@@ -71,7 +71,7 @@ impl EventsRepo for EventsDatabase {
                 full_description,
                 start_date,
                 end_date,
-                location,
+                address,
                 original_location,
                 google_place_id,
                 location_name,
@@ -105,13 +105,7 @@ impl EventsRepo for EventsDatabase {
     }
 
     async fn insert(&self, event: &Event) -> Result<i64> {
-        let mut event_to_save = event.clone();
-        if let Some(loc) = &event_to_save.location {
-            if event_to_save.original_location.is_none() {
-                event_to_save.original_location = Some(loc.clone());
-            }
-        }
-        save_event_to_db(&self.pool, &event_to_save).await
+        save_event_to_db(&self.pool, event).await
     }
 
     async fn delete(&self, id: i64) -> Result<()> {
@@ -150,7 +144,7 @@ pub async fn save_event_to_db(executor: &sqlx::Pool<sqlx::Postgres>, event: &Eve
             full_description,
             start_date,
             end_date,
-            location,
+            address,
             original_location,
             google_place_id,
             location_name,
@@ -165,7 +159,7 @@ pub async fn save_event_to_db(executor: &sqlx::Pool<sqlx::Postgres>, event: &Eve
         event.full_description,
         event.start_date,
         event.end_date,
-        event.location,
+        event.address,
         event.original_location,
         event.google_place_id,
         event.location_name,
@@ -193,7 +187,7 @@ async fn find_duplicate(
             full_description,
             start_date,
             end_date,
-            location,
+            address,
             original_location,
             google_place_id,
             location_name,
@@ -203,11 +197,11 @@ async fn find_duplicate(
         FROM app.events
         WHERE start_date = $1 
           AND end_date IS NOT DISTINCT FROM $2
-          AND location IS NOT DISTINCT FROM $3
+          AND address IS NOT DISTINCT FROM $3
         "#,
         event.start_date,
         event.end_date,
-        event.location
+        event.address
     )
     .fetch_all(executor)
     .await?;
@@ -238,15 +232,15 @@ mod tests {
     use super::*;
     use chrono::{TimeZone, Utc};
 
-    fn create_event(name: &str, description: &str, location: Option<&str>) -> Event {
+    fn create_event(name: &str, description: &str, address: Option<&str>) -> Event {
         Event {
             id: None,
             name: name.to_string(),
             full_description: description.to_string(),
             start_date: Utc.timestamp_opt(1672531200, 0).unwrap(), // 2023-01-01
             end_date: None,
-            location: location.map(|s| s.to_string()),
-            original_location: location.map(|s| s.to_string()),
+            address: address.map(|s| s.to_string()),
+            original_location: address.map(|s| s.to_string()),
             google_place_id: None,
             location_name: None,
             event_type: None,

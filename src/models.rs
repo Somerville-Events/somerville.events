@@ -67,7 +67,7 @@ pub struct Event {
     pub full_description: String,
     pub start_date: DateTime<Utc>,
     pub end_date: Option<DateTime<Utc>>,
-    pub location: Option<String>,
+    pub address: Option<String>,
     #[serde(skip_deserializing)]
     pub original_location: Option<String>,
     pub google_place_id: Option<String>,

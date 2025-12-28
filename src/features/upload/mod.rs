@@ -107,7 +107,7 @@ pub async fn save(
                     .await
                     {
                         Ok(Some(canon)) => {
-                            event.location = Some(canon.formatted_address);
+                            event.address = Some(canon.formatted_address);
                             event.google_place_id = Some(canon.place_id);
                             event.location_name = Some(canon.name);
                         }

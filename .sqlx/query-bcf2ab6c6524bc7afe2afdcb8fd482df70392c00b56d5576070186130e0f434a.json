@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n            SELECT\n                id,\n                name,\n                full_description,\n                start_date,\n                end_date,\n                location,\n                event_type as \"event_type: EventType\",\n                url,\n                confidence\n            FROM app.events\n            WHERE ($1::text IS NULL OR event_type::text = $1::text)\n            AND ($2::timestamptz IS NULL OR start_date >= $2)\n            AND ($3::timestamptz IS NULL OR start_date <= $3)\n            ORDER BY start_date ASC NULLS LAST\n            ",
+  "query": "\n            SELECT\n                id,\n                name,\n                full_description,\n                start_date,\n                end_date,\n                location,\n                original_location,\n                google_place_id,\n                location_name,\n                event_type as \"event_type: EventType\",\n                url,\n                confidence\n            FROM app.events\n            WHERE id = $1\n            ",
   "describe": {
     "columns": [
       {
@@ -35,6 +35,21 @@
       },
       {
         "ordinal": 6,
+        "name": "original_location",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 7,
+        "name": "google_place_id",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 8,
+        "name": "location_name",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 9,
         "name": "event_type: EventType",
         "type_info": {
           "Custom": {
@@ -72,21 +87,19 @@
         }
       },
       {
-        "ordinal": 7,
+        "ordinal": 10,
         "name": "url",
         "type_info": "Text"
       },
       {
-        "ordinal": 8,
+        "ordinal": 11,
         "name": "confidence",
         "type_info": "Float8"
       }
     ],
     "parameters": {
       "Left": [
-        "Text",
-        "Timestamptz",
-        "Timestamptz"
+        "Int8"
       ]
     },
     "nullable": [
@@ -98,8 +111,11 @@
       true,
       true,
       true,
+      true,
+      true,
+      true,
       false
     ]
   },
-  "hash": "0b234032006762329da9f411104fe00f82c54b390ed0fe205af412bf0fe90741"
+  "hash": "bcf2ab6c6524bc7afe2afdcb8fd482df70392c00b56d5576070186130e0f434a"
 }

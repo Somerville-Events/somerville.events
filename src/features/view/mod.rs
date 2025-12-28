@@ -1,4 +1,4 @@
-use crate::features::common::{DateFormat, EventViewModel};
+use crate::features::common::{DateFormat, EventLocation, EventViewModel};
 use crate::models::Event;
 use crate::AppState;
 use actix_web::http::header::ContentType;
@@ -207,7 +207,18 @@ pub async fn ical(state: web::Data<AppState>, path: web::Path<i64>) -> impl Resp
                 .summary(&event.name)
                 .description(&event.full_description);
 
-            if let Some(location) = event.location.or(event.original_location) {
+            let location = if let (Some(name), Some(addr)) = (&event.location_name, &event.address)
+            {
+                format!("{}, {}", name, addr)
+            } else {
+                event
+                    .address
+                    .clone()
+                    .or(event.original_location)
+                    .unwrap_or_default()
+            };
+
+            if !location.is_empty() {
                 ical_event.location(&location);
             }
 

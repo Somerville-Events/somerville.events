@@ -232,7 +232,7 @@ fn parse_and_validate_response(content: &str) -> Result<Option<Event>> {
         start_date,
         full_description: extraction.full_description.unwrap_or_default(),
         end_date,
-        location: None,
+        address: None,
         original_location: extraction.location,
         google_place_id: None,
         location_name: None,

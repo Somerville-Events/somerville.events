@@ -2,6 +2,13 @@ use crate::models::Event;
 use chrono_tz::America::New_York;
 
 #[derive(Clone)]
+pub enum EventLocation {
+    Structured { name: String, address: String },
+    Unstructured(String),
+    Unknown,
+}
+
+#[derive(Clone)]
 pub struct EventViewModel {
     pub id: i64,
     pub name: String,
@@ -9,7 +16,7 @@ pub struct EventViewModel {
     pub start_formatted: String,
     pub end_iso: String,
     pub end_formatted: Option<String>,
-    pub location: String,
+    pub location: EventLocation,
     pub description: String,
     pub category_link: Option<(String, String)>,
     pub website_link: Option<String>,
@@ -46,6 +53,17 @@ impl EventViewModel {
             .as_ref()
             .map(|c| (c.get_url_with_past(is_past_view), c.to_string()));
 
+        let location = if let (Some(name), Some(addr)) = (&event.location_name, &event.address) {
+            EventLocation::Structured {
+                name: name.clone(),
+                address: addr.clone(),
+            }
+        } else if let Some(orig) = &event.original_location {
+            EventLocation::Unstructured(orig.clone())
+        } else {
+            EventLocation::Unknown
+        };
+
         Self {
             id: event.id.unwrap_or_default(),
             name: event.name.clone(),
@@ -53,11 +71,7 @@ impl EventViewModel {
             start_formatted,
             end_iso,
             end_formatted,
-            location: event
-                .location
-                .clone()
-                .or(event.original_location.clone())
-                .unwrap_or_default(),
+            location,
             description: event.full_description.clone(),
             category_link,
             website_link: event.url.clone(),
