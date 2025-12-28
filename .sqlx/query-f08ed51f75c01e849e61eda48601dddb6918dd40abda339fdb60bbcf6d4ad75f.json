@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n            SELECT\n                id,\n                name,\n                full_description,\n                start_date,\n                end_date,\n                address,\n                original_location,\n                google_place_id,\n                location_name,\n                event_type as \"event_type: EventType\",\n                url,\n                confidence\n            FROM app.events\n            WHERE id = $1\n            ",
+  "query": "\n        SELECT \n            id,\n            name,\n            description,\n            full_text,\n            start_date,\n            end_date,\n            address,\n            original_location,\n            google_place_id,\n            location_name,\n            event_type as \"event_type: EventType\",\n            url,\n            confidence\n        FROM app.events\n        WHERE start_date = $1 \n          AND end_date IS NOT DISTINCT FROM $2\n          AND address IS NOT DISTINCT FROM $3\n        ",
   "describe": {
     "columns": [
       {
@@ -15,41 +15,46 @@
       },
       {
         "ordinal": 2,
-        "name": "full_description",
+        "name": "description",
         "type_info": "Text"
       },
       {
         "ordinal": 3,
+        "name": "full_text",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 4,
         "name": "start_date",
         "type_info": "Timestamptz"
       },
       {
-        "ordinal": 4,
+        "ordinal": 5,
         "name": "end_date",
         "type_info": "Timestamptz"
       },
       {
-        "ordinal": 5,
+        "ordinal": 6,
         "name": "address",
         "type_info": "Text"
       },
       {
-        "ordinal": 6,
+        "ordinal": 7,
         "name": "original_location",
         "type_info": "Text"
       },
       {
-        "ordinal": 7,
+        "ordinal": 8,
         "name": "google_place_id",
         "type_info": "Text"
       },
       {
-        "ordinal": 8,
+        "ordinal": 9,
         "name": "location_name",
         "type_info": "Text"
       },
       {
-        "ordinal": 9,
+        "ordinal": 10,
         "name": "event_type: EventType",
         "type_info": {
           "Custom": {
@@ -87,22 +92,25 @@
         }
       },
       {
-        "ordinal": 10,
+        "ordinal": 11,
         "name": "url",
         "type_info": "Text"
       },
       {
-        "ordinal": 11,
+        "ordinal": 12,
         "name": "confidence",
         "type_info": "Float8"
       }
     ],
     "parameters": {
       "Left": [
-        "Int8"
+        "Timestamptz",
+        "Timestamptz",
+        "Text"
       ]
     },
     "nullable": [
+      false,
       false,
       false,
       false,
@@ -117,5 +125,5 @@
       false
     ]
   },
-  "hash": "da03a9b54c042df69f41851970320daafc989e74c886212bc7288a9d9d124f23"
+  "hash": "f08ed51f75c01e849e61eda48601dddb6918dd40abda339fdb60bbcf6d4ad75f"
 }

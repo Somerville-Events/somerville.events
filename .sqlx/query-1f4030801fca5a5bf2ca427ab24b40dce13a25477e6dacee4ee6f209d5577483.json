@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n        INSERT INTO app.events (\n            name,\n            full_description,\n            start_date,\n            end_date,\n            address,\n            original_location,\n            google_place_id,\n            location_name,\n            event_type,\n            url,\n            confidence\n        )\n        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::app.event_type, $10, $11)\n        RETURNING id\n        ",
+  "query": "\n        INSERT INTO app.events (\n            name,\n            description,\n            full_text,\n            start_date,\n            end_date,\n            address,\n            original_location,\n            google_place_id,\n            location_name,\n            event_type,\n            url,\n            confidence\n        )\n        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::app.event_type, $11, $12)\n        RETURNING id\n        ",
   "describe": {
     "columns": [
       {
@@ -11,6 +11,7 @@
     ],
     "parameters": {
       "Left": [
+        "Text",
         "Text",
         "Text",
         "Timestamptz",
@@ -61,5 +62,5 @@
       false
     ]
   },
-  "hash": "9ce1ca8b4bf4ce1b880748f5cdfbbc3805910a1da40a5a2f95884912d8cf19ad"
+  "hash": "1f4030801fca5a5bf2ca427ab24b40dce13a25477e6dacee4ee6f209d5577483"
 }
