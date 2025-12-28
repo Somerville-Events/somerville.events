@@ -29,6 +29,7 @@ jobs:
       - name: Run tests
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY }}
           HOST: 127.0.0.1
           BASIC_AUTH_USER: test
           BASIC_AUTH_PASS: test
