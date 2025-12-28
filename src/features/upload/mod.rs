@@ -103,41 +103,12 @@ pub async fn save(
                 if events.is_empty() {
                     log::info!("Image processed but no events found");
                 } else {
-                    let unique_locations: HashSet<String> = events
-                        .iter()
-                        .filter_map(|e| e.original_location.clone())
-                        .collect();
+                    let client = state.client.clone();
+                    let key = state.google_maps_api_key.clone();
 
-                    let geocoding_futures = unique_locations.iter().map(|loc| {
-                        let client = state.client.clone();
-                        let key = state.google_maps_api_key.clone();
-                        let loc = loc.clone();
-                        async move {
-                            match crate::geocoding::canonicalize_address(&client, &loc, &key).await
-                            {
-                                Ok(Some(canon)) => Some((loc, canon)),
-                                Ok(None) => None,
-                                Err(e) => {
-                                    log::warn!("Geocoding failed for '{}': {}", loc, e);
-                                    None
-                                }
-                            }
-                        }
-                    });
-
-                    let geocoded_results = future::join_all(geocoding_futures).await;
-                    let location_map: HashMap<String, _> =
-                        geocoded_results.into_iter().flatten().collect();
+                    hydrate_event_locations(&mut events, &client, &key).await;
 
                     for event in &mut events {
-                        if let Some(loc) = &event.original_location {
-                            if let Some(canon) = location_map.get(loc) {
-                                event.address = Some(canon.formatted_address.clone());
-                                event.google_place_id = Some(canon.place_id.clone());
-                                event.location_name = Some(canon.name.clone());
-                            }
-                        }
-
                         match state.events_repo.insert(event).await {
                             Ok(id) => {
                                 log::info!(
@@ -175,4 +146,130 @@ pub async fn save(
 pub async fn success() -> impl Responder {
     let template = SuccessTemplate;
     HttpResponse::Ok().body(template.render().unwrap())
+}
+
+pub async fn hydrate_event_locations(
+    events: &mut [crate::models::Event],
+    client: &awc::Client,
+    api_key: &str,
+) {
+    let unique_locations: HashSet<String> = events
+        .iter()
+        .filter_map(|e| e.original_location.clone())
+        .collect();
+
+    let geocoding_futures = unique_locations.iter().map(|loc| async move {
+        match crate::geocoding::canonicalize_address(client, loc, api_key).await {
+            Ok(Some(canon)) => Some((loc.clone(), canon)),
+            Ok(None) => None,
+            Err(e) => {
+                log::warn!("Geocoding failed for '{}': {}", loc, e);
+                None
+            }
+        }
+    });
+
+    let geocoded_results = future::join_all(geocoding_futures).await;
+    let location_map: HashMap<String, _> = geocoded_results.into_iter().flatten().collect();
+
+    for event in events {
+        if let Some(loc) = &event.original_location {
+            if let Some(canon) = location_map.get(loc) {
+                event.address = Some(canon.formatted_address.clone());
+                event.google_place_id = Some(canon.place_id.clone());
+                event.location_name = Some(canon.name.clone());
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::models::Event;
+    use chrono::Utc;
+
+    #[actix_rt::test]
+    async fn test_hydrate_event_locations() {
+        let _ = env_logger::builder().is_test(true).try_init();
+
+        let api_key = crate::config::Config::from_env()
+            .google_maps_api_key
+            .clone();
+        let client: awc::Client = awc::Client::default();
+
+        let mut events = vec![
+            Event {
+                name: "Davis Square Event".to_string(),
+                original_location: Some("Davis Square".to_string()),
+                description: "".to_string(),
+                full_text: "".to_string(),
+                start_date: Utc::now(),
+                end_date: None,
+                address: None,
+                google_place_id: None,
+                location_name: None,
+                event_type: None,
+                url: None,
+                confidence: 1.0,
+                id: None,
+            },
+            Event {
+                name: "Somerville Theatre Event".to_string(),
+                original_location: Some("Somerville Theatre".to_string()),
+                description: "".to_string(),
+                full_text: "".to_string(),
+                start_date: Utc::now(),
+                end_date: None,
+                address: None,
+                google_place_id: None,
+                location_name: None,
+                event_type: None,
+                url: None,
+                confidence: 1.0,
+                id: None,
+            },
+            Event {
+                name: "Unknown Place Event".to_string(),
+                original_location: Some("ThisPlaceDefinitelyDoesNotExist12345".to_string()),
+                description: "".to_string(),
+                full_text: "".to_string(),
+                start_date: Utc::now(),
+                end_date: None,
+                address: None,
+                google_place_id: None,
+                location_name: None,
+                event_type: None,
+                url: None,
+                confidence: 1.0,
+                id: None,
+            },
+            Event {
+                name: "Another Davis Square Event".to_string(),
+                original_location: Some("Davis Square".to_string()),
+                description: "".to_string(),
+                full_text: "".to_string(),
+                start_date: Utc::now(),
+                end_date: None,
+                address: None,
+                google_place_id: None,
+                location_name: None,
+                event_type: None,
+                url: None,
+                confidence: 1.0,
+                id: None,
+            },
+        ];
+
+        hydrate_event_locations(&mut events, &client, &api_key).await;
+
+        // Verify results
+        assert_eq!(events[0].location_name.as_deref(), Some("Davis Square"));
+        assert_eq!(
+            events[1].location_name.as_deref(),
+            Some("Somerville Theatre")
+        );
+        assert!(events[2].address.is_none()); // Unknown place should not result in address
+        assert_eq!(events[3].location_name.as_deref(), Some("Davis Square"));
+    }
 }
