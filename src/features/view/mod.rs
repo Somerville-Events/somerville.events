@@ -207,6 +207,10 @@ pub async fn ical(state: web::Data<AppState>, path: web::Path<i64>) -> impl Resp
                 .summary(&event.name)
                 .description(&event.full_text);
 
+            if let Some(url) = &event.url {
+                ical_event.url(url);
+            }
+
             let location = if let (Some(name), Some(addr)) = (&event.location_name, &event.address)
             {
                 format!("{}, {}", name, addr)

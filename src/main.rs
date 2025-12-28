@@ -557,7 +557,7 @@ mod tests {
             google_place_id: None,
             location_name: None,
             event_type: None,
-            url: None,
+            url: Some("http://example.com/event".to_string()),
             confidence: 1.0,
         };
 
@@ -595,6 +595,7 @@ mod tests {
         assert!(body_str.contains("SUMMARY:ICal Event"));
         assert!(body_str.contains("DESCRIPTION:Description for ICal"));
         assert!(body_str.contains("LOCATION:Virtual"));
+        assert!(body_str.contains("URL:http://example.com/event"));
 
         // Date verification
         // 2025-01-15 10:00:00 EST -> 20250115T100000
