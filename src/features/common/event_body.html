@@ -29,5 +29,7 @@
     <dd><a href="{{ url }}" rel="noopener noreferrer" target="_blank">{{ url }}</a></dd>
     {% endif %}
 </dl>
-<p>{{ event.description }}</p>
+{% for paragraph in event.description_paragraphs %}
+<p>{{ paragraph }}</p>
+{% endfor %}
 <p><a href="/event/{{ event.id }}.ical" class="button">Add to calendar</a></p>
