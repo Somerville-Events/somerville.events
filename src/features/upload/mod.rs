@@ -138,7 +138,9 @@ pub async fn save(
 
 pub async fn success() -> impl Responder {
     let template = SuccessTemplate;
-    HttpResponse::Ok().body(template.render().unwrap())
+    HttpResponse::Ok()
+        .content_type(ContentType::html())
+        .body(template.render().unwrap())
 }
 
 pub async fn hydrate_event_locations(
