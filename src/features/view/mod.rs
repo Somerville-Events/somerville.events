@@ -245,7 +245,7 @@ pub async fn ical(state: web::Data<AppState>, path: web::Path<i64>) -> impl Resp
                 .content_type("text/calendar")
                 .insert_header((
                     "Content-Disposition",
-                    format!("attachment; filename=\"event-{}.ics\"", id),
+                    format!("inline; filename=\"event-{}.ics\"", id),
                 ))
                 .body(calendar.to_string())
         }
