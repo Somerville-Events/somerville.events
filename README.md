@@ -4,51 +4,60 @@ An event website for Somerville, MA.
 
 ## Setup
 
+### Install rust
+
+https://rust-lang.org/tools/install/
+
+### Install `actix-cli`
+
+We use it to run database migrations.
+
 ```
-# Install the actix-cli program that we use to run db migrations
 cargo install sqlx-cli --no-default-features --features postgres
 ```
 
-Install postgresql
+### Install postgresql
 
 https://www.postgresql.org/download/
 
-```
+### Setup `.env`
+
+Copy the sample environment file and set the real values in `.env`
+
+```bash
 cp .env.sample .env
 ```
 
-Set the values in your `.env`
+### Initialize the database
 
-```
+```bash
 ./reset_database.sh
-sqlx migrate
+sqlx migrate run
 ```
 
-Add a precommit hook for safety
+_Note: `reset_database.sh` drops and recreates the database using the credentials in `.env`._
 
-```
-cp pre-commit .git/hooks/
+### Add the precommit hook
+
+This runs some safety checks before pushing to main.
+
+```bash
+cp pre-commit .git/hooks/pre-commit
 ```
 
-## Run
+## Running
 
-```
+```bash
 cargo run
 ```
 
-## Query
+The server will start at `http://localhost:8080`.
 
-```
-curl -u username:password -s -F image=@examples/fuzz.jpeg http://localhost:8080/upload
-```
+## Deployment
 
-## Deploy
+Push to `main`. GitHub Actions will build, test, and deploy to the VPS.
 
-Push to `main`. It will automatically build, test, and deploy the new version.
-
-### Prerequisites
-
-When modifying SQL queries, you must update the offline cache since the CI runner cannot connect to the database.
+This project uses `sqlx` offline mode for type checking queries without a live DB in CI. If you modify any SQL queries, update the cache:
 
 ```bash
 cargo sqlx prepare

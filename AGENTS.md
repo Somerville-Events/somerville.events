@@ -1,17 +1,22 @@
-# Agent Rules
+## Project Context
 
-## Database Migrations
-Whenever you are considering adding a database migration, generate the database migration file with `sqlx migrate add <migration-name>`, then edit the resulting sql file instead of manually adding an sql file.
+- **Stack**: Rust (Actix-Web), SQLx (Postgres), Askama (Templating).
+- **Key Features**: Flyer upload, OCR/LLM processing for event extraction, Geocoding.
 
-## Rust Dependencies
-Always add rust dependencies using `cargo add` to be sure to get the latest version and be sure to visit their docs if you are uncertain how to use the latest version.
+## Database
 
-## HTML Semantics
-When writing html, always use the most specific semantic element for what you're making. If you must style it, use css selector for the element, not a custom id or class unless absolutely necessary.
+- **Migrations**: Generate with `sqlx migrate add <migration-name>`. Edit the resulting SQL file.
+- **Type-Safety**: Always use `query_as!()` or equivalent macros. Run `cargo sqlx prepare` if the offline cache is stale (CI fails).
 
-## Comments
-Avoid commenting about WHAT the code is doing, and instead comment WHY you chose to do it that way, especially if it is unintuitive. Include how you feel about it (for instance "This is so jank") if you think it's not elegant.
+## Code Style
 
-## Type-safe SQLx
-We should always use type-safe sqlx macros like query_as!(). We should use them offline. If the query cache is out of date, you can refresh it using sqlx.
+- **Comments**: Focus on **WHY**, not WHAT. Be honest about "jank" code.
+- **Commit message**: Say **WHAT** in under 50 chars in the title, then explain **WHY** in the body.
+- **HTML**: Use semantic elements. Avoid unnecessary nesting. Avoid unnecessary custom classes/IDs. Avoid inline styles.
+- **CSS**: Style element selectors directly instead of using custom classes, unless necessary.
+- **Dependencies**: Use `cargo add` to ensure latest versions.
+- **Javascript**: This app should work without it. Only use it for small progressive enhancements.
 
+## Testing & Safety
+
+- **Secrets**: Never hardcode API keys. Use `Config::from_env()`.
