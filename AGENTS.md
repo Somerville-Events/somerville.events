@@ -16,6 +16,7 @@
 - **CSS**: Style element selectors directly instead of using custom classes, unless necessary.
 - **Dependencies**: Use `cargo add` to ensure latest versions.
 - **Javascript**: This app should work without it. Only use it for small progressive enhancements.
+- **Rust**: Run `cargo fmt` and `cargo clippy --all-targets -- -D warnings` to comply with our code standards.
 
 ## Testing & Safety
 
