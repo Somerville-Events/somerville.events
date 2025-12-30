@@ -52,7 +52,7 @@ impl EventsRepo for sqlx::Pool<sqlx::Postgres> {
                 e.age_restrictions,
                 e.price,
                 e.source_name,
-                array_agg(et.event_type_name) as "event_types!"
+                COALESCE(array_agg(et.event_type_name) FILTER (WHERE et.event_type_name IS NOT NULL), '{}') as "event_types!"
             FROM app.events e
             JOIN filtered_events fe ON e.id = fe.id
             LEFT JOIN app.event_event_types et ON e.id = et.event_id
@@ -114,7 +114,7 @@ impl EventsRepo for sqlx::Pool<sqlx::Postgres> {
                 e.age_restrictions,
                 e.price,
                 e.source_name,
-                array_agg(et.event_type_name) as "event_types!"
+                COALESCE(array_agg(et.event_type_name) FILTER (WHERE et.event_type_name IS NOT NULL), '{}') as "event_types!"
             FROM app.events e
             LEFT JOIN app.event_event_types et ON e.id = et.event_id
             WHERE e.id = $1
@@ -282,7 +282,7 @@ async fn find_duplicate(
             e.age_restrictions,
             e.price,
             e.source_name,
-            array_agg(et.event_type_name) as "event_types!"
+            COALESCE(array_agg(et.event_type_name) FILTER (WHERE et.event_type_name IS NOT NULL), '{}') as "event_types!"
         FROM app.events e
         LEFT JOIN app.event_event_types et ON e.id = et.event_id
         WHERE e.start_date = $1

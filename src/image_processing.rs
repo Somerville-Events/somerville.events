@@ -278,7 +278,7 @@ fn parse_and_validate_response(content: &str) -> Result<Vec<Event>> {
             confidence: extracted_event.confidence,
             id: None,
             age_restrictions: None, // Logic for extraction could be added here if schema supported it
-            price: None,            // Logic for extraction could be added here if schema supported it
+            price: None, // Logic for extraction could be added here if schema supported it
             source_name: None,
         });
     }
