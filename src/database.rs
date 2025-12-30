@@ -26,28 +26,38 @@ impl EventsRepo for sqlx::Pool<sqlx::Postgres> {
         since: Option<DateTime<Utc>>,
         until: Option<DateTime<Utc>>,
     ) -> Result<Vec<Event>> {
-        let events = sqlx::query_as!(
-            Event,
+        let rows = sqlx::query!(
             r#"
+            WITH filtered_events AS (
+                SELECT e.id
+                FROM app.events e
+                LEFT JOIN app.event_event_types et ON e.id = et.event_id
+                WHERE ($1::text IS NULL OR et.event_type_name = $1::text)
+                AND ($2::timestamptz IS NULL OR e.start_date >= $2)
+                AND ($3::timestamptz IS NULL OR e.start_date <= $3)
+            )
             SELECT
-                id,
-                name,
-                description,
-                full_text,
-                start_date,
-                end_date,
-                address,
-                original_location,
-                google_place_id,
-                location_name,
-                event_type as "event_type: EventType",
-                url,
-                confidence
-            FROM app.events
-            WHERE ($1::text IS NULL OR event_type::text = $1::text)
-            AND ($2::timestamptz IS NULL OR start_date >= $2)
-            AND ($3::timestamptz IS NULL OR start_date <= $3)
-            ORDER BY start_date ASC NULLS LAST
+                e.id,
+                e.name,
+                e.description,
+                e.full_text,
+                e.start_date,
+                e.end_date,
+                e.address,
+                e.original_location,
+                e.google_place_id,
+                e.location_name,
+                e.url,
+                e.confidence,
+                e.age_restrictions,
+                e.price,
+                e.source_name,
+                array_agg(et.event_type_name) as "event_types!"
+            FROM app.events e
+            JOIN filtered_events fe ON e.id = fe.id
+            LEFT JOIN app.event_event_types et ON e.id = et.event_id
+            GROUP BY e.id
+            ORDER BY e.start_date ASC NULLS LAST
             "#,
             category,
             since,
@@ -55,35 +65,88 @@ impl EventsRepo for sqlx::Pool<sqlx::Postgres> {
         )
         .fetch_all(self)
         .await?;
+
+        let events = rows
+            .into_iter()
+            .map(|r| Event {
+                id: Some(r.id),
+                name: r.name,
+                description: r.description,
+                full_text: r.full_text,
+                start_date: r.start_date,
+                end_date: r.end_date,
+                address: r.address,
+                original_location: r.original_location,
+                google_place_id: r.google_place_id,
+                location_name: r.location_name,
+                event_types: r
+                    .event_types
+                    .into_iter()
+                    .map(|s| EventType::from(s))
+                    .collect(),
+                url: r.url,
+                confidence: r.confidence,
+                age_restrictions: r.age_restrictions,
+                price: r.price,
+                source_name: r.source_name,
+            })
+            .collect();
+
         Ok(events)
     }
 
     async fn get(&self, id: i64) -> Result<Option<Event>> {
-        let event = sqlx::query_as!(
-            Event,
+        let row = sqlx::query!(
             r#"
             SELECT
-                id,
-                name,
-                description,
-                full_text,
-                start_date,
-                end_date,
-                address,
-                original_location,
-                google_place_id,
-                location_name,
-                event_type as "event_type: EventType",
-                url,
-                confidence
-            FROM app.events
-            WHERE id = $1
+                e.id,
+                e.name,
+                e.description,
+                e.full_text,
+                e.start_date,
+                e.end_date,
+                e.address,
+                e.original_location,
+                e.google_place_id,
+                e.location_name,
+                e.url,
+                e.confidence,
+                e.age_restrictions,
+                e.price,
+                e.source_name,
+                array_agg(et.event_type_name) as "event_types!"
+            FROM app.events e
+            LEFT JOIN app.event_event_types et ON e.id = et.event_id
+            WHERE e.id = $1
+            GROUP BY e.id
             "#,
             id,
         )
         .fetch_optional(self)
         .await?;
-        Ok(event)
+
+        Ok(row.map(|r| Event {
+            id: Some(r.id),
+            name: r.name,
+            description: r.description,
+            full_text: r.full_text,
+            start_date: r.start_date,
+            end_date: r.end_date,
+            address: r.address,
+            original_location: r.original_location,
+            google_place_id: r.google_place_id,
+            location_name: r.location_name,
+            event_types: r
+                .event_types
+                .into_iter()
+                .map(|s| EventType::from(s))
+                .collect(),
+            url: r.url,
+            confidence: r.confidence,
+            age_restrictions: r.age_restrictions,
+            price: r.price,
+            source_name: r.source_name,
+        }))
     }
 
     async fn claim_idempotency_key(&self, idempotency_key: uuid::Uuid) -> Result<bool> {
@@ -135,6 +198,8 @@ pub async fn save_event_to_db(executor: &sqlx::Pool<sqlx::Postgres>, event: &Eve
         return Ok(duplicate_id);
     }
 
+    let mut tx = executor.begin().await?;
+
     let id = sqlx::query_scalar!(
         r#"
         INSERT INTO app.events (
@@ -147,11 +212,13 @@ pub async fn save_event_to_db(executor: &sqlx::Pool<sqlx::Postgres>, event: &Eve
             original_location,
             google_place_id,
             location_name,
-            event_type,
             url,
-            confidence
+            confidence,
+            age_restrictions,
+            price,
+            source_name
         )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::app.event_type, $11, $12)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
         RETURNING id
         "#,
         event.name,
@@ -163,13 +230,32 @@ pub async fn save_event_to_db(executor: &sqlx::Pool<sqlx::Postgres>, event: &Eve
         event.original_location,
         event.google_place_id,
         event.location_name,
-        event.event_type.as_ref() as Option<&EventType>,
         event.url,
-        event.confidence
+        event.confidence,
+        event.age_restrictions,
+        event.price,
+        event.source_name
     )
-    .fetch_one(executor)
+    .fetch_one(&mut *tx)
     .await
     .map_err(|e| anyhow!("Database insert failed: {e}"))?;
+
+    for et in &event.event_types {
+        let et_str = et.db_id();
+        sqlx::query!(
+            r#"
+            INSERT INTO app.event_event_types (event_id, event_type_name)
+            VALUES ($1, $2)
+            ON CONFLICT DO NOTHING
+            "#,
+            id,
+            et_str
+        )
+        .execute(&mut *tx)
+        .await?;
+    }
+
+    tx.commit().await?;
 
     Ok(id)
 }
@@ -178,27 +264,31 @@ async fn find_duplicate(
     executor: &sqlx::Pool<sqlx::Postgres>,
     event: &Event,
 ) -> Result<Option<i64>> {
-    let potential_duplicates = sqlx::query_as!(
-        Event,
+    let rows = sqlx::query!(
         r#"
         SELECT 
-            id,
-            name,
-            description,
-            full_text,
-            start_date,
-            end_date,
-            address,
-            original_location,
-            google_place_id,
-            location_name,
-            event_type as "event_type: EventType",
-            url,
-            confidence
-        FROM app.events
-        WHERE start_date = $1 
-          AND end_date IS NOT DISTINCT FROM $2
-          AND address IS NOT DISTINCT FROM $3
+            e.id,
+            e.name,
+            e.description,
+            e.full_text,
+            e.start_date,
+            e.end_date,
+            e.address,
+            e.original_location,
+            e.google_place_id,
+            e.location_name,
+            e.url,
+            e.confidence,
+            e.age_restrictions,
+            e.price,
+            e.source_name,
+            array_agg(et.event_type_name) as "event_types!"
+        FROM app.events e
+        LEFT JOIN app.event_event_types et ON e.id = et.event_id
+        WHERE e.start_date = $1
+          AND e.end_date IS NOT DISTINCT FROM $2
+          AND e.address IS NOT DISTINCT FROM $3
+        GROUP BY e.id
         "#,
         event.start_date,
         event.end_date,
@@ -206,6 +296,32 @@ async fn find_duplicate(
     )
     .fetch_all(executor)
     .await?;
+
+    let potential_duplicates: Vec<Event> = rows
+        .into_iter()
+        .map(|r| Event {
+            id: Some(r.id),
+            name: r.name,
+            description: r.description,
+            full_text: r.full_text,
+            start_date: r.start_date,
+            end_date: r.end_date,
+            address: r.address,
+            original_location: r.original_location,
+            google_place_id: r.google_place_id,
+            location_name: r.location_name,
+            event_types: r
+                .event_types
+                .into_iter()
+                .map(|s| EventType::from(s))
+                .collect(),
+            url: r.url,
+            confidence: r.confidence,
+            age_restrictions: r.age_restrictions,
+            price: r.price,
+            source_name: r.source_name,
+        })
+        .collect();
 
     for row in potential_duplicates {
         if is_duplicate(&row, event) {
@@ -245,9 +361,12 @@ mod tests {
             original_location: address.map(|s| s.to_string()),
             google_place_id: None,
             location_name: None,
-            event_type: None,
+            event_types: vec![],
             url: None,
             confidence: 1.0,
+            age_restrictions: None,
+            price: None,
+            source_name: None,
         }
     }
 

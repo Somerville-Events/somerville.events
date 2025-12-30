@@ -36,8 +36,8 @@ pub struct SingleEventExtraction {
     /// Format: YYYY-MM-DDTHH:MM:SS (No timezone)
     pub end_date: Option<NaiveDateTime>,
     pub location: Option<String>,
-    /// "YardSale" | "Art" | "Music" | "Dance" | "Performance" | "Food" | "PersonalService" | "Meeting" | "Government" | "Volunteer" | "Fundraiser" | "Film" | "Theater" | "Comedy" | "Literature" | "Exhibition" | "Workshop" | "Fitness" | "Market" | "Sports" | "Family" | "Social" | "Holiday" | "Religious" | "Other"
-    pub event_type: Option<String>,
+    /// "YardSale" | "Art" | "Music" | "Dance" | "Performance" | "Food" | "PersonalService" | "Meeting" | "Government" | "Volunteer" | "Fundraiser" | "Film" | "Theater" | "Comedy" | "Literature" | "Exhibition" | "Workshop" | "Fitness" | "Market" | "Sports" | "Family" | "Social" | "Holiday" | "Religious" | "ChildFriendly" | "Other"
+    pub event_types: Option<Vec<String>>,
     pub url: Option<String>,
     /// Confidence level of the extraction (0.0 to 1.0)
     pub confidence: f64,
@@ -120,6 +120,7 @@ async fn parse_image_with_now(
                         - The description field should be the description of the event.
                         - The confidence should be a number between 0.0 and 1.0 indicating how confident you are in the extraction.
                         - Focus on extracting event-related information like the name, date, time, location, url, and description.
+                        - Try to always extract at least one event type in event_types.
                         - Today's date is {now_str}.
                         - The start_date and end_date must be formatted as ISO 8601 strings without timezone offset (e.g., "YYYY-MM-DDTHH:MM:SS").
                         - All events are in the Somerville/Cambridge/Boston area (America/New_York timezone).
@@ -267,10 +268,18 @@ fn parse_and_validate_response(content: &str) -> Result<Vec<Event>> {
             original_location: extracted_event.location,
             google_place_id: None,
             location_name: None,
-            event_type: extracted_event.event_type.map(EventType::from),
+            event_types: extracted_event
+                .event_types
+                .unwrap_or_default()
+                .into_iter()
+                .map(EventType::from)
+                .collect(),
             url: extracted_event.url,
             confidence: extracted_event.confidence,
             id: None,
+            age_restrictions: None, // Logic for extraction could be added here if schema supported it
+            price: None,            // Logic for extraction could be added here if schema supported it
+            source_name: None,
         });
     }
 

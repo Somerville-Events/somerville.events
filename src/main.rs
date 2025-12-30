@@ -155,10 +155,9 @@ mod tests {
                 .into_iter()
                 .filter(|e| {
                     let cat_match = if let Some(cat) = &category {
-                        e.event_type
-                            .as_ref()
-                            .map(|c| c.to_string().eq_ignore_ascii_case(cat))
-                            .unwrap_or(false)
+                        e.event_types
+                            .iter()
+                            .any(|c| c.to_string().eq_ignore_ascii_case(cat))
                     } else {
                         true
                     };
@@ -232,9 +231,12 @@ mod tests {
             original_location: Some("Gallery".to_string()),
             google_place_id: None,
             location_name: None,
-            event_type: Some(EventType::Art),
+            event_types: vec![EventType::Art],
             url: None,
             confidence: 1.0,
+            age_restrictions: None,
+            price: None,
+            source_name: None,
         };
 
         let music_event = Event {
@@ -248,9 +250,12 @@ mod tests {
             original_location: Some("Club".to_string()),
             google_place_id: None,
             location_name: None,
-            event_type: Some(EventType::Music),
+            event_types: vec![EventType::Music],
             url: None,
             confidence: 1.0,
+            age_restrictions: None,
+            price: None,
+            source_name: None,
         };
 
         let state = AppState {
@@ -317,9 +322,12 @@ mod tests {
             original_location: Some("Somewhere".to_string()),
             google_place_id: None,
             location_name: None,
-            event_type: None,
+            event_types: vec![],
             url: None,
             confidence: 1.0,
+            age_restrictions: None,
+            price: None,
+            source_name: None,
         };
 
         // No end_date: should render only on its start day.
@@ -334,9 +342,12 @@ mod tests {
             original_location: Some("Somerville".to_string()),
             google_place_id: None,
             location_name: None,
-            event_type: None,
+            event_types: vec![],
             url: None,
             confidence: 1.0,
+            age_restrictions: None,
+            price: None,
+            source_name: None,
         };
 
         // No end_date from yesterday (within the last 24h) should still render, and should
@@ -352,9 +363,12 @@ mod tests {
             original_location: Some("Somerville".to_string()),
             google_place_id: None,
             location_name: None,
-            event_type: None,
+            event_types: vec![],
             url: None,
             confidence: 1.0,
+            age_restrictions: None,
+            price: None,
+            source_name: None,
         };
 
         // Two distinct events on the same local day should both render under the same day section.
@@ -370,9 +384,12 @@ mod tests {
             original_location: Some("Union".to_string()),
             google_place_id: None,
             location_name: None,
-            event_type: None,
+            event_types: vec![],
             url: None,
             confidence: 1.0,
+            age_restrictions: None,
+            price: None,
+            source_name: None,
         };
 
         let same_day_2 = Event {
@@ -387,9 +404,12 @@ mod tests {
             original_location: Some("Magoun".to_string()),
             google_place_id: None,
             location_name: None,
-            event_type: None,
+            event_types: vec![],
             url: None,
             confidence: 1.0,
+            age_restrictions: None,
+            price: None,
+            source_name: None,
         };
 
         // Explicit multi-day: should appear under each day.
@@ -404,9 +424,12 @@ mod tests {
             original_location: Some("Davis".to_string()),
             google_place_id: None,
             location_name: None,
-            event_type: None,
+            event_types: vec![],
             url: None,
             confidence: 1.0,
+            age_restrictions: None,
+            price: None,
+            source_name: None,
         };
 
         // Intentionally shuffled to ensure server-side sorting/grouping is doing the work.
@@ -551,9 +574,12 @@ mod tests {
             original_location: Some("Virtual".to_string()),
             google_place_id: None,
             location_name: None,
-            event_type: None,
+            event_types: vec![],
             url: Some("http://example.com/event".to_string()),
             confidence: 1.0,
+            age_restrictions: None,
+            price: None,
+            source_name: None,
         };
 
         let state = AppState {
@@ -637,9 +663,12 @@ mod tests {
             original_location: Some("Somerville".to_string()),
             google_place_id: None,
             location_name: None,
-            event_type: None,
+            event_types: vec![],
             url: None,
             confidence: 1.0,
+            age_restrictions: None,
+            price: None,
+            source_name: None,
         };
 
         let state = AppState {

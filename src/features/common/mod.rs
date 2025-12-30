@@ -23,9 +23,12 @@ pub struct EventViewModel {
     pub location: EventLocation,
     pub description: String,
     pub full_text_paragraphs: Vec<String>,
-    pub category_link: Option<(String, String)>,
+    pub category_links: Vec<(String, String)>,
     pub website_link: Option<String>,
     pub google_calendar_url: String,
+    pub age_restrictions: Option<String>,
+    pub price: Option<f64>,
+    pub source_name: Option<String>,
 }
 
 pub enum DateFormat {
@@ -54,10 +57,11 @@ impl EventViewModel {
             (String::new(), None)
         };
 
-        let category_link = event
-            .event_type
-            .as_ref()
-            .map(|c| (c.get_url_with_past(is_past_view), c.to_string()));
+        let category_links = event
+            .event_types
+            .iter()
+            .map(|c| (c.get_url_with_past(is_past_view), c.to_string()))
+            .collect();
 
         let location = if let (Some(name), Some(addr), Some(google_place_id)) =
             (&event.location_name, &event.address, &event.google_place_id)
@@ -124,9 +128,12 @@ impl EventViewModel {
                 .map(|s| s.trim().to_string())
                 .filter(|s| !s.is_empty())
                 .collect(),
-            category_link,
+            category_links,
             website_link: event.url.clone(),
             google_calendar_url,
+            age_restrictions: event.age_restrictions.clone(),
+            price: event.price,
+            source_name: event.source_name.clone(),
         }
     }
 }
