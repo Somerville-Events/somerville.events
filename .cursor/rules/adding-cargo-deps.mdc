@@ -1,5 +1,0 @@
----
-alwaysApply: true
----
-
-Always add rust dependencies using `cargo add` to be sure to get the latest version and be sure to visit their docs if you are uncertain how to use the latest version.
