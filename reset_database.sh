@@ -65,9 +65,32 @@ echo "Using psql binary: $PSQL_BIN"
 echo "Connecting as superuser: $DB_SUPERUSER to database: $DB_SUPERDB"
 echo "Running reset_database.sql..."
 
-"$PSQL_BIN" \
-  -U "$DB_SUPERUSER" \
-  -d "$DB_SUPERDB" \
-  -f reset_database.sql
+# Helper logic: On Linux, if DB_SUPERUSER is 'postgres' but we are not running as 'postgres',
+# and we have passwordless sudo access, try running via sudo -u postgres.
+USE_SUDO="false"
+if [[ "$(uname)" == "Linux" && "$DB_SUPERUSER" == "postgres" && "$(whoami)" != "postgres" ]]; then
+  if command -v sudo >/dev/null && sudo -n true 2>/dev/null; then
+    USE_SUDO="true"
+  fi
+fi
+
+if [[ "$USE_SUDO" == "true" ]]; then
+  echo "Detected Linux environment with DB_SUPERUSER=postgres."
+  echo "Attempting to run psql as 'postgres' user via sudo..."
+
+  sudo -u postgres \
+    DB_NAME="$DB_NAME" \
+    DB_APP_USER="$DB_APP_USER" \
+    DB_APP_USER_PASS="$DB_APP_USER_PASS" \
+    DB_MIGRATOR="$DB_MIGRATOR" \
+    DB_MIGRATOR_PASS="$DB_MIGRATOR_PASS" \
+    "$PSQL_BIN" -U "$DB_SUPERUSER" -d "$DB_SUPERDB" -f reset_database.sql
+
+else
+  "$PSQL_BIN" \
+    -U "$DB_SUPERUSER" \
+    -d "$DB_SUPERDB" \
+    -f reset_database.sql
+fi
 
 echo "Done. Database '$DB_NAME' should be initialized."
