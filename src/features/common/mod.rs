@@ -25,6 +25,7 @@ pub struct EventViewModel {
     pub full_text_paragraphs: Vec<String>,
     pub category_link: Option<(String, String)>,
     pub website_link: Option<String>,
+    pub google_calendar_url: String,
 }
 
 pub enum DateFormat {
@@ -74,6 +75,40 @@ impl EventViewModel {
             EventLocation::Unknown
         };
 
+        let start_utc = event.start_date.format("%Y%m%dT%H%M%SZ").to_string();
+        let end_utc = if let Some(end) = event.end_date {
+            end.format("%Y%m%dT%H%M%SZ").to_string()
+        } else {
+            (event.start_date + chrono::Duration::hours(1))
+                .format("%Y%m%dT%H%M%SZ")
+                .to_string()
+        };
+        let dates = format!("{}/{}", start_utc, end_utc);
+
+        let location_str = if let (Some(name), Some(addr)) = (&event.location_name, &event.address)
+        {
+            format!("{}, {}", name, addr)
+        } else {
+            event
+                .address
+                .clone()
+                .or(event.original_location.clone())
+                .unwrap_or_default()
+        };
+
+        let mut google_cal_params = url::form_urlencoded::Serializer::new(String::new());
+        google_cal_params.append_pair("action", "TEMPLATE");
+        google_cal_params.append_pair("text", &event.name);
+        google_cal_params.append_pair("dates", &dates);
+        google_cal_params.append_pair("details", &event.full_text);
+        if !location_str.is_empty() {
+            google_cal_params.append_pair("location", &location_str);
+        }
+        let google_calendar_url = format!(
+            "https://calendar.google.com/calendar/render?{}",
+            google_cal_params.finish()
+        );
+
         Self {
             id: event.id.unwrap_or_default(),
             name: event.name.clone(),
@@ -91,6 +126,7 @@ impl EventViewModel {
                 .collect(),
             category_link,
             website_link: event.url.clone(),
+            google_calendar_url,
         }
     }
 }

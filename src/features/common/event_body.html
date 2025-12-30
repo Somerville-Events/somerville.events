@@ -36,4 +36,7 @@
     <p>{{ paragraph }}</p>
     {% endfor %}
 </details>
-<p><a href="/event/{{ event.id }}.ical" class="button">Add to calendar</a></p>
+<p>
+    <a href="{{ event.google_calendar_url }}" class="button" target="_blank" rel="noopener noreferrer">Google Calendar</a>
+    <a href="/event/{{ event.id }}.ical" class="button">Other Calendar</a>
+</p>
