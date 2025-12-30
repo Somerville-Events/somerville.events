@@ -50,8 +50,13 @@ pub struct ImageEventExtraction {
     pub events: Vec<SingleEventExtraction>,
 }
 
-pub async fn parse_image(image_path: &Path, client: &Client, api_key: &str) -> Result<Vec<Event>> {
-    parse_image_with_now(image_path, Utc::now(), client, api_key).await
+pub async fn parse_image(
+    image_path: &Path,
+    client: &Client,
+    api_key: &str,
+    openai_base_url: &str,
+) -> Result<Vec<Event>> {
+    parse_image_with_now(image_path, Utc::now(), client, api_key, openai_base_url).await
 }
 
 async fn parse_image_with_now(
@@ -59,6 +64,7 @@ async fn parse_image_with_now(
     now: DateTime<Utc>,
     client: &Client,
     api_key: &str,
+    openai_base_url: &str,
 ) -> Result<Vec<Event>> {
     let path = image_path.to_path_buf();
 
@@ -143,7 +149,7 @@ async fn parse_image_with_now(
         ]
     });
     let llm_future = client
-        .post("https://api.openai.com/v1/chat/completions")
+        .post(&format!("{}/chat/completions", openai_base_url))
         .insert_header(("Authorization", format!("Bearer {api_key}")))
         .insert_header(("Content-Type", "application/json"))
         .send_json(&payload);
@@ -313,6 +319,7 @@ mod tests {
             fixed_now_utc,
             &client,
             &config.openai_api_key,
+            &config.openai_base_url,
         )
         .await?;
 
@@ -348,6 +355,7 @@ mod tests {
             fixed_now_utc,
             &client,
             &config.openai_api_key,
+            &config.openai_base_url,
         )
         .await?;
 
@@ -373,6 +381,7 @@ mod tests {
             fixed_now_utc,
             &client,
             &config.openai_api_key,
+            &config.openai_base_url,
         )
         .await?;
 
@@ -397,6 +406,7 @@ mod tests {
             fixed_now_utc,
             &client,
             &config.openai_api_key,
+            &config.openai_base_url,
         )
         .await?;
 
@@ -450,6 +460,7 @@ mod tests {
             fixed_now_utc,
             &client,
             &config.openai_api_key,
+            &config.openai_base_url,
         )
         .await?;
 

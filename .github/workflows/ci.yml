@@ -2,6 +2,9 @@ name: CI
 
 on:
   pull_request:
+  push:
+    branches:
+      - main
 
 env:
   SQLX_OFFLINE: true
@@ -27,6 +30,20 @@ jobs:
         run: cargo clippy --all-targets -- -D warnings
 
       - name: Run tests
+        services:
+          postgres:
+            image: postgres:15
+            env:
+              POSTGRES_USER: test
+              POSTGRES_PASSWORD: test
+              POSTGRES_DB: test
+            ports:
+              - 5432:5432
+            options: >-
+              --health-cmd pg_isready
+              --health-interval 10s
+              --health-timeout 5s
+              --health-retries 5
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY }}
@@ -36,5 +53,83 @@ jobs:
           DB_APP_USER: test
           DB_APP_USER_PASS: test
           DB_NAME: test
+          DATABASE_URL: postgres://test:test@localhost:5432/test
+          SQLX_OFFLINE: false
         run: cargo test
 
+  benchmark:
+    name: Benchmark & Metrics
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: test
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+      
+      - uses: dtolnay/rust-toolchain@stable
+      
+      - name: Rust Cache
+        uses: Swatinem/rust-cache@v2
+        
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client
+          
+      - name: Run E2E Benchmarks
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY }}
+          HOST: 127.0.0.1
+          BASIC_AUTH_USER: test
+          BASIC_AUTH_PASS: test
+          DB_APP_USER: test
+          DB_APP_USER_PASS: test
+          DB_NAME: test
+          DATABASE_URL: postgres://test:test@localhost:5432/test
+          SQLX_OFFLINE: false
+        run: cargo bench --bench e2e -- --output-format bencher | tee output.txt
+
+      - name: Track Metrics (Binary Size & Deps)
+        run: ./scripts/track_metrics.sh
+        
+      - name: Store Benchmark Results
+        uses: benchmark-action/github-action-benchmark@v1
+        with:
+          tool: 'cargo'
+          output-file-path: output.txt
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          auto-push: true
+          comment-on-alert: true
+          fail-on-alert: true
+          alert-threshold: '150%'
+          summary-always: true
+          save-data-file: true
+          
+      - name: Store Custom Metrics
+        uses: benchmark-action/github-action-benchmark@v1
+        with:
+          tool: 'customSmallerIsBetter'
+          output-file-path: metrics.json
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          auto-push: true
+          comment-on-alert: true
+          fail-on-alert: true
+          alert-threshold: '110%'
+          summary-always: true
+          benchmark-data-dir-path: "benchmarks"
+          save-data-file: true

@@ -94,12 +94,25 @@ pub async fn save(
     let client = client.into_inner();
 
     actix_web::rt::spawn(async move {
-        match parse_image(&dest_path, &client, &state.openai_api_key).await {
+        match parse_image(
+            &dest_path,
+            &client,
+            &state.openai_api_key,
+            &state.openai_base_url,
+        )
+        .await
+        {
             Ok(mut events) => {
                 if events.is_empty() {
                     log::info!("Image processed but no events found");
                 } else {
-                    hydrate_event_locations(&mut events, &client, &state.google_maps_api_key).await;
+                    hydrate_event_locations(
+                        &mut events,
+                        &client,
+                        &state.google_maps_api_key,
+                        &state.google_maps_base_url,
+                    )
+                    .await;
 
                     for event in &mut events {
                         match state.events_repo.insert(event).await {
@@ -145,6 +158,7 @@ pub async fn hydrate_event_locations(
     events: &mut [crate::models::Event],
     client: &awc::Client,
     api_key: &str,
+    google_maps_base_url: &str,
 ) {
     let unique_locations: HashSet<String> = events
         .iter()
@@ -152,7 +166,9 @@ pub async fn hydrate_event_locations(
         .collect();
 
     let geocoding_futures = unique_locations.iter().map(|loc| async move {
-        match crate::geocoding::canonicalize_address(client, loc, api_key).await {
+        match crate::geocoding::canonicalize_address(client, loc, api_key, google_maps_base_url)
+            .await
+        {
             Ok(Some(canon)) => Some((loc.clone(), canon)),
             Ok(None) => None,
             Err(e) => {
@@ -186,9 +202,9 @@ mod tests {
     async fn test_hydrate_event_locations() {
         let _ = env_logger::builder().is_test(true).try_init();
 
-        let api_key = crate::config::Config::from_env()
-            .google_maps_api_key
-            .clone();
+        let config = crate::config::Config::from_env();
+        let api_key = config.google_maps_api_key.clone();
+        let base_url = config.google_maps_base_url.clone();
         let client: awc::Client = awc::Client::default();
 
         let mut events = vec![
@@ -254,7 +270,7 @@ mod tests {
             },
         ];
 
-        hydrate_event_locations(&mut events, &client, &api_key).await;
+        hydrate_event_locations(&mut events, &client, &api_key, &base_url).await;
 
         // Verify results
         assert_eq!(events[0].location_name.as_deref(), Some("Davis Square"));

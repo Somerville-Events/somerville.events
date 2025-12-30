@@ -68,6 +68,7 @@ pub async fn canonicalize_address(
     client: &awc::Client,
     location: &str,
     api_key: &str,
+    google_maps_base_url: &str,
 ) -> Result<Option<GeocodedLocation>> {
     let request_body = GooglePlacesSearchRequest {
         text_query: location,
@@ -83,7 +84,7 @@ pub async fn canonicalize_address(
     };
 
     let mut response = client
-        .post("https://places.googleapis.com/v1/places:searchText")
+        .post(&format!("{}/places:searchText", google_maps_base_url))
         .insert_header(("X-Goog-Api-Key", api_key))
         .insert_header((
             "X-Goog-FieldMask",
@@ -134,13 +135,20 @@ mod tests {
             .clone()
     }
 
+    fn get_base_url() -> String {
+        crate::config::Config::from_env()
+            .google_maps_base_url
+            .clone()
+    }
+
     #[actix_rt::test]
     async fn test_canonicalize_davis_square() {
         let key = get_api_key();
+        let base_url = get_base_url();
 
         let client = get_client();
         // "Davis Square" is ambiguous globally, but with our heuristic it should find the one in Somerville, MA.
-        let result = canonicalize_address(&client, "Davis Square", &key)
+        let result = canonicalize_address(&client, "Davis Square", &key, &base_url)
             .await
             .unwrap();
 
@@ -157,9 +165,10 @@ mod tests {
     #[actix_rt::test]
     async fn test_canonicalize_somerville_theatre() {
         let key = get_api_key();
+        let base_url = get_base_url();
 
         let client = get_client();
-        let result = canonicalize_address(&client, "Somerville Theater", &key)
+        let result = canonicalize_address(&client, "Somerville Theater", &key, &base_url)
             .await
             .unwrap();
 
@@ -176,10 +185,11 @@ mod tests {
     #[actix_rt::test]
     async fn test_canonicalize_partial_address() {
         let key = get_api_key();
+        let base_url = get_base_url();
 
         let client = get_client();
         // "123 Highland Ave" is common. With "Somerville, MA" appended, it should find the one in Somerville.
-        let result = canonicalize_address(&client, "123 Highland Ave, Somerville", &key)
+        let result = canonicalize_address(&client, "123 Highland Ave, Somerville", &key, &base_url)
             .await
             .unwrap();
 
@@ -196,11 +206,14 @@ mod tests {
     #[actix_rt::test]
     async fn test_canonicalize_explicit_address() {
         let key = get_api_key();
+        let base_url = get_base_url();
 
         let client = get_client();
         // If we give it a full address, it should respect it and maybe just format it nicer.
         let input = "93 Highland Ave, Somerville, MA 02143";
-        let result = canonicalize_address(&client, input, &key).await.unwrap();
+        let result = canonicalize_address(&client, input, &key, &base_url)
+            .await
+            .unwrap();
 
         assert_eq!(
             result,
@@ -215,23 +228,31 @@ mod tests {
     #[actix_rt::test]
     async fn test_canonicalize_unknown_place() {
         let key = get_api_key();
+        let base_url = get_base_url();
 
         let client = get_client();
-        let result = canonicalize_address(&client, "ThisPlaceDefinitelyDoesNotExist12345", &key)
-            .await
-            .unwrap();
+        let result = canonicalize_address(
+            &client,
+            "ThisPlaceDefinitelyDoesNotExist12345",
+            &key,
+            &base_url,
+        )
+        .await
+        .unwrap();
         assert!(result.is_none());
     }
 
     #[actix_rt::test]
     async fn test_canonicalize_pumpkin_smash() {
         let key = get_api_key();
+        let base_url = get_base_url();
 
         let client = get_client();
         let result = canonicalize_address(
             &client,
             "Somerville Community Growing Center, 22 Vinal Ave",
             &key,
+            &base_url,
         )
         .await
         .unwrap();
