@@ -1,0 +1,112 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT\n                e.id,\n                e.name,\n                e.description,\n                e.full_text,\n                e.start_date,\n                e.end_date,\n                e.address,\n                e.original_location,\n                e.google_place_id,\n                e.location_name,\n                e.url,\n                e.confidence,\n                e.age_restrictions,\n                e.price,\n                e.source_name,\n                COALESCE(array_agg(et.event_type_name) FILTER (WHERE et.event_type_name IS NOT NULL), '{}') as \"event_types!\"\n            FROM app.events e\n            LEFT JOIN app.event_event_types et ON e.id = et.event_id\n            WHERE e.id = $1\n            GROUP BY e.id\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 1,
+        "name": "name",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 2,
+        "name": "description",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 3,
+        "name": "full_text",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 4,
+        "name": "start_date",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 5,
+        "name": "end_date",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 6,
+        "name": "address",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 7,
+        "name": "original_location",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 8,
+        "name": "google_place_id",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 9,
+        "name": "location_name",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 10,
+        "name": "url",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 11,
+        "name": "confidence",
+        "type_info": "Float8"
+      },
+      {
+        "ordinal": 12,
+        "name": "age_restrictions",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 13,
+        "name": "price",
+        "type_info": "Float8"
+      },
+      {
+        "ordinal": 14,
+        "name": "source_name",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 15,
+        "name": "event_types!",
+        "type_info": "TextArray"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Int8"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      false,
+      true,
+      true,
+      true,
+      null
+    ]
+  },
+  "hash": "5e8231fb52057cdda1895165b1200afcc75ffd16824559dcca9a7effcafdb6af"
+}

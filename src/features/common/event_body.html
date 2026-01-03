@@ -19,9 +19,28 @@
         {% endmatch %}
     </dd>
 
-    {% if let Some((url, label)) = event.category_link %}
-    <dt>Category</dt>
-    <dd><a href="{{ url }}">{{ label }}</a></dd>
+    {% if !event.category_links.is_empty() %}
+    <dt>Categories</dt>
+    <dd>
+        {% for (url, label) in event.category_links %}
+        <a href="{{ url }}">{{ label }}</a>{% if !loop.last %}, {% endif %}
+        {% endfor %}
+    </dd>
+    {% endif %}
+
+    {% if let Some(restrictions) = event.age_restrictions %}
+    <dt>Ages</dt>
+    <dd>{{ restrictions }}</dd>
+    {% endif %}
+
+    {% if let Some(price) = event.price %}
+    <dt>Price</dt>
+    <dd>${{ price }}</dd>
+    {% endif %}
+
+    {% if let Some(source) = event.source_name %}
+    <dt>Source</dt>
+    <dd>{{ source }}</dd>
     {% endif %}
 
     {% if let Some(url) = event.website_link %}
