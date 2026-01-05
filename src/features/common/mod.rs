@@ -28,7 +28,7 @@ pub struct EventViewModel {
     pub google_calendar_url: String,
     pub age_restrictions: Option<String>,
     pub price: Option<f64>,
-    pub source_name: Option<String>,
+    pub source: String,
 }
 
 pub enum DateFormat {
@@ -133,7 +133,7 @@ impl EventViewModel {
             google_calendar_url,
             age_restrictions: event.age_restrictions.clone(),
             price: event.price,
-            source_name: event.source_name.as_ref().map(|s| s.to_string()),
+            source: event.source.to_string(),
         }
     }
 }

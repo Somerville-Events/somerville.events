@@ -38,10 +38,8 @@
     <dd>${{ price }}</dd>
     {% endif %}
 
-    {% if let Some(source) = event.source_name %}
     <dt>Source</dt>
-    <dd>{{ source }}</dd>
-    {% endif %}
+    <dd>{{ event.source }}</dd>
 
     {% if let Some(url) = event.website_link %}
     <dt>Website</dt>

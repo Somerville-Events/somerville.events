@@ -1,5 +1,5 @@
 use crate::features::view::IndexQuery;
-use crate::models::{Event, EventType, SourceName};
+use crate::models::{Event, EventType, EventSource};
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
@@ -30,9 +30,9 @@ impl EventsRepo for sqlx::Pool<sqlx::Postgres> {
         let categories: Vec<String> = query
             .category
             .iter()
-            .map(|c| c.db_id().to_string())
+            .map(|c| c.as_ref().to_string())
             .collect();
-        let source: Option<String> = query.source.map(|s| s.to_string());
+        let source: Option<String> = query.source.map(|s| s.as_ref().to_string());
 
         let rows = sqlx::query!(
             r#"
@@ -41,7 +41,7 @@ impl EventsRepo for sqlx::Pool<sqlx::Postgres> {
                 FROM app.events e
                 LEFT JOIN app.event_event_types et ON e.id = et.event_id
                 WHERE (cardinality($1::text[]) = 0 OR et.event_type_name = ANY($1::text[]))
-                AND ($2::text IS NULL OR e.source_name = $2::text)
+                AND ($2::text IS NULL OR e.source = $2::text)
                 AND ($3::timestamptz IS NULL OR e.start_date >= $3)
                 AND ($4::timestamptz IS NULL OR e.start_date <= $4)
             )
@@ -60,7 +60,7 @@ impl EventsRepo for sqlx::Pool<sqlx::Postgres> {
                 e.confidence,
                 e.age_restrictions,
                 e.price,
-                e.source_name,
+                e.source,
                 COALESCE(array_agg(et.event_type_name) FILTER (WHERE et.event_type_name IS NOT NULL), '{}') as "event_types!"
             FROM app.events e
             JOIN filtered_events fe ON e.id = fe.id
@@ -94,7 +94,7 @@ impl EventsRepo for sqlx::Pool<sqlx::Postgres> {
                 confidence: r.confidence,
                 age_restrictions: r.age_restrictions,
                 price: r.price,
-                source_name: r.source_name.map(SourceName::from),
+                source: EventSource::from(r.source),
             })
             .collect();
 
@@ -119,7 +119,7 @@ impl EventsRepo for sqlx::Pool<sqlx::Postgres> {
                 e.confidence,
                 e.age_restrictions,
                 e.price,
-                e.source_name,
+                e.source,
                 COALESCE(array_agg(et.event_type_name) FILTER (WHERE et.event_type_name IS NOT NULL), '{}') as "event_types!"
             FROM app.events e
             LEFT JOIN app.event_event_types et ON e.id = et.event_id
@@ -147,7 +147,7 @@ impl EventsRepo for sqlx::Pool<sqlx::Postgres> {
             confidence: r.confidence,
             age_restrictions: r.age_restrictions,
             price: r.price,
-            source_name: r.source_name.map(SourceName::from),
+            source: EventSource::from(r.source),
         }))
     }
 
@@ -190,146 +190,146 @@ impl EventsRepo for sqlx::Pool<sqlx::Postgres> {
     }
 }
 
-pub async fn save_event_to_db(executor: &sqlx::Pool<sqlx::Postgres>, event: &Event) -> Result<i64> {
-    // If the event already exists, instead of saving a new one just
-    // return the ID for the existing one.
-    if let Some(duplicate_id) = find_duplicate(executor, event)
-        .await
-        .map_err(|e| anyhow!("Database lookup failed: {e}"))?
-    {
-        return Ok(duplicate_id);
-    }
-
-    let mut tx = executor.begin().await?;
-
-    let id = sqlx::query_scalar!(
-        r#"
-        INSERT INTO app.events (
-            name,
-            description,
-            full_text,
-            start_date,
-            end_date,
-            address,
-            original_location,
-            google_place_id,
-            location_name,
-            url,
-            confidence,
-            age_restrictions,
-            price,
-            source_name
-        )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
-        RETURNING id
-        "#,
-        event.name,
-        event.description,
-        event.full_text,
-        event.start_date,
-        event.end_date,
-        event.address,
-        event.original_location,
-        event.google_place_id,
-        event.location_name,
-        event.url,
-        event.confidence,
-        event.age_restrictions,
-        event.price,
-        event.source_name.as_ref().map(|s| s.to_string())
-    )
-    .fetch_one(&mut *tx)
-    .await
-    .map_err(|e| anyhow!("Database insert failed: {e}"))?;
-
-    for et in &event.event_types {
-        let et_str = et.db_id();
-        sqlx::query!(
-            r#"
-            INSERT INTO app.event_event_types (event_id, event_type_name)
-            VALUES ($1, $2)
-            ON CONFLICT DO NOTHING
-            "#,
-            id,
-            et_str
-        )
-        .execute(&mut *tx)
-        .await?;
-    }
-
-    tx.commit().await?;
-
-    Ok(id)
-}
-
-async fn find_duplicate(
-    executor: &sqlx::Pool<sqlx::Postgres>,
-    event: &Event,
-) -> Result<Option<i64>> {
-    let rows = sqlx::query!(
-        r#"
-        SELECT 
-            e.id,
-            e.name,
-            e.description,
-            e.full_text,
-            e.start_date,
-            e.end_date,
-            e.address,
-            e.original_location,
-            e.google_place_id,
-            e.location_name,
-            e.url,
-            e.confidence,
-            e.age_restrictions,
-            e.price,
-            e.source_name,
-            COALESCE(array_agg(et.event_type_name) FILTER (WHERE et.event_type_name IS NOT NULL), '{}') as "event_types!"
-        FROM app.events e
-        LEFT JOIN app.event_event_types et ON e.id = et.event_id
-        WHERE e.start_date = $1
-          AND e.end_date IS NOT DISTINCT FROM $2
-          AND e.address IS NOT DISTINCT FROM $3
-        GROUP BY e.id
-        "#,
-        event.start_date,
-        event.end_date,
-        event.address
-    )
-    .fetch_all(executor)
-    .await?;
-
-    let potential_duplicates: Vec<Event> = rows
-        .into_iter()
-        .map(|r| Event {
-            id: Some(r.id),
-            name: r.name,
-            description: r.description,
-            full_text: r.full_text,
-            start_date: r.start_date,
-            end_date: r.end_date,
-            address: r.address,
-            original_location: r.original_location,
-            google_place_id: r.google_place_id,
-            location_name: r.location_name,
-            event_types: r.event_types.into_iter().map(EventType::from).collect(),
-            url: r.url,
-            confidence: r.confidence,
-            age_restrictions: r.age_restrictions,
-            price: r.price,
-            source_name: r.source_name.map(SourceName::from),
-        })
-        .collect();
-
-    for row in potential_duplicates {
-        if is_duplicate(&row, event) {
-            log::info!("Found duplicate {row:?}. Using it instead of {event:?}");
-            return Ok(row.id);
+    pub async fn save_event_to_db(executor: &sqlx::Pool<sqlx::Postgres>, event: &Event) -> Result<i64> {
+        // If the event already exists, instead of saving a new one just
+        // return the ID for the existing one.
+        if let Some(duplicate_id) = find_duplicate(executor, event)
+            .await
+            .map_err(|e| anyhow!("Database lookup failed: {e}"))?
+        {
+            return Ok(duplicate_id);
         }
+    
+        let mut tx = executor.begin().await?;
+    
+        let id = sqlx::query_scalar!(
+            r#"
+            INSERT INTO app.events (
+                name,
+                description,
+                full_text,
+                start_date,
+                end_date,
+                address,
+                original_location,
+                google_place_id,
+                location_name,
+                url,
+                confidence,
+                age_restrictions,
+                price,
+                source
+            )
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+            RETURNING id
+            "#,
+            event.name,
+            event.description,
+            event.full_text,
+            event.start_date,
+            event.end_date,
+            event.address,
+            event.original_location,
+            event.google_place_id,
+            event.location_name,
+            event.url,
+            event.confidence,
+            event.age_restrictions,
+            event.price,
+            event.source.as_ref()
+        )
+        .fetch_one(&mut *tx)
+        .await
+        .map_err(|e| anyhow!("Database insert failed: {e}"))?;
+    
+        for et in &event.event_types {
+            let et_str = et.as_ref();
+            sqlx::query!(
+                r#"
+                INSERT INTO app.event_event_types (event_id, event_type_name)
+                VALUES ($1, $2)
+                ON CONFLICT DO NOTHING
+                "#,
+                id,
+                et_str
+            )
+            .execute(&mut *tx)
+            .await?;
+        }
+    
+        tx.commit().await?;
+    
+        Ok(id)
     }
-
-    Ok(None)
-}
+    
+    async fn find_duplicate(
+        executor: &sqlx::Pool<sqlx::Postgres>,
+        event: &Event,
+    ) -> Result<Option<i64>> {
+        let rows = sqlx::query!(
+            r#"
+            SELECT 
+                e.id,
+                e.name,
+                e.description,
+                e.full_text,
+                e.start_date,
+                e.end_date,
+                e.address,
+                e.original_location,
+                e.google_place_id,
+                e.location_name,
+                e.url,
+                e.confidence,
+                e.age_restrictions,
+                e.price,
+                e.source,
+                COALESCE(array_agg(et.event_type_name) FILTER (WHERE et.event_type_name IS NOT NULL), '{}') as "event_types!"
+            FROM app.events e
+            LEFT JOIN app.event_event_types et ON e.id = et.event_id
+            WHERE e.start_date = $1
+              AND e.end_date IS NOT DISTINCT FROM $2
+              AND e.address IS NOT DISTINCT FROM $3
+            GROUP BY e.id
+            "#,
+            event.start_date,
+            event.end_date,
+            event.address
+        )
+        .fetch_all(executor)
+        .await?;
+    
+        let potential_duplicates: Vec<Event> = rows
+            .into_iter()
+            .map(|r| Event {
+                id: Some(r.id),
+                name: r.name,
+                description: r.description,
+                full_text: r.full_text,
+                start_date: r.start_date,
+                end_date: r.end_date,
+                address: r.address,
+                original_location: r.original_location,
+                google_place_id: r.google_place_id,
+                location_name: r.location_name,
+                event_types: r.event_types.into_iter().map(EventType::from).collect(),
+                url: r.url,
+                confidence: r.confidence,
+                age_restrictions: r.age_restrictions,
+                price: r.price,
+                source: EventSource::from(r.source),
+            })
+            .collect();
+    
+        for row in potential_duplicates {
+            if is_duplicate(&row, event) {
+                log::info!("Found duplicate {row:?}. Using it instead of {event:?}");
+                return Ok(row.id);
+            }
+        }
+    
+        Ok(None)
+    }
 
 fn is_duplicate(a: &Event, b: &Event) -> bool {
     // start_date, end_date, and description are equal because of a
@@ -364,7 +364,7 @@ mod tests {
             confidence: 1.0,
             age_restrictions: None,
             price: None,
-            source_name: None,
+            source: EventSource::ImageUpload,
         }
     }
 

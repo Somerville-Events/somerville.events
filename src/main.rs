@@ -115,7 +115,7 @@ async fn main() -> Result<()> {
 mod tests {
     use super::database::EventsRepo;
     use super::features::view::IndexQuery;
-    use super::models::{Event, EventType};
+    use super::models::{Event, EventSource, EventType};
     use super::AppState;
     use actix_web::web::Data;
     use actix_web::{test, web, App};
@@ -161,7 +161,7 @@ mod tests {
                         true
                     };
                     let source_match = if let Some(src) = &query.source {
-                        e.source_name.as_ref() == Some(src)
+                        &e.source == src
                     } else {
                         true
                     };
@@ -240,7 +240,7 @@ mod tests {
             confidence: 1.0,
             age_restrictions: None,
             price: None,
-            source_name: None,
+            source: EventSource::ImageUpload,
         };
 
         let music_event = Event {
@@ -259,7 +259,7 @@ mod tests {
             confidence: 1.0,
             age_restrictions: None,
             price: None,
-            source_name: None,
+            source: EventSource::ImageUpload,
         };
 
         let state = AppState {
@@ -331,7 +331,7 @@ mod tests {
             confidence: 1.0,
             age_restrictions: None,
             price: None,
-            source_name: None,
+            source: EventSource::ImageUpload,
         };
 
         // No end_date: should render only on its start day.
@@ -351,7 +351,7 @@ mod tests {
             confidence: 1.0,
             age_restrictions: None,
             price: None,
-            source_name: None,
+            source: EventSource::ImageUpload,
         };
 
         // No end_date from yesterday (within the last 24h) should still render, and should
@@ -372,7 +372,7 @@ mod tests {
             confidence: 1.0,
             age_restrictions: None,
             price: None,
-            source_name: None,
+            source: EventSource::ImageUpload,
         };
 
         // Two distinct events on the same local day should both render under the same day section.
@@ -393,7 +393,7 @@ mod tests {
             confidence: 1.0,
             age_restrictions: None,
             price: None,
-            source_name: None,
+            source: EventSource::ImageUpload,
         };
 
         let same_day_2 = Event {
@@ -413,7 +413,7 @@ mod tests {
             confidence: 1.0,
             age_restrictions: None,
             price: None,
-            source_name: None,
+            source: EventSource::ImageUpload,
         };
 
         // Explicit multi-day: should appear under each day.
@@ -433,7 +433,7 @@ mod tests {
             confidence: 1.0,
             age_restrictions: None,
             price: None,
-            source_name: None,
+            source: EventSource::ImageUpload,
         };
 
         // Intentionally shuffled to ensure server-side sorting/grouping is doing the work.
@@ -584,7 +584,7 @@ mod tests {
             confidence: 1.0,
             age_restrictions: None,
             price: None,
-            source_name: None,
+            source: EventSource::ImageUpload,
         };
 
         let state = AppState {
@@ -673,7 +673,7 @@ mod tests {
             confidence: 1.0,
             age_restrictions: None,
             price: None,
-            source_name: None,
+            source: EventSource::ImageUpload,
         };
 
         let state = AppState {
@@ -741,7 +741,7 @@ mod tests {
             confidence: 1.0,
             age_restrictions: None,
             price: None,
-            source_name: Some(super::models::SourceName::AeronautBrewing),
+            source: super::models::EventSource::AeronautBrewing,
         };
 
         let library_event = Event {
@@ -760,7 +760,7 @@ mod tests {
             confidence: 1.0,
             age_restrictions: None,
             price: None,
-            source_name: Some(super::models::SourceName::CityOfCambridge),
+            source: super::models::EventSource::CityOfCambridge,
         };
 
         let state = AppState {
@@ -775,7 +775,7 @@ mod tests {
         };
 
         let fixed_now_utc = now_utc;
-        let filter = Some(crate::models::SourceName::AeronautBrewing);
+        let filter = Some(crate::models::EventSource::AeronautBrewing);
         let app = test::init_service(App::new().app_data(Data::new(state)).route(
             "/",
             web::get().to(move |state: Data<AppState>| {
@@ -831,7 +831,7 @@ mod tests {
             confidence: 1.0,
             age_restrictions: None,
             price: None,
-            source_name: None,
+            source: EventSource::ImageUpload,
         };
 
         let music_event = Event {
@@ -850,7 +850,7 @@ mod tests {
             confidence: 1.0,
             age_restrictions: None,
             price: None,
-            source_name: None,
+            source: EventSource::ImageUpload,
         };
 
         let food_event = Event {
@@ -869,7 +869,7 @@ mod tests {
             confidence: 1.0,
             age_restrictions: None,
             price: None,
-            source_name: None,
+            source: EventSource::ImageUpload,
         };
 
         let state = AppState {

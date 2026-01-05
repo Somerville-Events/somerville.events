@@ -1,4 +1,4 @@
-use crate::models::{Event, EventType};
+use crate::models::{Event, EventType, EventSource};
 use actix_web::web;
 use anyhow::{anyhow, Result};
 use awc::Client;
@@ -279,7 +279,7 @@ fn parse_and_validate_response(content: &str) -> Result<Vec<Event>> {
             id: None,
             age_restrictions: None, // Logic for extraction could be added here if schema supported it
             price: None, // Logic for extraction could be added here if schema supported it
-            source_name: None,
+            source: EventSource::ImageUpload,
         });
     }
 

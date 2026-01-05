@@ -1,5 +1,5 @@
 use crate::features::common::{DateFormat, EventLocation, EventViewModel};
-use crate::models::{Event, EventType, SourceName};
+use crate::models::{Event, EventType, EventSource};
 use crate::AppState;
 use actix_web::http::header::ContentType;
 use actix_web::{web, HttpResponse, Responder};
@@ -38,7 +38,7 @@ pub struct IndexQuery {
     #[serde_as(as = "StringWithSeparator::<CommaSeparator, EventType>")]
     #[serde(default)]
     pub category: Vec<EventType>,
-    pub source: Option<SourceName>,
+    pub source: Option<EventSource>,
     pub past: Option<bool>,
 }
 
