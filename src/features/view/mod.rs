@@ -1,5 +1,5 @@
 use crate::features::common::{DateFormat, EventLocation, EventViewModel};
-use crate::models::{Event, EventType, EventSource};
+use crate::models::{Event, EventSource, EventType};
 use crate::AppState;
 use actix_web::http::header::ContentType;
 use actix_web::{web, HttpResponse, Responder};

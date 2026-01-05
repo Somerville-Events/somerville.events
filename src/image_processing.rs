@@ -1,4 +1,4 @@
-use crate::models::{Event, EventType, EventSource};
+use crate::models::{Event, EventSource, EventType};
 use actix_web::web;
 use anyhow::{anyhow, Result};
 use awc::Client;

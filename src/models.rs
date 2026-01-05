@@ -22,6 +22,9 @@ use strum::{AsRefStr, EnumString};
 /// If you add a new variant here, you MUST create a migration to insert the corresponding
 /// string value into the `app.event_types` table. Otherwise, inserting events with
 /// the new type will fail due to foreign key constraints.
+///
+/// ALSO IMPORTANT: This enum is coupled to the LLM prompt in `src/image_processing.rs`.
+/// If you modify this enum, please update the list of event types in the `SingleEventExtraction` struct documentation in that file.
 pub enum EventType {
     YardSale,
     Art,

@@ -1,5 +1,5 @@
 use crate::features::view::IndexQuery;
-use crate::models::{Event, EventType, EventSource};
+use crate::models::{Event, EventSource, EventType};
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
@@ -190,20 +190,20 @@ impl EventsRepo for sqlx::Pool<sqlx::Postgres> {
     }
 }
 
-    pub async fn save_event_to_db(executor: &sqlx::Pool<sqlx::Postgres>, event: &Event) -> Result<i64> {
-        // If the event already exists, instead of saving a new one just
-        // return the ID for the existing one.
-        if let Some(duplicate_id) = find_duplicate(executor, event)
-            .await
-            .map_err(|e| anyhow!("Database lookup failed: {e}"))?
-        {
-            return Ok(duplicate_id);
-        }
-    
-        let mut tx = executor.begin().await?;
-    
-        let id = sqlx::query_scalar!(
-            r#"
+pub async fn save_event_to_db(executor: &sqlx::Pool<sqlx::Postgres>, event: &Event) -> Result<i64> {
+    // If the event already exists, instead of saving a new one just
+    // return the ID for the existing one.
+    if let Some(duplicate_id) = find_duplicate(executor, event)
+        .await
+        .map_err(|e| anyhow!("Database lookup failed: {e}"))?
+    {
+        return Ok(duplicate_id);
+    }
+
+    let mut tx = executor.begin().await?;
+
+    let id = sqlx::query_scalar!(
+        r#"
             INSERT INTO app.events (
                 name,
                 description,
@@ -223,50 +223,50 @@ impl EventsRepo for sqlx::Pool<sqlx::Postgres> {
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
             RETURNING id
             "#,
-            event.name,
-            event.description,
-            event.full_text,
-            event.start_date,
-            event.end_date,
-            event.address,
-            event.original_location,
-            event.google_place_id,
-            event.location_name,
-            event.url,
-            event.confidence,
-            event.age_restrictions,
-            event.price,
-            event.source.as_ref()
-        )
-        .fetch_one(&mut *tx)
-        .await
-        .map_err(|e| anyhow!("Database insert failed: {e}"))?;
-    
-        for et in &event.event_types {
-            let et_str = et.as_ref();
-            sqlx::query!(
-                r#"
+        event.name,
+        event.description,
+        event.full_text,
+        event.start_date,
+        event.end_date,
+        event.address,
+        event.original_location,
+        event.google_place_id,
+        event.location_name,
+        event.url,
+        event.confidence,
+        event.age_restrictions,
+        event.price,
+        event.source.as_ref()
+    )
+    .fetch_one(&mut *tx)
+    .await
+    .map_err(|e| anyhow!("Database insert failed: {e}"))?;
+
+    for et in &event.event_types {
+        let et_str = et.as_ref();
+        sqlx::query!(
+            r#"
                 INSERT INTO app.event_event_types (event_id, event_type_name)
                 VALUES ($1, $2)
                 ON CONFLICT DO NOTHING
                 "#,
-                id,
-                et_str
-            )
-            .execute(&mut *tx)
-            .await?;
-        }
-    
-        tx.commit().await?;
-    
-        Ok(id)
+            id,
+            et_str
+        )
+        .execute(&mut *tx)
+        .await?;
     }
-    
-    async fn find_duplicate(
-        executor: &sqlx::Pool<sqlx::Postgres>,
-        event: &Event,
-    ) -> Result<Option<i64>> {
-        let rows = sqlx::query!(
+
+    tx.commit().await?;
+
+    Ok(id)
+}
+
+async fn find_duplicate(
+    executor: &sqlx::Pool<sqlx::Postgres>,
+    event: &Event,
+) -> Result<Option<i64>> {
+    let rows = sqlx::query!(
             r#"
             SELECT 
                 e.id,
@@ -298,38 +298,38 @@ impl EventsRepo for sqlx::Pool<sqlx::Postgres> {
         )
         .fetch_all(executor)
         .await?;
-    
-        let potential_duplicates: Vec<Event> = rows
-            .into_iter()
-            .map(|r| Event {
-                id: Some(r.id),
-                name: r.name,
-                description: r.description,
-                full_text: r.full_text,
-                start_date: r.start_date,
-                end_date: r.end_date,
-                address: r.address,
-                original_location: r.original_location,
-                google_place_id: r.google_place_id,
-                location_name: r.location_name,
-                event_types: r.event_types.into_iter().map(EventType::from).collect(),
-                url: r.url,
-                confidence: r.confidence,
-                age_restrictions: r.age_restrictions,
-                price: r.price,
-                source: EventSource::from(r.source),
-            })
-            .collect();
-    
-        for row in potential_duplicates {
-            if is_duplicate(&row, event) {
-                log::info!("Found duplicate {row:?}. Using it instead of {event:?}");
-                return Ok(row.id);
-            }
+
+    let potential_duplicates: Vec<Event> = rows
+        .into_iter()
+        .map(|r| Event {
+            id: Some(r.id),
+            name: r.name,
+            description: r.description,
+            full_text: r.full_text,
+            start_date: r.start_date,
+            end_date: r.end_date,
+            address: r.address,
+            original_location: r.original_location,
+            google_place_id: r.google_place_id,
+            location_name: r.location_name,
+            event_types: r.event_types.into_iter().map(EventType::from).collect(),
+            url: r.url,
+            confidence: r.confidence,
+            age_restrictions: r.age_restrictions,
+            price: r.price,
+            source: EventSource::from(r.source),
+        })
+        .collect();
+
+    for row in potential_duplicates {
+        if is_duplicate(&row, event) {
+            log::info!("Found duplicate {row:?}. Using it instead of {event:?}");
+            return Ok(row.id);
         }
-    
-        Ok(None)
     }
+
+    Ok(None)
+}
 
 fn is_duplicate(a: &Event, b: &Event) -> bool {
     // start_date, end_date, and description are equal because of a
