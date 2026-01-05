@@ -60,12 +60,6 @@ The server will start at `http://localhost:8080`.
 
 Push to `main`. GitHub Actions will build, test, and deploy to the VPS.
 
-This project uses `sqlx` offline mode for type checking queries without a live DB in CI. If you modify any SQL queries, update the cache:
-
-```bash
-cargo sqlx prepare
-```
-
 You must have the GitHub secrets set up properly.
 
 Go to your repository settings -> Secrets and variables -> Actions -> New repository secret. Add the following:

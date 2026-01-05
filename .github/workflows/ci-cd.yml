@@ -1,17 +1,17 @@
-name: Deploy to VPS
+name: CI/CD
 
 on:
   push:
     branches:
       - main
+  pull_request:
 
 env:
   CARGO_TERM_COLOR: always
-  SQLX_OFFLINE: true
 
 jobs:
-  build:
-    name: Build
+  test:
+    name: Build & Test
     runs-on: ubuntu-latest
     services:
       postgres:
@@ -29,7 +29,7 @@ jobs:
           --health-retries 5
 
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
@@ -47,11 +47,14 @@ jobs:
           DB_SUPERUSER: postgres
           DB_SUPERDB: postgres
           PGHOST: localhost
-          PGPORT: 5432
           DB_NAME: test
           DB_APP_USER_PASS: test
           DB_MIGRATOR_PASS: ${{ secrets.DB_MIGRATOR_PASS }}
-        run: ./reset_database.sh
+          PSQL_BIN: psql
+          DATABASE_URL: postgresql://migrator:${{ secrets.DB_MIGRATOR_PASS }}@localhost/test
+        run: |
+          ./reset_database.sh
+          sqlx migrate run
 
       - name: Check Formatting
         run: cargo fmt -- --check
@@ -63,7 +66,6 @@ jobs:
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY }}
-          HOST: 127.0.0.1
           BASIC_AUTH_USER: test
           BASIC_AUTH_PASS: test
           DB_APP_USER_PASS: test
@@ -72,9 +74,11 @@ jobs:
         run: cargo test
 
       - name: Build Release
+        if: github.ref == 'refs/heads/main'
         run: cargo build --release
 
       - name: Prepare Artifacts
+        if: github.ref == 'refs/heads/main'
         run: |
           mkdir -p dist
           cp target/release/somerville-events dist/
@@ -83,6 +87,7 @@ jobs:
           cp deploy.sh dist/
           
       - name: Upload Artifact
+        if: github.ref == 'refs/heads/main'
         uses: actions/upload-artifact@v4
         with:
           name: app-bundle
@@ -90,7 +95,8 @@ jobs:
 
   deploy:
     name: Deploy
-    needs: build
+    needs: test
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     steps:
       - name: Download Artifact

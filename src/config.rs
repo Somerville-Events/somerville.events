@@ -20,7 +20,7 @@ impl Config {
         static CONFIG: OnceLock<Config> = OnceLock::new();
         CONFIG.get_or_init(|| {
             dotenv().ok();
-            let host = env::var("HOST").expect("HOST must be set");
+            let host = env::var("HOST").unwrap_or_else(|_| "127.0.0.1".to_string());
             let openai_api_key = env::var("OPENAI_API_KEY").expect("OPENAI_API_KEY must be set");
             let google_maps_api_key =
                 env::var("GOOGLE_MAPS_API_KEY").expect("GOOGLE_MAPS_API_KEY must be set");
