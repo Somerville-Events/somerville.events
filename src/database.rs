@@ -571,4 +571,119 @@ mod tests {
 
         Ok(())
     }
+
+    #[sqlx::test]
+    async fn test_full_query_edge_cases(pool: sqlx::PgPool) -> Result<()> {
+        // Setup data
+        let base_time = Utc.timestamp_opt(1672531200, 0).unwrap(); // 2023-01-01 00:00:00 UTC
+
+        let event_1 = {
+            let mut e = create_event("Event 1", "Desc 1", Some("Loc 1"));
+            e.event_types = vec![EventType::Art];
+            e.source = EventSource::ImageUpload;
+            e.start_date = base_time; // 2023-01-01
+            e
+        };
+
+        let event_2 = {
+            let mut e = create_event("Event 2", "Desc 2", Some("Loc 2"));
+            e.event_types = vec![EventType::Music];
+            e.source = EventSource::ArtsAtTheArmory; // Different source
+            e.start_date = base_time + chrono::Duration::days(1); // 2023-01-02
+            e
+        };
+
+        let event_3 = {
+            let mut e = create_event("Event 3", "Desc 3", Some("Loc 3"));
+            e.event_types = vec![EventType::Art, EventType::Music]; // Multiple types
+            e.source = EventSource::ImageUpload;
+            e.start_date = base_time + chrono::Duration::days(2); // 2023-01-03
+            e
+        };
+
+        let id1 = save_event_to_db(&pool, &event_1).await?;
+        let id2 = save_event_to_db(&pool, &event_2).await?;
+        let _id3 = save_event_to_db(&pool, &event_3).await?;
+
+        // 1. GET
+        // 1.1 Get existing
+        let fetched = pool.get(id1).await?;
+        assert!(fetched.is_some());
+        assert_eq!(fetched.unwrap().name, "Event 1");
+
+        // 1.2 Get non-existent
+        let fetched_none = pool.get(999999).await?;
+        assert!(fetched_none.is_none());
+
+        // 2. LIST - Source Filtering
+        let query_source = IndexQuery {
+            category: vec![],
+            source: Some(EventSource::ArtsAtTheArmory),
+            past: None,
+        };
+        let res_source = pool.list(query_source, None, None).await?;
+        assert_eq!(res_source.len(), 1);
+        assert_eq!(res_source[0].id.unwrap(), id2);
+
+        // 3. LIST - Category Filtering
+        // 3.1 Single category
+        let query_art = IndexQuery {
+            category: vec![EventType::Art],
+            source: None,
+            past: None,
+        };
+        let res_art = pool.list(query_art, None, None).await?;
+        assert_eq!(res_art.len(), 2); // Event 1 and 3
+
+        // 3.2 Multiple categories (OR logic)
+        // If I query for Art OR Music, I should get all 3 (since all have at least one)
+        let query_multi = IndexQuery {
+            category: vec![EventType::Art, EventType::Music],
+            source: None,
+            past: None,
+        };
+        let res_multi = pool.list(query_multi, None, None).await?;
+        assert_eq!(res_multi.len(), 3);
+
+        // 4. LIST - Date Range
+        // 4.1 Since (After 2023-01-02) - Should get Event 2 (on day) and 3 (after)
+        // Note: The query uses >= for since.
+        let since_date = base_time + chrono::Duration::days(1);
+        let res_since = pool
+            .list(IndexQuery::default(), Some(since_date), None)
+            .await?;
+        assert_eq!(res_since.len(), 2);
+
+        // 4.2 Until (Before 2023-01-02) - Should get Event 1 and 2
+        // Note: The query uses <= for until.
+        let until_date = base_time + chrono::Duration::days(1);
+        let res_until = pool
+            .list(IndexQuery::default(), None, Some(until_date))
+            .await?;
+        assert_eq!(res_until.len(), 2);
+
+        // 4.3 Window (Only 2023-01-02)
+        let res_window = pool
+            .list(IndexQuery::default(), Some(since_date), Some(until_date))
+            .await?;
+        assert_eq!(res_window.len(), 1);
+        assert_eq!(res_window[0].id.unwrap(), id2);
+
+        // 5. DELETE
+        // 5.1 Delete existing
+        pool.delete(id1).await?;
+        let check_del = pool.get(id1).await?;
+        assert!(check_del.is_none());
+
+        // 5.2 Delete non-existent
+        let del_err = pool.delete(id1).await; // Already deleted
+        assert!(del_err.is_err());
+
+        // 6. DUPLICATE INSERT (Integration)
+        // Try inserting event_2 again. Should return id2.
+        let dup_id = save_event_to_db(&pool, &event_2).await?;
+        assert_eq!(dup_id, id2);
+
+        Ok(())
+    }
 }
