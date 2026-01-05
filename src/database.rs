@@ -1,4 +1,5 @@
-use crate::models::{Event, EventType};
+use crate::features::view::IndexQuery;
+use crate::models::{Event, EventType, SourceName};
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
@@ -8,7 +9,7 @@ use strsim::jaro_winkler;
 pub trait EventsRepo: Send + Sync {
     async fn list(
         &self,
-        category: Option<String>,
+        query: IndexQuery,
         since: Option<DateTime<Utc>>,
         until: Option<DateTime<Utc>>,
     ) -> Result<Vec<Event>>;
@@ -22,19 +23,27 @@ pub trait EventsRepo: Send + Sync {
 impl EventsRepo for sqlx::Pool<sqlx::Postgres> {
     async fn list(
         &self,
-        category: Option<String>,
+        query: IndexQuery,
         since: Option<DateTime<Utc>>,
         until: Option<DateTime<Utc>>,
     ) -> Result<Vec<Event>> {
+        let categories: Vec<String> = query
+            .category
+            .iter()
+            .map(|c| c.db_id().to_string())
+            .collect();
+        let source: Option<String> = query.source.map(|s| s.to_string());
+
         let rows = sqlx::query!(
             r#"
             WITH filtered_events AS (
                 SELECT e.id
                 FROM app.events e
                 LEFT JOIN app.event_event_types et ON e.id = et.event_id
-                WHERE ($1::text IS NULL OR et.event_type_name = $1::text)
-                AND ($2::timestamptz IS NULL OR e.start_date >= $2)
-                AND ($3::timestamptz IS NULL OR e.start_date <= $3)
+                WHERE (cardinality($1::text[]) = 0 OR et.event_type_name = ANY($1::text[]))
+                AND ($2::text IS NULL OR e.source_name = $2::text)
+                AND ($3::timestamptz IS NULL OR e.start_date >= $3)
+                AND ($4::timestamptz IS NULL OR e.start_date <= $4)
             )
             SELECT
                 e.id,
@@ -59,7 +68,8 @@ impl EventsRepo for sqlx::Pool<sqlx::Postgres> {
             GROUP BY e.id
             ORDER BY e.start_date ASC NULLS LAST
             "#,
-            category,
+            &categories,
+            source,
             since,
             until
         )
@@ -79,16 +89,12 @@ impl EventsRepo for sqlx::Pool<sqlx::Postgres> {
                 original_location: r.original_location,
                 google_place_id: r.google_place_id,
                 location_name: r.location_name,
-                event_types: r
-                    .event_types
-                    .into_iter()
-                    .map(EventType::from)
-                    .collect(),
+                event_types: r.event_types.into_iter().map(EventType::from).collect(),
                 url: r.url,
                 confidence: r.confidence,
                 age_restrictions: r.age_restrictions,
                 price: r.price,
-                source_name: r.source_name,
+                source_name: r.source_name.map(SourceName::from),
             })
             .collect();
 
@@ -136,16 +142,12 @@ impl EventsRepo for sqlx::Pool<sqlx::Postgres> {
             original_location: r.original_location,
             google_place_id: r.google_place_id,
             location_name: r.location_name,
-            event_types: r
-                .event_types
-                .into_iter()
-                .map(EventType::from)
-                .collect(),
+            event_types: r.event_types.into_iter().map(EventType::from).collect(),
             url: r.url,
             confidence: r.confidence,
             age_restrictions: r.age_restrictions,
             price: r.price,
-            source_name: r.source_name,
+            source_name: r.source_name.map(SourceName::from),
         }))
     }
 
@@ -234,7 +236,7 @@ pub async fn save_event_to_db(executor: &sqlx::Pool<sqlx::Postgres>, event: &Eve
         event.confidence,
         event.age_restrictions,
         event.price,
-        event.source_name
+        event.source_name.as_ref().map(|s| s.to_string())
     )
     .fetch_one(&mut *tx)
     .await
@@ -310,16 +312,12 @@ async fn find_duplicate(
             original_location: r.original_location,
             google_place_id: r.google_place_id,
             location_name: r.location_name,
-            event_types: r
-                .event_types
-                .into_iter()
-                .map(EventType::from)
-                .collect(),
+            event_types: r.event_types.into_iter().map(EventType::from).collect(),
             url: r.url,
             confidence: r.confidence,
             age_restrictions: r.age_restrictions,
             price: r.price,
-            source_name: r.source_name,
+            source_name: r.source_name.map(SourceName::from),
         })
         .collect();
 

@@ -133,7 +133,7 @@ impl EventViewModel {
             google_calendar_url,
             age_restrictions: event.age_restrictions.clone(),
             price: event.price,
-            source_name: event.source_name.clone(),
+            source_name: event.source_name.as_ref().map(|s| s.to_string()),
         }
     }
 }

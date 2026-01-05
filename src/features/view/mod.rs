@@ -1,5 +1,5 @@
 use crate::features::common::{DateFormat, EventLocation, EventViewModel};
-use crate::models::Event;
+use crate::models::{Event, EventType, SourceName};
 use crate::AppState;
 use actix_web::http::header::ContentType;
 use actix_web::{web, HttpResponse, Responder};
@@ -8,6 +8,7 @@ use chrono::{DateTime, Duration, NaiveDate, Utc};
 use chrono_tz::America::New_York;
 use icalendar::{Calendar, CalendarDateTime, Component, Event as IcalEvent, EventLike};
 use serde::Deserialize;
+use serde_with::{formats::Separator, serde_as, StringWithSeparator};
 use std::collections::BTreeMap;
 
 #[derive(Template)]
@@ -31,10 +32,22 @@ struct DaySection {
     events: Vec<EventViewModel>,
 }
 
-#[derive(Deserialize)]
+#[serde_as]
+#[derive(Deserialize, Default, Clone)]
 pub struct IndexQuery {
-    pub category: Option<String>,
+    #[serde_as(as = "StringWithSeparator::<CommaSeparator, EventType>")]
+    #[serde(default)]
+    pub category: Vec<EventType>,
+    pub source: Option<SourceName>,
     pub past: Option<bool>,
+}
+
+pub struct CommaSeparator;
+
+impl Separator for CommaSeparator {
+    fn separator() -> &'static str {
+        ","
+    }
 }
 
 pub async fn index(state: web::Data<AppState>, query: web::Query<IndexQuery>) -> impl Responder {
@@ -58,10 +71,7 @@ pub async fn index_with_now(
         (Some(now_utc - Duration::days(2)), None)
     };
 
-    let events_result = state
-        .events_repo
-        .list(query.category.clone(), since, until)
-        .await;
+    let events_result = state.events_repo.list(query.clone(), since, until).await;
 
     match events_result {
         Ok(events) => {
@@ -141,14 +151,20 @@ pub async fn index_with_now(
                 });
             }
 
-            let (page_title, filter_badge) = if let Some(ref category_filter) = query.category {
+            let (page_title, filter_badge) = if !query.category.is_empty() {
+                let category_filter = query
+                    .category
+                    .iter()
+                    .map(|c| c.to_string())
+                    .collect::<Vec<_>>()
+                    .join(", ");
                 (
                     if is_past {
                         format!("Past Somerville {category_filter} Events")
                     } else {
                         format!("Somerville {category_filter} Events")
                     },
-                    category_filter.clone(),
+                    category_filter,
                 )
             } else {
                 (

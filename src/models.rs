@@ -8,6 +8,10 @@ use strum::{Display, EnumString};
     Debug, Serialize, Deserialize, JsonSchema, PartialEq, Eq, Clone, sqlx::Type, Display, EnumString,
 )]
 #[sqlx(type_name = "app.event_type")]
+/// IMPORTANT: This enum is coupled to the `app.event_types` table in the database.
+/// If you add a new variant here, you MUST create a migration to insert the corresponding
+/// string value into the `app.event_types` table. Otherwise, inserting events with
+/// the new type will fail due to foreign key constraints.
 pub enum EventType {
     #[strum(serialize = "Yard Sale", serialize = "YardSale")]
     YardSale,
@@ -96,6 +100,65 @@ impl From<String> for EventType {
     }
 }
 
+#[derive(
+    Debug, Serialize, Deserialize, JsonSchema, PartialEq, Eq, Clone, sqlx::Type, Display, EnumString,
+)]
+#[sqlx(type_name = "text")] // Maps to standard TEXT in Postgres, not a custom enum type
+/// IMPORTANT: This enum is coupled to the `app.source_names` table in the database.
+/// If you add a new variant here, you MUST create a migration to insert the corresponding
+/// string value into the `app.source_names` table. Otherwise, inserting events with
+/// the new source will fail due to foreign key constraints.
+pub enum SourceName {
+    #[strum(serialize = "Aeronaut Brewing")]
+    AeronautBrewing,
+    #[strum(serialize = "American Repertory Theater")]
+    AmericanRepertoryTheater,
+    #[strum(serialize = "Arts at the Armory")]
+    ArtsAtTheArmory,
+    #[strum(serialize = "Boston Swing Central")]
+    BostonSwingCentral,
+    #[strum(serialize = "BostonShows.org")]
+    BostonShowsOrg,
+    #[strum(serialize = "Brattle Theatre")]
+    BrattleTheatre,
+    #[strum(serialize = "Central Square Theater")]
+    CentralSquareTheater,
+    #[strum(serialize = "City of Cambridge")]
+    CityOfCambridge,
+    #[strum(serialize = "Harvard Art Museums")]
+    HarvardArtMuseums,
+    #[strum(serialize = "Harvard Book Store")]
+    HarvardBookStore,
+    #[strum(serialize = "Lamplighter Brewing")]
+    LamplighterBrewing,
+    #[strum(serialize = "Porter Square Books")]
+    PorterSquareBooks,
+    #[strum(serialize = "Portico Brewing")]
+    PorticoBrewing,
+    #[strum(serialize = "Sanders Theatre")]
+    SandersTheatre,
+    #[strum(serialize = "Somerville Theatre")]
+    SomervilleTheatre,
+    #[strum(serialize = "The Comedy Studio")]
+    TheComedyStudio,
+    #[strum(serialize = "The Dance Complex")]
+    TheDanceComplex,
+    #[strum(serialize = "The Lily Pad")]
+    TheLilyPad,
+    #[strum(serialize = "The Middle East")]
+    TheMiddleEast,
+    // Catch-all for when DB has values code doesn't know yet (forward compatibility)
+    #[serde(other)]
+    Other,
+}
+
+// Support conversion for sqlx query_as! compatibility
+impl From<String> for SourceName {
+    fn from(s: String) -> Self {
+        SourceName::from_str(&s).unwrap_or(SourceName::Other)
+    }
+}
+
 #[derive(Debug, Serialize, Deserialize, JsonSchema, PartialEq, Clone, sqlx::FromRow)]
 pub struct Event {
     pub name: String,
@@ -118,5 +181,7 @@ pub struct Event {
     pub id: Option<i64>,
     pub age_restrictions: Option<String>,
     pub price: Option<f64>,
-    pub source_name: Option<String>,
+    /// Must match a value in the `app.source_names` table.
+    /// If you introduce a new source, you must add it to that table first.
+    pub source_name: Option<SourceName>,
 }
