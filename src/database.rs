@@ -82,7 +82,7 @@ impl EventsRepo for sqlx::Pool<sqlx::Postgres> {
                 event_types: r
                     .event_types
                     .into_iter()
-                    .map(|s| EventType::from(s))
+                    .map(EventType::from)
                     .collect(),
                 url: r.url,
                 confidence: r.confidence,
@@ -139,7 +139,7 @@ impl EventsRepo for sqlx::Pool<sqlx::Postgres> {
             event_types: r
                 .event_types
                 .into_iter()
-                .map(|s| EventType::from(s))
+                .map(EventType::from)
                 .collect(),
             url: r.url,
             confidence: r.confidence,
@@ -313,7 +313,7 @@ async fn find_duplicate(
             event_types: r
                 .event_types
                 .into_iter()
-                .map(|s| EventType::from(s))
+                .map(EventType::from)
                 .collect(),
             url: r.url,
             confidence: r.confidence,
