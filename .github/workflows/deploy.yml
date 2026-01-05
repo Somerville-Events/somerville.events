@@ -87,5 +87,5 @@ jobs:
           ssh ${VPS_USER}@${VPS_HOST} "mkdir -p ${REMOTE_DIR}"
           scp -p -r dist/* ${VPS_USER}@${VPS_HOST}:${REMOTE_DIR}/
           ssh ${VPS_USER}@${VPS_HOST} "chmod +x ${REMOTE_DIR}/deploy.sh ${REMOTE_DIR}/somerville-events"
-          ssh ${VPS_USER}@${VPS_HOST} "bash ${REMOTE_DIR}/deploy.sh ${SHA}"
+          ssh ${VPS_USER}@${VPS_HOST} "DB_MIGRATOR_PASS='${{ secrets.DB_MIGRATOR_PASS }}' bash ${REMOTE_DIR}/deploy.sh ${SHA}"
 

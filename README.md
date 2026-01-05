@@ -22,7 +22,10 @@ https://www.postgresql.org/download/
 
 ### Setup `.env`
 
-Copy the sample environment file and set the real values in `.env`
+Copy the sample environment file and set the real values in `.env`.
+Note that the role names `migrator` and `app_user` are fixed in the migrations, but you can configure their passwords in `.env`.
+
+**Security Note:** For local development, keep `DB_MIGRATOR_PASS` in `.env`. For production, remove `DB_MIGRATOR_PASS` from the `.env` file on the server; it will be injected securely by the deployment pipeline.
 
 ```bash
 cp .env.sample .env
@@ -72,3 +75,4 @@ Go to your repository settings -> Secrets and variables -> Actions -> New reposi
 - `SSH_PRIVATE_KEY`: The private SSH key matching the public key in `~/.ssh/authorized_keys` on the VPS.
 - `KNOWN_HOSTS`: The output of `ssh-keyscan <VPS_HOST>`.
 - `OPENAI_API_KEY`: The test runner needs this.
+- `DB_MIGRATOR_PASS`: The password for the `migrator` database role. This is injected during deployment and should NOT be in the `.env` file on the server.

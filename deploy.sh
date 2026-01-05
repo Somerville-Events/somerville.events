@@ -17,7 +17,10 @@ cd "$LATEST"
 
 # 1. Run migrations
 source "$HOME/.env"
-DATABASE_URL="postgresql://$DB_MIGRATOR:$DB_MIGRATOR_PASS@localhost/$DB_NAME"
+
+: "${DB_MIGRATOR_PASS:?DB_MIGRATOR_PASS must be set (via env var injection, not .env file)}"
+
+DATABASE_URL="postgresql://migrator:$DB_MIGRATOR_PASS@localhost/$DB_NAME"
 sqlx database create --database-url "$DATABASE_URL"
 sqlx migrate run --database-url "$DATABASE_URL"
 

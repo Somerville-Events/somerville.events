@@ -51,9 +51,7 @@ fi
 
 # Basic sanity checks for the DB-related vars your SQL script expects
 : "${DB_NAME:?DB_NAME is not set}"
-: "${DB_APP_USER:?DB_APP_USER is not set}"
 : "${DB_APP_USER_PASS:?DB_APP_USER_PASS is not set}"
-: "${DB_MIGRATOR:?DB_MIGRATOR is not set}"
 : "${DB_MIGRATOR_PASS:?DB_MIGRATOR_PASS is not set}"
 
 # Allow overrides, but default to your existing setup
@@ -80,9 +78,7 @@ if [[ "$USE_SUDO" == "true" ]]; then
 
   sudo -u postgres \
     DB_NAME="$DB_NAME" \
-    DB_APP_USER="$DB_APP_USER" \
     DB_APP_USER_PASS="$DB_APP_USER_PASS" \
-    DB_MIGRATOR="$DB_MIGRATOR" \
     DB_MIGRATOR_PASS="$DB_MIGRATOR_PASS" \
     "$PSQL_BIN" -U "$DB_SUPERUSER" -d "$DB_SUPERDB" -f reset_database.sql
 

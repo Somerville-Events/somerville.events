@@ -525,4 +525,50 @@ mod tests {
             "Descriptions with key activity differences should NOT match"
         );
     }
+
+    #[sqlx::test]
+    async fn test_list_filtering(pool: sqlx::PgPool) -> Result<()> {
+        let art_event = {
+            let mut e = create_event("Art Show", "Paintings", Some("Gallery"));
+            e.event_types = vec![EventType::Art];
+            e.source = EventSource::ImageUpload;
+            // 2023-01-01 10:00:00 UTC
+            e.start_date = Utc.timestamp_opt(1672567200, 0).unwrap();
+            e
+        };
+
+        let music_event = {
+            let mut e = create_event("Music Gig", "Bands", Some("Club"));
+            e.event_types = vec![EventType::Music];
+            e.source = EventSource::ImageUpload;
+            // 2023-01-01 12:00:00 UTC
+            e.start_date = Utc.timestamp_opt(1672574400, 0).unwrap();
+            e
+        };
+
+        save_event_to_db(&pool, &art_event).await?;
+        save_event_to_db(&pool, &music_event).await?;
+
+        // Test Category Filter
+        let query = IndexQuery {
+            category: vec![EventType::Art],
+            source: None,
+            past: None,
+        };
+
+        let events = pool.list(query, None, None).await?;
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].name, "Art Show");
+
+        // Test Empty Filter (Should return all)
+        let query_all = IndexQuery {
+            category: vec![],
+            source: None,
+            past: None,
+        };
+        let events_all = pool.list(query_all, None, None).await?;
+        assert_eq!(events_all.len(), 2);
+
+        Ok(())
+    }
 }
