@@ -8,7 +8,6 @@ use chrono::{DateTime, Duration, NaiveDate, Utc};
 use chrono_tz::America::New_York;
 use icalendar::{Calendar, CalendarDateTime, Component, Event as IcalEvent, EventLike};
 use serde::Deserialize;
-use serde_with::{formats::Separator, serde_as, StringWithSeparator};
 use std::collections::BTreeMap;
 
 #[derive(Template)]
@@ -32,22 +31,12 @@ struct DaySection {
     events: Vec<EventViewModel>,
 }
 
-#[serde_as]
 #[derive(Deserialize, Default, Clone)]
 pub struct IndexQuery {
-    #[serde_as(as = "StringWithSeparator::<CommaSeparator, EventType>")]
     #[serde(default)]
     pub category: Vec<EventType>,
     pub source: Option<EventSource>,
     pub past: Option<bool>,
-}
-
-pub struct CommaSeparator;
-
-impl Separator for CommaSeparator {
-    fn separator() -> &'static str {
-        ","
-    }
 }
 
 pub async fn index(state: web::Data<AppState>, query: web::Query<IndexQuery>) -> impl Responder {
