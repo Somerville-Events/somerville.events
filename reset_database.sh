@@ -66,7 +66,7 @@ echo "Running reset_database.sql..."
 # Helper logic: On Linux, if DB_SUPERUSER is 'postgres' but we are not running as 'postgres',
 # and we have passwordless sudo access, try running via sudo -u postgres.
 USE_SUDO="false"
-if [[ "$(uname)" == "Linux" && "$DB_SUPERUSER" == "postgres" && "$(whoami)" != "postgres" ]]; then
+if [[ "${CI:-}" != "true" && "$(uname)" == "Linux" && "$DB_SUPERUSER" == "postgres" && "$(whoami)" != "postgres" ]]; then
   if command -v sudo >/dev/null && sudo -n true 2>/dev/null; then
     USE_SUDO="true"
   fi

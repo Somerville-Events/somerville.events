@@ -13,6 +13,21 @@ jobs:
   build:
     name: Build
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_HOST_AUTH_METHOD: trust
+          POSTGRES_USER: postgres
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
     steps:
       - uses: actions/checkout@v3
 
@@ -23,6 +38,20 @@ jobs:
 
       - name: Cache dependencies
         uses: Swatinem/rust-cache@v2
+
+      - name: Install sqlx-cli
+        run: cargo install sqlx-cli --no-default-features --features postgres
+
+      - name: Setup Database
+        env:
+          DB_SUPERUSER: postgres
+          DB_SUPERDB: postgres
+          PGHOST: localhost
+          PGPORT: 5432
+          DB_NAME: test
+          DB_APP_USER_PASS: test
+          DB_MIGRATOR_PASS: ${{ secrets.DB_MIGRATOR_PASS }}
+        run: ./reset_database.sh
 
       - name: Check Formatting
         run: cargo fmt -- --check
@@ -37,9 +66,9 @@ jobs:
           HOST: 127.0.0.1
           BASIC_AUTH_USER: test
           BASIC_AUTH_PASS: test
-          DB_APP_USER: test
           DB_APP_USER_PASS: test
           DB_NAME: test
+          DATABASE_URL: postgresql://migrator:${{ secrets.DB_MIGRATOR_PASS }}@localhost/test
         run: cargo test
 
       - name: Build Release
@@ -88,4 +117,3 @@ jobs:
           scp -p -r dist/* ${VPS_USER}@${VPS_HOST}:${REMOTE_DIR}/
           ssh ${VPS_USER}@${VPS_HOST} "chmod +x ${REMOTE_DIR}/deploy.sh ${REMOTE_DIR}/somerville-events"
           ssh ${VPS_USER}@${VPS_HOST} "DB_MIGRATOR_PASS='${{ secrets.DB_MIGRATOR_PASS }}' bash ${REMOTE_DIR}/deploy.sh ${SHA}"
-

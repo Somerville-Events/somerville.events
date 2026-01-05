@@ -75,4 +75,4 @@ Go to your repository settings -> Secrets and variables -> Actions -> New reposi
 - `SSH_PRIVATE_KEY`: The private SSH key matching the public key in `~/.ssh/authorized_keys` on the VPS.
 - `KNOWN_HOSTS`: The output of `ssh-keyscan <VPS_HOST>`.
 - `OPENAI_API_KEY`: The test runner needs this.
-- `DB_MIGRATOR_PASS`: The password for the `migrator` database role. This is injected during deployment and should NOT be in the `.env` file on the server.
+- `DB_MIGRATOR_PASS`: The password for the `migrator` database role. This is injected during CI and deployment and should NOT be in the `.env` file on the server.
