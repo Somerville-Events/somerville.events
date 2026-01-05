@@ -23,7 +23,6 @@ https://www.postgresql.org/download/
 ### Setup `.env`
 
 Copy the sample environment file and set the real values in `.env`.
-Note that the role names `migrator` and `app_user` are fixed in the migrations, but you can configure their passwords in `.env`.
 
 **Security Note:** For local development, keep `DB_MIGRATOR_PASS` in `.env`. For production, remove `DB_MIGRATOR_PASS` from the `.env` file on the server; it will be injected securely by the deployment pipeline.
 
