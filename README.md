@@ -47,6 +47,17 @@ This runs some safety checks before pushing to main.
 cp pre-commit .git/hooks/pre-commit
 ```
 
+### Security Checks
+
+We use `cargo-audit` to check for vulnerabilities in dependencies.
+
+1. **Install:** `cargo install cargo-audit --features=fix`
+2. **Run:** `cargo audit`
+3. **Fix:**
+   - **Autofix:** Run `cargo audit fix` to automatically upgrade vulnerable dependencies to safe versions.
+   - **Manual Update:** Run `cargo update` to pull in patched versions if autofix doesn't work.
+   - **Ignore:** If a vulnerability is a false positive (e.g. unused feature), add the ID to `.cargo/audit.toml` under `ignore` with a comment explaining why.
+
 ## Running
 
 ```bash

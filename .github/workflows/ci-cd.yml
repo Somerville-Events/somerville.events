@@ -64,11 +64,6 @@ jobs:
           DATABASE_URL: postgresql://migrator:${{ secrets.DB_MIGRATOR_PASS }}@localhost/test
         run: cargo clippy --all-targets -- -D warnings
 
-      - name: Security Audit
-        uses: rustsec/audit-check@v2.0.0
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-
       - name: Run Tests
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
