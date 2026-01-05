@@ -60,6 +60,8 @@ jobs:
         run: cargo fmt -- --check
 
       - name: Lint with Clippy
+        env:
+          DATABASE_URL: postgresql://migrator:${{ secrets.DB_MIGRATOR_PASS }}@localhost/test
         run: cargo clippy --all-targets -- -D warnings
 
       - name: Run Tests
