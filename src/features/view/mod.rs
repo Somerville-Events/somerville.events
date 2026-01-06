@@ -33,13 +33,16 @@ struct DaySection {
 
 #[derive(Deserialize, Default, Clone)]
 pub struct IndexQuery {
-    #[serde(default)]
-    pub category: Vec<EventType>,
+    #[serde(default, rename = "type")]
+    pub event_types: Vec<EventType>,
     pub source: Option<EventSource>,
     pub past: Option<bool>,
 }
 
-pub async fn index(state: web::Data<AppState>, query: web::Query<IndexQuery>) -> impl Responder {
+pub async fn index(
+    state: web::Data<AppState>,
+    query: actix_web_lab::extract::Query<IndexQuery>,
+) -> impl Responder {
     index_with_now(state, Utc::now(), query.into_inner()).await
 }
 
@@ -140,9 +143,9 @@ pub async fn index_with_now(
                 });
             }
 
-            let (page_title, filter_badge) = if !query.category.is_empty() {
+            let (page_title, filter_badge) = if !query.event_types.is_empty() {
                 let category_filter = query
-                    .category
+                    .event_types
                     .iter()
                     .map(|c| c.to_string())
                     .collect::<Vec<_>>()

@@ -17,6 +17,7 @@ use strum::{AsRefStr, EnumString};
     EnumString,
     AsRefStr,
 )]
+#[serde(rename_all = "kebab-case")] // Maps to kebab-case for url query params
 #[sqlx(type_name = "text")] // Maps to standard TEXT in Postgres, not a custom enum type
 /// IMPORTANT: This enum is coupled to the `app.event_types` table in the database.
 /// If you add a new variant here, you MUST create a migration to insert the corresponding
@@ -91,12 +92,20 @@ impl fmt::Display for EventType {
 
 impl EventType {
     pub fn get_url(&self) -> String {
-        format!("/?category={}", self.as_ref())
+        let slug = serde_json::to_string(&self)
+            .unwrap_or_else(|_| format!("\"{}\"", self.as_ref().to_lowercase()))
+            .trim_matches('"')
+            .to_string();
+        format!("/?type={}", slug)
     }
 
     pub fn get_url_with_past(&self, past: bool) -> String {
         if past {
-            format!("/?category={}&past=true", self.as_ref())
+            let slug = serde_json::to_string(&self)
+                .unwrap_or_else(|_| format!("\"{}\"", self.as_ref().to_lowercase()))
+                .trim_matches('"')
+                .to_string();
+            format!("/?type={}&past=true", slug)
         } else {
             self.get_url()
         }

@@ -28,7 +28,7 @@ impl EventsRepo for sqlx::Pool<sqlx::Postgres> {
         until: Option<DateTime<Utc>>,
     ) -> Result<Vec<Event>> {
         let categories: Vec<String> = query
-            .category
+            .event_types
             .iter()
             .map(|c| c.as_ref().to_string())
             .collect();
@@ -37,7 +37,7 @@ impl EventsRepo for sqlx::Pool<sqlx::Postgres> {
         let rows = sqlx::query!(
             r#"
             WITH filtered_events AS (
-                SELECT e.id
+                SELECT DISTINCT e.id
                 FROM app.events e
                 LEFT JOIN app.event_event_types et ON e.id = et.event_id
                 WHERE (cardinality($1::text[]) = 0 OR et.event_type_name = ANY($1::text[]))
@@ -61,7 +61,7 @@ impl EventsRepo for sqlx::Pool<sqlx::Postgres> {
                 e.age_restrictions,
                 e.price,
                 e.source,
-                COALESCE(array_agg(et.event_type_name) FILTER (WHERE et.event_type_name IS NOT NULL), '{}') as "event_types!"
+                COALESCE(array_agg(et.event_type_name ORDER BY et.event_type_name) FILTER (WHERE et.event_type_name IS NOT NULL), '{}') as "event_types!"
             FROM app.events e
             JOIN filtered_events fe ON e.id = fe.id
             LEFT JOIN app.event_event_types et ON e.id = et.event_id
@@ -120,7 +120,7 @@ impl EventsRepo for sqlx::Pool<sqlx::Postgres> {
                 e.age_restrictions,
                 e.price,
                 e.source,
-                COALESCE(array_agg(et.event_type_name) FILTER (WHERE et.event_type_name IS NOT NULL), '{}') as "event_types!"
+                COALESCE(array_agg(et.event_type_name ORDER BY et.event_type_name) FILTER (WHERE et.event_type_name IS NOT NULL), '{}') as "event_types!"
             FROM app.events e
             LEFT JOIN app.event_event_types et ON e.id = et.event_id
             WHERE e.id = $1
@@ -284,7 +284,7 @@ async fn find_duplicate(
                 e.age_restrictions,
                 e.price,
                 e.source,
-                COALESCE(array_agg(et.event_type_name) FILTER (WHERE et.event_type_name IS NOT NULL), '{}') as "event_types!"
+                COALESCE(array_agg(et.event_type_name ORDER BY et.event_type_name) FILTER (WHERE et.event_type_name IS NOT NULL), '{}') as "event_types!"
             FROM app.events e
             LEFT JOIN app.event_event_types et ON e.id = et.event_id
             WHERE e.start_date = $1
@@ -527,6 +527,59 @@ mod tests {
     }
 
     #[sqlx::test]
+    async fn test_event_types_deterministic_order(pool: sqlx::PgPool) -> Result<()> {
+        let mut event = create_event("Sorted Types", "Desc", Some("Loc"));
+        // Insert in mixed order
+        event.event_types = vec![EventType::Social, EventType::Art, EventType::Family];
+        event.source = EventSource::ImageUpload;
+
+        let id = save_event_to_db(&pool, &event).await?;
+
+        let fetched = pool.get(id).await?.expect("Event not found");
+
+        // Should be sorted alphabetically by the string representation
+        // Art, Family, Social
+        assert_eq!(
+            fetched.event_types,
+            vec![EventType::Art, EventType::Family, EventType::Social]
+        );
+
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn test_duplicate_aggregation_bug(pool: sqlx::PgPool) -> Result<()> {
+        let mut event = create_event("Multi Tag Event", "Desc", Some("Loc"));
+        // 2 distinct tags
+        event.event_types = vec![EventType::Art, EventType::Music];
+        event.source = EventSource::ImageUpload;
+
+        save_event_to_db(&pool, &event).await?;
+
+        // Query with no filter
+        let query_all = IndexQuery {
+            event_types: vec![],
+            source: None,
+            past: None,
+        };
+        let events = pool.list(query_all, None, None).await?;
+        assert_eq!(events.len(), 1);
+        let fetched_event = &events[0];
+
+        // This fails if duplicate aggregation occurs (e.g. 4 tags instead of 2)
+        assert_eq!(
+            fetched_event.event_types.len(),
+            2,
+            "Expected 2 tags, got {:?}",
+            fetched_event.event_types
+        );
+        assert!(fetched_event.event_types.contains(&EventType::Art));
+        assert!(fetched_event.event_types.contains(&EventType::Music));
+
+        Ok(())
+    }
+
+    #[sqlx::test]
     async fn test_list_filtering(pool: sqlx::PgPool) -> Result<()> {
         let art_event = {
             let mut e = create_event("Art Show", "Paintings", Some("Gallery"));
@@ -551,7 +604,7 @@ mod tests {
 
         // Test Category Filter
         let query = IndexQuery {
-            category: vec![EventType::Art],
+            event_types: vec![EventType::Art],
             source: None,
             past: None,
         };
@@ -562,7 +615,7 @@ mod tests {
 
         // Test Empty Filter (Should return all)
         let query_all = IndexQuery {
-            category: vec![],
+            event_types: vec![],
             source: None,
             past: None,
         };
@@ -617,7 +670,7 @@ mod tests {
 
         // 2. LIST - Source Filtering
         let query_source = IndexQuery {
-            category: vec![],
+            event_types: vec![],
             source: Some(EventSource::ArtsAtTheArmory),
             past: None,
         };
@@ -628,7 +681,7 @@ mod tests {
         // 3. LIST - Category Filtering
         // 3.1 Single category
         let query_art = IndexQuery {
-            category: vec![EventType::Art],
+            event_types: vec![EventType::Art],
             source: None,
             past: None,
         };
@@ -638,7 +691,7 @@ mod tests {
         // 3.2 Multiple categories (OR logic)
         // If I query for Art OR Music, I should get all 3 (since all have at least one)
         let query_multi = IndexQuery {
-            category: vec![EventType::Art, EventType::Music],
+            event_types: vec![EventType::Art, EventType::Music],
             source: None,
             past: None,
         };

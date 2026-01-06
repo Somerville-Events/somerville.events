@@ -155,8 +155,8 @@ mod tests {
             Ok(events
                 .into_iter()
                 .filter(|e| {
-                    let cat_match = if !query.category.is_empty() {
-                        e.event_types.iter().any(|c| query.category.contains(c))
+                    let type_match = if !query.event_types.is_empty() {
+                        e.event_types.iter().any(|c| query.event_types.contains(c))
                     } else {
                         true
                     };
@@ -175,7 +175,7 @@ mod tests {
                     } else {
                         true
                     };
-                    cat_match && source_match && since_match && until_match
+                    type_match && source_match && since_match && until_match
                 })
                 .collect())
         }
@@ -278,7 +278,7 @@ mod tests {
                     state,
                     fixed_now_utc,
                     IndexQuery {
-                        category: vec![EventType::Art],
+                        event_types: vec![EventType::Art],
                         source: None,
                         past: None,
                     },
@@ -287,7 +287,7 @@ mod tests {
         ))
         .await;
 
-        let req = test::TestRequest::get().uri("/?category=Art").to_request();
+        let req = test::TestRequest::get().uri("/?type=art").to_request();
         let resp = test::call_service(&app, req).await;
         assert_eq!(resp.status(), actix_web::http::StatusCode::OK);
 
@@ -296,7 +296,7 @@ mod tests {
 
         assert!(body_str.contains("Art Show"));
         assert!(!body_str.contains("Music Night"));
-        assert!(body_str.contains(r#"<a href="/?category=Art">Art</a>"#));
+        assert!(body_str.contains(r#"<a href="/?type=art">Art</a>"#));
         assert!(body_str.contains("Somerville Art Events"));
         assert!(body_str.contains(r#"<a class="button" href="/">Show all events</a>"#));
 
@@ -462,7 +462,7 @@ mod tests {
                     state,
                     fixed_now_utc,
                     IndexQuery {
-                        category: vec![],
+                        event_types: vec![],
                         source: None,
                         past: None,
                     },
@@ -693,7 +693,7 @@ mod tests {
                     state,
                     fixed_now,
                     IndexQuery {
-                        category: vec![],
+                        event_types: vec![],
                         source: None,
                         past: None,
                     },
@@ -783,7 +783,7 @@ mod tests {
                     state,
                     fixed_now_utc,
                     IndexQuery {
-                        category: vec![],
+                        event_types: vec![],
                         source: filter.clone(),
                         past: None,
                     },
@@ -804,6 +804,59 @@ mod tests {
         assert!(body_str.contains("Beer Night"));
         assert!(!body_str.contains("Reading"));
 
+        Ok(())
+    }
+
+    #[actix_web::test]
+    async fn test_category_deserialization_multiple_params() -> Result<()> {
+        let state = AppState {
+            openai_api_key: "dummy".to_string(),
+            google_maps_api_key: "dummy".to_string(),
+            username: "user".to_string(),
+            password: "pass".to_string(),
+            events_repo: Box::new(MockEventsRepo::new(vec![])),
+        };
+
+        let app = test::init_service(
+            App::new()
+                .app_data(Data::new(state))
+                .route("/", web::get().to(super::features::view::index)),
+        )
+        .await;
+
+        // Test ?type=social&type=family
+        let req = test::TestRequest::get()
+            .uri("/?type=social&type=family")
+            .to_request();
+
+        let resp = test::call_service(&app, req).await;
+
+        assert_eq!(resp.status(), actix_web::http::StatusCode::OK);
+        Ok(())
+    }
+
+    #[actix_web::test]
+    async fn test_category_deserialization_single() -> Result<()> {
+        let state = AppState {
+            openai_api_key: "dummy".to_string(),
+            google_maps_api_key: "dummy".to_string(),
+            username: "user".to_string(),
+            password: "pass".to_string(),
+            events_repo: Box::new(MockEventsRepo::new(vec![])),
+        };
+
+        let app = test::init_service(
+            App::new()
+                .app_data(Data::new(state))
+                .route("/", web::get().to(super::features::view::index)),
+        )
+        .await;
+
+        let req = test::TestRequest::get().uri("/?type=social").to_request();
+
+        let resp = test::call_service(&app, req).await;
+
+        assert_eq!(resp.status(), actix_web::http::StatusCode::OK);
         Ok(())
     }
 
@@ -893,7 +946,7 @@ mod tests {
                     state,
                     fixed_now_utc,
                     IndexQuery {
-                        category: filter.clone(),
+                        event_types: filter.clone(),
                         source: None,
                         past: None,
                     },
@@ -903,7 +956,7 @@ mod tests {
         .await;
 
         let req = test::TestRequest::get()
-            .uri("/?category=Art,Music")
+            .uri("/?type=art&type=music")
             .to_request();
         let resp = test::call_service(&app, req).await;
         assert_eq!(resp.status(), actix_web::http::StatusCode::OK);
