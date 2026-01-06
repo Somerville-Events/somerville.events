@@ -1,5 +1,53 @@
-use crate::models::Event;
+use crate::models::{Event, EventType};
 use chrono_tz::America::New_York;
+
+pub fn get_color_for_type(t: &EventType) -> String {
+    let (light_mode, dark_mode) = match t {
+        EventType::Art
+        | EventType::Exhibition
+        | EventType::Film
+        | EventType::Theater
+        | EventType::Literature => ("#c2185b", "#f48fb1"), // Pink 700 / 200
+        EventType::Music | EventType::Dance | EventType::Performance | EventType::Comedy => {
+            ("#7b1fa2", "#ce93d8") // Purple 700 / 200
+        }
+        EventType::YardSale | EventType::Food | EventType::Market => ("#e65100", "#ffcc80"), // Orange 900 / 200
+        EventType::Government
+        | EventType::Meeting
+        | EventType::Volunteer
+        | EventType::PersonalService
+        | EventType::Workshop => ("#455a64", "#b0bec5"), // Blue Grey 700 / 200
+        EventType::Family | EventType::ChildFriendly => ("#2e7d32", "#a5d6a7"), // Green 800 / 200
+        EventType::Social | EventType::Holiday | EventType::Fundraiser => ("#d32f2f", "#ef9a9a"), // Red 700 / 200
+        EventType::Sports | EventType::Fitness => ("#1976d2", "#90caf9"), // Blue 700 / 200
+        EventType::Religious => ("#5d4037", "#bcaaa4"),                   // Brown 700 / 200
+        EventType::Other => ("#616161", "#eeeeee"),                       // Grey 700 / 200
+    };
+    format!("light-dark({}, {})", light_mode, dark_mode)
+}
+
+pub fn get_icon_for_type(t: &EventType) -> &'static str {
+    match t {
+        EventType::YardSale => "icon-tag",
+        EventType::Art | EventType::Exhibition => "icon-palette",
+        EventType::Music | EventType::Dance => "icon-music",
+        EventType::Food => "icon-utensils",
+        EventType::PersonalService | EventType::Volunteer => "icon-heart-handshake",
+        EventType::Meeting => "icon-users",
+        EventType::Government => "icon-landmark",
+        EventType::Fundraiser => "icon-dollar-sign",
+        EventType::Film => "icon-film",
+        EventType::Theater | EventType::Comedy | EventType::Performance => "icon-drama",
+        EventType::Literature => "icon-book-open",
+        EventType::Workshop => "icon-wrench",
+        EventType::Fitness | EventType::Sports => "icon-trophy",
+        EventType::Market => "icon-store",
+        EventType::Family | EventType::ChildFriendly => "icon-baby",
+        EventType::Social | EventType::Holiday => "icon-party-popper",
+        EventType::Religious => "icon-church",
+        EventType::Other => "icon-circle-help",
+    }
+}
 
 #[derive(Clone)]
 pub enum EventLocation {
@@ -13,6 +61,14 @@ pub enum EventLocation {
 }
 
 #[derive(Clone)]
+pub struct EventTypeLink {
+    pub url: String,
+    pub label: String,
+    pub icon: String,
+    pub color: String,
+}
+
+#[derive(Clone)]
 pub struct EventViewModel {
     pub id: i64,
     pub name: String,
@@ -23,12 +79,13 @@ pub struct EventViewModel {
     pub location: EventLocation,
     pub description: String,
     pub full_text_paragraphs: Vec<String>,
-    pub category_links: Vec<(String, String)>,
+    pub event_types: Vec<EventTypeLink>,
     pub website_link: Option<String>,
     pub google_calendar_url: String,
     pub age_restrictions: Option<String>,
     pub price: Option<f64>,
-    pub source: String,
+    pub accent_color: String,
+    pub accent_icon: String,
 }
 
 pub enum DateFormat {
@@ -42,25 +99,30 @@ impl EventViewModel {
         let start_iso = start_ny.to_rfc3339();
 
         let start_formatted = match format {
-            DateFormat::TimeOnly => start_ny.format("%I:%M %p").to_string(),
-            DateFormat::FullDate => start_ny.format("%A, %B %d, %Y at %I:%M %p").to_string(),
+            DateFormat::TimeOnly => start_ny.format("%-I:%M %p").to_string(),
+            DateFormat::FullDate => start_ny.format("%a, %b %-d, %Y • %-I:%M %p").to_string(),
         };
 
         let (end_iso, end_formatted) = if let Some(end) = event.end_date {
             let end_ny = end.with_timezone(&New_York);
             let end_str = match format {
-                DateFormat::TimeOnly => end_ny.format("%I:%M %p").to_string(),
-                DateFormat::FullDate => end_ny.format("%A, %B %d, %Y at %I:%M %p").to_string(),
+                DateFormat::TimeOnly => end_ny.format("%-I:%M %p").to_string(),
+                DateFormat::FullDate => end_ny.format("%a, %b %-d, %Y • %-I:%M %p").to_string(),
             };
             (end_ny.to_rfc3339(), Some(end_str))
         } else {
             (String::new(), None)
         };
 
-        let category_links = event
+        let event_types = event
             .event_types
             .iter()
-            .map(|c| (c.get_url_with_past(is_past_view), c.to_string()))
+            .map(|c| EventTypeLink {
+                url: c.get_url_with_past(is_past_view),
+                label: c.to_string(),
+                icon: get_icon_for_type(c).to_string(),
+                color: get_color_for_type(c).to_string(),
+            })
             .collect();
 
         let location = if let (Some(name), Some(addr), Some(google_place_id)) =
@@ -113,6 +175,11 @@ impl EventViewModel {
             google_cal_params.finish()
         );
 
+        // Use the icon of the first event type, or default to "Other" icon if none
+        let first_type = event.event_types.first().unwrap_or(&EventType::Other);
+        let accent_icon = get_icon_for_type(first_type).to_string();
+        let accent_color = get_color_for_type(first_type);
+
         Self {
             id: event.id.unwrap_or_default(),
             name: event.name.clone(),
@@ -128,12 +195,13 @@ impl EventViewModel {
                 .map(|s| s.trim().to_string())
                 .filter(|s| !s.is_empty())
                 .collect(),
-            category_links,
+            event_types,
             website_link: event.url.clone(),
             google_calendar_url,
             age_restrictions: event.age_restrictions.clone(),
             price: event.price,
-            source: event.source.to_string(),
+            accent_color,
+            accent_icon,
         }
     }
 }

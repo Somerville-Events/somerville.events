@@ -1,32 +1,6 @@
 use anyhow::Result;
-use serde::{Deserialize, Serialize};
-
-#[derive(Serialize, Debug)]
-#[serde(rename_all = "camelCase")]
-struct GooglePlacesSearchRequest<'a> {
-    text_query: &'a str,
-    location_bias: LocationBias,
-}
-
-#[derive(Serialize, Debug)]
-#[serde(rename_all = "camelCase")]
-struct LocationBias {
-    circle: Circle,
-}
-
-#[derive(Serialize, Debug)]
-#[serde(rename_all = "camelCase")]
-struct Circle {
-    center: LatLng,
-    radius: i64,
-}
-
-#[derive(Serialize, Debug)]
-#[serde(rename_all = "camelCase")]
-struct LatLng {
-    latitude: f64,
-    longitude: f64,
-}
+use serde::Deserialize;
+use serde_json::json;
 
 #[derive(Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
@@ -69,18 +43,18 @@ pub async fn canonicalize_address(
     location: &str,
     api_key: &str,
 ) -> Result<Option<GeocodedLocation>> {
-    let request_body = GooglePlacesSearchRequest {
-        text_query: location,
-        location_bias: LocationBias {
-            circle: Circle {
-                center: LatLng {
-                    latitude: CAMBERVILLE_CENTER_LAT,
-                    longitude: CAMBERVILLE_CENTER_LON,
+    let request_body = json!({
+        "textQuery": location,
+        "locationBias": {
+            "circle": {
+                "center": {
+                    "latitude": CAMBERVILLE_CENTER_LAT,
+                    "longitude": CAMBERVILLE_CENTER_LON
                 },
-                radius: EVENT_RADIUS_METERS,
-            },
-        },
-    };
+                "radius": EVENT_RADIUS_METERS
+            }
+        }
+    });
 
     let mut response = client
         .post("https://places.googleapis.com/v1/places:searchText")
