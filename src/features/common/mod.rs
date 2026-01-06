@@ -103,15 +103,15 @@ impl EventViewModel {
         let start_iso = start_ny.to_rfc3339();
 
         let start_formatted = match format {
-            DateFormat::TimeOnly => start_ny.format("%I:%M %p").to_string(),
-            DateFormat::FullDate => start_ny.format("%A, %B %d, %Y at %I:%M %p").to_string(),
+            DateFormat::TimeOnly => start_ny.format("%-I:%M %p").to_string(),
+            DateFormat::FullDate => start_ny.format("%a, %b %-d, %Y • %-I:%M %p").to_string(),
         };
 
         let (end_iso, end_formatted) = if let Some(end) = event.end_date {
             let end_ny = end.with_timezone(&New_York);
             let end_str = match format {
-                DateFormat::TimeOnly => end_ny.format("%I:%M %p").to_string(),
-                DateFormat::FullDate => end_ny.format("%A, %B %d, %Y at %I:%M %p").to_string(),
+                DateFormat::TimeOnly => end_ny.format("%-I:%M %p").to_string(),
+                DateFormat::FullDate => end_ny.format("%a, %b %-d, %Y • %-I:%M %p").to_string(),
             };
             (end_ny.to_rfc3339(), Some(end_str))
         } else {

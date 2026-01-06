@@ -20,8 +20,19 @@
             --primary-text: #fff;
             --primary-shadow: #8c2415;
 
-            --event-bg: light-dark(#fafafa, #1a1a1a);
             --header-bg: light-dark(#fff, #000);
+
+            /* Event Colors */
+            --event-bg: light-dark(#fafafa, #1a1a1a);
+            --event-hover-bg: light-dark(#ececec, #252525);
+            --event-active-bg: light-dark(#e0e0e0, #303030);
+
+            /* Text Colors */
+            --text-muted: light-dark(#666, #aaa);
+
+            /* Tag Colors */
+            --tag-bg: light-dark(#f0f0f0, #2a2a2a);
+            --tag-hover-bg: light-dark(#d9d9d9, #3a3a3a);
         }
 
         body {
@@ -144,12 +155,12 @@
 
         .events-day article>a:hover {
             text-decoration: none;
-            background-color: light-dark(#dcdcdc, #3a3a3a);
+            background-color: var(--event-hover-bg);
         }
 
         .events-day article>a:active {
             transform: none;
-            background-color: light-dark(#d0d0d0, #444);
+            background-color: var(--event-active-bg);
             box-shadow: none;
         }
 
@@ -178,14 +189,14 @@
 
         .events-day article time:nth-of-type(2) {
             grid-row: 2;
-            color: light-dark(#666, #aaa);
+            color: var(--text-muted);
         }
 
         .events-day article>a>div:nth-of-type(2) {
             grid-column: 1;
             grid-row: 2;
             font-size: 0.9em;
-            color: light-dark(#666, #aaa);
+            color: var(--text-muted);
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
@@ -220,7 +231,7 @@
             display: inline-block;
             padding: 0.2rem 0.6rem;
             font-size: 0.9em;
-            background-color: light-dark(#f0f0f0, #2a2a2a);
+            background-color: var(--tag-bg);
             color: var(--link-color);
             border: 1px solid var(--button-border);
             border-radius: 1rem;
@@ -228,7 +239,7 @@
         }
 
         .event-tag:hover {
-            background-color: var(--button-border);
+            background-color: var(--tag-hover-bg);
             color: var(--button-text);
             text-decoration: none;
         }
@@ -243,8 +254,17 @@
 
         .event-source {
             font-size: 0.85em;
-            color: light-dark(#666, #aaa);
+            color: var(--text-muted);
             margin-top: 1rem;
+        }
+
+        .event-website {
+            display: inline-block;
+            max-width: 100%;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            vertical-align: bottom;
         }
 
         .icon {

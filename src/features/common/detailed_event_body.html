@@ -5,7 +5,8 @@
     <div>
         <time datetime="{{ event.start_iso }}">{{ event.start_formatted }}</time>
         {% if let Some(end) = event.end_formatted %}
-        – <time datetime="{{ event.end_iso }}">{{ end }}</time>
+        <br>
+        <time datetime="{{ event.end_iso }}">{{ end }}</time>
         {% endif %}
     </div>
 </div>
@@ -31,7 +32,8 @@
 {% if !event.event_types.is_empty() %}
 <div class="event-tags">
     {% for link in event.event_types %}
-    <a href="{{ link.url }}" class="event-tag" style="border-color: {{ link.color }}; color: {{ link.color }}">{{ link.icon|safe }} {{ link.label }}</a>
+    <a href="{{ link.url }}" class="event-tag" style="border-color: {{ link.color }}; color: {{ link.color }}">{{
+        link.icon|safe }} {{ link.label }}</a>
     {% endfor %}
 </div>
 {% endif %}
@@ -45,7 +47,7 @@
 {% endif %}
 
 {% if let Some(url) = event.website_link %}
-<p><a href="{{ url }}">{{ url }}</a></p>
+<p><a href="{{ url }}" class="event-website">{{ url }}</a></p>
 {% endif %}
 
 <p>
