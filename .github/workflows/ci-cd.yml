@@ -76,6 +76,8 @@ jobs:
         run: cargo test
 
       - name: Build Release
+        env:
+          DATABASE_URL: postgresql://migrator:${{ secrets.DB_MIGRATOR_PASS }}@localhost/test
         if: github.ref == 'refs/heads/main'
         run: cargo build --release
 

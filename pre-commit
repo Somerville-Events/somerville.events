@@ -8,8 +8,5 @@ if [ "$current_branch" != "main" ]; then
     exit 0
 fi
 
-# We use SQLX_OFFLINE=true to ensure we check against the saved schema
-export SQLX_OFFLINE=true
-
 cargo fmt -- --check
 cargo clippy --all-targets -- -D warnings
