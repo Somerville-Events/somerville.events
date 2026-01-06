@@ -1,28 +1,29 @@
 use crate::models::{Event, EventType};
 use chrono_tz::America::New_York;
 
-fn get_color_for_type(t: &EventType) -> &'static str {
-    match t {
+fn get_color_for_type(t: &EventType) -> String {
+    let (light_mode, dark_mode) = match t {
         EventType::Art
         | EventType::Exhibition
         | EventType::Film
         | EventType::Theater
-        | EventType::Literature => "#e91e63", // Pink
+        | EventType::Literature => ("#c2185b", "#f48fb1"), // Pink 700 / 200
         EventType::Music | EventType::Dance | EventType::Performance | EventType::Comedy => {
-            "#9c27b0"
-        } // Purple
-        EventType::YardSale | EventType::Food | EventType::Market => "#ff9800", // Orange
+            ("#7b1fa2", "#ce93d8") // Purple 700 / 200
+        }
+        EventType::YardSale | EventType::Food | EventType::Market => ("#e65100", "#ffcc80"), // Orange 900 / 200
         EventType::Government
         | EventType::Meeting
         | EventType::Volunteer
         | EventType::PersonalService
-        | EventType::Workshop => "#607d8b", // Blue Grey
-        EventType::Family | EventType::ChildFriendly => "#4caf50",              // Green
-        EventType::Social | EventType::Holiday | EventType::Fundraiser => "#f44336", // Red
-        EventType::Sports | EventType::Fitness => "#2196f3",                    // Blue
-        EventType::Religious => "#795548",                                      // Brown
-        EventType::Other => "#9e9e9e",                                          // Grey
-    }
+        | EventType::Workshop => ("#455a64", "#b0bec5"), // Blue Grey 700 / 200
+        EventType::Family | EventType::ChildFriendly => ("#2e7d32", "#a5d6a7"), // Green 800 / 200
+        EventType::Social | EventType::Holiday | EventType::Fundraiser => ("#d32f2f", "#ef9a9a"), // Red 700 / 200
+        EventType::Sports | EventType::Fitness => ("#1976d2", "#90caf9"), // Blue 700 / 200
+        EventType::Religious => ("#5d4037", "#bcaaa4"),                   // Brown 700 / 200
+        EventType::Other => ("#616161", "#eeeeee"),                       // Grey 700 / 200
+    };
+    format!("light-dark({}, {})", light_mode, dark_mode)
 }
 
 fn get_icon_for_type(t: &EventType) -> &'static str {
@@ -87,7 +88,7 @@ pub struct EventViewModel {
     pub age_restrictions: Option<String>,
     pub price: Option<f64>,
     pub source: String,
-    pub accent_gradient: String,
+    pub accent_color: String,
     pub accent_icon: String,
 }
 
@@ -178,21 +179,10 @@ impl EventViewModel {
             google_cal_params.finish()
         );
 
-        let colors: Vec<&str> = event.event_types.iter().map(get_color_for_type).collect();
-        let accent_gradient = if colors.is_empty() {
-            // Default grey if no types
-            format!("linear-gradient(to bottom, {}, {})", "#9e9e9e", "#9e9e9e")
-        } else if colors.len() == 1 {
-            // Single color gradient
-            format!("linear-gradient(to bottom, {}, {})", colors[0], colors[0])
-        } else {
-            // Blend colors
-            format!("linear-gradient(to bottom, {})", colors.join(", "))
-        };
-
         // Use the icon of the first event type, or default to "Other" icon if none
         let first_type = event.event_types.first().unwrap_or(&EventType::Other);
         let accent_icon = get_icon_for_type(first_type).to_string();
+        let accent_color = get_color_for_type(first_type);
 
         Self {
             id: event.id.unwrap_or_default(),
@@ -215,7 +205,7 @@ impl EventViewModel {
             age_restrictions: event.age_restrictions.clone(),
             price: event.price,
             source: event.source.to_string(),
-            accent_gradient,
+            accent_color,
             accent_icon,
         }
     }
