@@ -87,7 +87,6 @@ pub struct EventViewModel {
     pub google_calendar_url: String,
     pub age_restrictions: Option<String>,
     pub price: Option<f64>,
-    pub source: String,
     pub accent_color: String,
     pub accent_icon: String,
 }
@@ -204,7 +203,6 @@ impl EventViewModel {
             google_calendar_url,
             age_restrictions: event.age_restrictions.clone(),
             price: event.price,
-            source: event.source.to_string(),
             accent_color,
             accent_icon,
         }
