@@ -39,6 +39,8 @@ pub struct SingleEventExtraction {
     /// "YardSale" | "Art" | "Music" | "Dance" | "Performance" | "Food" | "PersonalService" | "Meeting" | "Government" | "Volunteer" | "Fundraiser" | "Film" | "Theater" | "Comedy" | "Literature" | "Exhibition" | "Workshop" | "Fitness" | "Market" | "Sports" | "Family" | "Social" | "Holiday" | "Religious" | "ChildFriendly" | "Other"
     pub event_types: Option<Vec<String>>,
     pub url: Option<String>,
+    pub age_restrictions: Option<String>,
+    pub price: Option<f64>,
     /// Confidence level of the extraction (0.0 to 1.0)
     pub confidence: f64,
 }
@@ -119,7 +121,7 @@ async fn parse_image_with_now(
                         - The full_text field should contain all readable text from the image.
                         - The description field should be the description of the event.
                         - The confidence should be a number between 0.0 and 1.0 indicating how confident you are in the extraction.
-                        - Focus on extracting event-related information like the name, date, time, location, url, and description.
+                        - Focus on extracting event-related information like the name, date, time, location, url, description, age restrictions, and price.
                         - Try to always extract at least one event type in event_types.
                         - Today's date is {now_str}.
                         - The start_date and end_date must be formatted as ISO 8601 strings without timezone offset (e.g., "YYYY-MM-DDTHH:MM:SS").
@@ -277,8 +279,8 @@ fn parse_and_validate_response(content: &str) -> Result<Vec<Event>> {
             url: extracted_event.url,
             confidence: extracted_event.confidence,
             id: None,
-            age_restrictions: None, // Logic for extraction could be added here if schema supported it
-            price: None, // Logic for extraction could be added here if schema supported it
+            age_restrictions: extracted_event.age_restrictions,
+            price: extracted_event.price,
             source: EventSource::ImageUpload,
         });
     }
