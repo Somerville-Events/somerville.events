@@ -28,10 +28,10 @@
 
 <p>{{ event.description }}</p>
 
-{% if !event.category_links.is_empty() %}
+{% if !event.event_types.is_empty() %}
 <div class="event-tags">
-    {% for (url, label) in event.category_links %}
-    <a href="{{ url }}" class="event-tag">{{ label }}</a>
+    {% for link in event.event_types %}
+    <a href="{{ link.url }}" class="event-tag" style="border-color: {{ link.color }}; color: {{ link.color }}">{{ link.icon|safe }} {{ link.label }}</a>
     {% endfor %}
 </div>
 {% endif %}

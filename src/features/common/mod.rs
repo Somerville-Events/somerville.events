@@ -63,6 +63,14 @@ pub enum EventLocation {
 }
 
 #[derive(Clone)]
+pub struct EventTypeLink {
+    pub url: String,
+    pub label: String,
+    pub icon: String,
+    pub color: String,
+}
+
+#[derive(Clone)]
 pub struct EventViewModel {
     pub id: i64,
     pub name: String,
@@ -73,7 +81,7 @@ pub struct EventViewModel {
     pub location: EventLocation,
     pub description: String,
     pub full_text_paragraphs: Vec<String>,
-    pub category_links: Vec<(String, String)>,
+    pub event_types: Vec<EventTypeLink>,
     pub website_link: Option<String>,
     pub google_calendar_url: String,
     pub age_restrictions: Option<String>,
@@ -109,10 +117,15 @@ impl EventViewModel {
             (String::new(), None)
         };
 
-        let category_links = event
+        let event_types = event
             .event_types
             .iter()
-            .map(|c| (c.get_url_with_past(is_past_view), c.to_string()))
+            .map(|c| EventTypeLink {
+                url: c.get_url_with_past(is_past_view),
+                label: c.to_string(),
+                icon: get_icon_for_type(c).to_string(),
+                color: get_color_for_type(c).to_string(),
+            })
             .collect();
 
         let location = if let (Some(name), Some(addr), Some(google_place_id)) =
@@ -196,7 +209,7 @@ impl EventViewModel {
                 .map(|s| s.trim().to_string())
                 .filter(|s| !s.is_empty())
                 .collect(),
-            category_links,
+            event_types,
             website_link: event.url.clone(),
             google_calendar_url,
             age_restrictions: event.age_restrictions.clone(),
