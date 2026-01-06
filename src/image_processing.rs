@@ -227,38 +227,28 @@ fn parse_and_validate_response(content: &str) -> Result<Vec<Event>> {
     let mut valid_events = Vec::new();
 
     for extracted_event in extraction.events {
-        let name = match extracted_event.name {
-            Some(n) if !n.trim().is_empty() => n,
-            _ => {
-                log::info!("Skipping event extraction missing name");
-                continue;
-            }
+        let Some(name) = extracted_event.name.filter(|n| !n.trim().is_empty()) else {
+            log::info!("Skipping event extraction missing name");
+            continue;
         };
 
-        let start_date = match extracted_event.start_date {
-            Some(naive) => match datetime_from_naive(naive) {
-                Some(dt) => dt,
-                None => {
-                    log::warn!("Invalid local time for start_date: {:?}", naive);
-                    continue;
-                }
-            },
-            None => {
-                log::info!("Skipping event extraction missing start_date");
-                continue;
-            }
+        let Some(naive_start) = extracted_event.start_date else {
+            log::info!("Skipping event extraction missing start_date");
+            continue;
         };
 
-        let end_date = match extracted_event.end_date {
-            Some(naive) => match datetime_from_naive(naive) {
-                Some(dt) => Some(dt),
-                None => {
-                    log::warn!("Invalid local time for end_date: {:?}", naive);
-                    None
-                }
-            },
-            None => None,
+        let Some(start_date) = datetime_from_naive(naive_start) else {
+            log::warn!("Invalid local time for start_date: {:?}", naive_start);
+            continue;
         };
+
+        let end_date = extracted_event.end_date.and_then(|naive| {
+            let dt = datetime_from_naive(naive);
+            if dt.is_none() {
+                log::warn!("Invalid local time for end_date: {:?}", naive);
+            }
+            dt
+        });
 
         valid_events.push(Event {
             name,

@@ -1,7 +1,7 @@
 use crate::models::{Event, EventType};
 use chrono_tz::America::New_York;
 
-fn get_color_for_type(t: &EventType) -> String {
+pub fn get_color_for_type(t: &EventType) -> String {
     let (light_mode, dark_mode) = match t {
         EventType::Art
         | EventType::Exhibition
@@ -26,32 +26,26 @@ fn get_color_for_type(t: &EventType) -> String {
     format!("light-dark({}, {})", light_mode, dark_mode)
 }
 
-fn get_icon_for_type(t: &EventType) -> &'static str {
+pub fn get_icon_for_type(t: &EventType) -> &'static str {
     match t {
-        EventType::YardSale => r##"<svg><use href="#icon-tag"/></svg>"##, // tag
-        EventType::Art | EventType::Exhibition => r##"<svg><use href="#icon-palette"/></svg>"##, // palette
-        EventType::Music | EventType::Dance => r##"<svg><use href="#icon-music"/></svg>"##, // music
-        EventType::Food => r##"<svg><use href="#icon-utensils"/></svg>"##, // utensils
-        EventType::PersonalService | EventType::Volunteer => {
-            r##"<svg><use href="#icon-heart-handshake"/></svg>"##
-        } // heart-handshake
-        EventType::Meeting => r##"<svg><use href="#icon-users"/></svg>"##,
-        EventType::Government => r##"<svg><use href="#icon-landmark"/></svg>"##,
-        EventType::Fundraiser => r##"<svg><use href="#icon-dollar-sign"/></svg>"##, // dollar-sign
-        EventType::Film => r##"<svg><use href="#icon-film"/></svg>"##,              // film
-        EventType::Theater | EventType::Comedy | EventType::Performance => {
-            r##"<svg><use href="#icon-drama"/></svg>"##
-        } // smile / drama
-        EventType::Literature => r##"<svg><use href="#icon-book-open"/></svg>"##,   // book-open
-        EventType::Workshop => r##"<svg><use href="#icon-wrench"/></svg>"##,        // wrench
-        EventType::Fitness | EventType::Sports => r##"<svg><use href="#icon-trophy"/></svg>"##, // trophy
-        EventType::Market => r##"<svg><use href="#icon-store"/></svg>"##, // store
-        EventType::Family | EventType::ChildFriendly => r##"<svg><use href="#icon-baby"/></svg>"##, // baby
-        EventType::Social | EventType::Holiday => {
-            r##"<svg><use href="#icon-party-popper"/></svg>"##
-        }
-        EventType::Religious => r##"<svg><use href="#icon-church"/></svg>"##, // church
-        EventType::Other => r##"<svg><use href="#icon-circle-help"/></svg>"##, // circle-help
+        EventType::YardSale => "icon-tag",
+        EventType::Art | EventType::Exhibition => "icon-palette",
+        EventType::Music | EventType::Dance => "icon-music",
+        EventType::Food => "icon-utensils",
+        EventType::PersonalService | EventType::Volunteer => "icon-heart-handshake",
+        EventType::Meeting => "icon-users",
+        EventType::Government => "icon-landmark",
+        EventType::Fundraiser => "icon-dollar-sign",
+        EventType::Film => "icon-film",
+        EventType::Theater | EventType::Comedy | EventType::Performance => "icon-drama",
+        EventType::Literature => "icon-book-open",
+        EventType::Workshop => "icon-wrench",
+        EventType::Fitness | EventType::Sports => "icon-trophy",
+        EventType::Market => "icon-store",
+        EventType::Family | EventType::ChildFriendly => "icon-baby",
+        EventType::Social | EventType::Holiday => "icon-party-popper",
+        EventType::Religious => "icon-church",
+        EventType::Other => "icon-circle-help",
     }
 }
 

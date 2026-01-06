@@ -1,4 +1,6 @@
-use crate::features::common::{DateFormat, EventLocation, EventViewModel};
+use crate::features::common::{
+    get_color_for_type, get_icon_for_type, DateFormat, EventLocation, EventTypeLink, EventViewModel,
+};
 use crate::models::{Event, EventSource, EventType};
 use crate::AppState;
 use actix_web::http::header::ContentType;
@@ -15,6 +17,7 @@ use std::collections::BTreeMap;
 struct IndexTemplate {
     page_title: String,
     filter_badge: String,
+    active_filters: Vec<EventTypeLink>,
     days: Vec<DaySection>,
     is_past_view: bool,
 }
@@ -104,7 +107,7 @@ pub async fn index_with_now(
                     (end_day, start_day)
                 };
 
-                loop {
+                while day <= last_day {
                     if day >= earliest_day_to_render {
                         events_by_day.entry(day).or_default().push(event.clone());
                     }
@@ -143,6 +146,17 @@ pub async fn index_with_now(
                 });
             }
 
+            let active_filters: Vec<EventTypeLink> = query
+                .event_types
+                .iter()
+                .map(|c| EventTypeLink {
+                    url: c.get_url_with_past(is_past),
+                    label: c.to_string(),
+                    icon: get_icon_for_type(c).to_string(),
+                    color: get_color_for_type(c),
+                })
+                .collect();
+
             let (page_title, filter_badge) = if !query.event_types.is_empty() {
                 let category_filter = query
                     .event_types
@@ -172,6 +186,7 @@ pub async fn index_with_now(
             let template = IndexTemplate {
                 page_title,
                 filter_badge,
+                active_filters,
                 days,
                 is_past_view: is_past,
             };

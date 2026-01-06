@@ -1,4 +1,4 @@
-<div class="event-row">
+<div class="detail-row">
     <svg class="icon">
         <use href="#icon-calendar"></use>
     </svg>
@@ -11,7 +11,7 @@
     </div>
 </div>
 
-<div class="event-row">
+<div class="detail-row">
     <svg class="icon">
         <use href="#icon-map-pin"></use>
     </svg>
@@ -33,8 +33,11 @@
 {% if !event.event_types.is_empty() %}
 <div class="event-tags">
     {% for link in event.event_types %}
-    <a href="{{ link.url }}" class="event-tag" style="border-color: {{ link.color }}; color: {{ link.color }}">{{
-        link.icon|safe }} {{ link.label }}</a>
+    <a href="{{ link.url }}" class="event-tag" style="border-color: {{ link.color }}; color: {{ link.color }}">
+        <svg>
+            <use href="#{{ link.icon }}"></use>
+        </svg> {{ link.label }}
+    </a>
     {% endfor %}
 </div>
 {% endif %}

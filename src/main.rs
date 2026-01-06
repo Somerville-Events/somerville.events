@@ -296,7 +296,8 @@ mod tests {
 
         assert!(body_str.contains("Art Show"));
         assert!(!body_str.contains("Music Night"));
-        assert!(body_str.contains(r#"<a href="/?type=art">Art</a>"#));
+        // Icon for Art should be present
+        assert!(body_str.contains("icon-palette"));
         assert!(body_str.contains("Somerville Art Events"));
         assert!(body_str.contains(r#"<a class="button" href="/">Show all events</a>"#));
 
@@ -483,7 +484,7 @@ mod tests {
 
         let document = Html::parse_document(body_str);
         let day_sections_sel = Selector::parse("section").unwrap();
-        let event_link_sel = Selector::parse("article h3 a").unwrap();
+        let event_link_sel = Selector::parse("article a.event-card").unwrap();
 
         let day_ids: Vec<String> = document
             .select(&day_sections_sel)
