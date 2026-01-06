@@ -99,46 +99,32 @@
             backdrop-filter: blur(5px);
         }
 
-        .simple-event {
-            /* Reset article styling */
+        .events-day article {
             background-color: transparent;
             margin-bottom: 0;
-            /* Continuous list */
         }
 
         /* Event Card Styling */
-        .event-card-link {
+        .events-day article>a {
             position: relative;
-            /* For accent positioning */
             display: grid;
             grid-template-columns: 1fr auto;
-            /* Title/Loc takes space, Time takes what it needs */
             grid-template-rows: auto auto;
-            /* Two rows: Title/Start, Location/End */
             column-gap: 0.75rem;
             row-gap: 0.1rem;
             align-items: baseline;
             padding: 0.8rem 1rem;
-            /* Full bleed means we need padding inside */
             padding-left: 3rem;
-            /* Extra padding for wider accent + icon */
-
-            /* List view tactile feel */
             background-color: var(--event-bg);
-            /* Or transparent if we want body bg */
             color: var(--button-text);
             border-bottom: 1px solid var(--button-border);
-            /* Separator */
-            /* No border radius for full bleed */
             border-radius: 0;
             box-shadow: none;
-            /* Remove chunky shadow */
-
             text-decoration: none;
             transition: background-color 0.1s;
         }
 
-        .event-accent {
+        .events-day article>a>div:first-child {
             position: absolute;
             left: 0;
             top: 0;
@@ -148,35 +134,28 @@
             align-items: center;
             justify-content: center;
             color: white;
-            /* Icon color */
         }
 
-        .event-accent svg {
+        .events-day article>a>div:first-child svg {
             width: 1.2rem;
             height: 1.2rem;
             stroke-width: 2.5;
             filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.3));
         }
 
-        /* Remove top border for the first item if we wanted, but simple-event loops. 
-           CSS :first-child on the article might work if we select properly. */
-
-        .event-card-link:hover {
+        .events-day article>a:hover {
             text-decoration: none;
             background-color: light-dark(#dcdcdc, #3a3a3a);
-            /* Subtle hover */
         }
 
-        .event-card-link:active {
+        .events-day article>a:active {
             transform: none;
-            /* Remove push effect */
             background-color: light-dark(#d0d0d0, #444);
-            /* Active press state */
             box-shadow: none;
         }
 
         /* Grid Children Placement */
-        .event-title {
+        .events-day article h3 {
             grid-column: 1;
             grid-row: 1;
             font-size: 1rem;
@@ -188,7 +167,7 @@
             min-width: 0;
         }
 
-        .event-start-time {
+        .events-day article time:first-of-type {
             grid-column: 2;
             grid-row: 1;
             text-align: right;
@@ -198,8 +177,7 @@
             white-space: nowrap;
         }
 
-
-        .event-location {
+        .events-day article>a>div:nth-of-type(2) {
             grid-column: 1;
             grid-row: 2;
             font-size: 0.9em;
@@ -210,7 +188,7 @@
             min-width: 0;
         }
 
-        .event-end-time {
+        .events-day article time:nth-of-type(2) {
             grid-column: 2;
             grid-row: 2;
             text-align: right;

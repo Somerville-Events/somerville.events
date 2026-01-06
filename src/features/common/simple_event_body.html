@@ -1,26 +1,23 @@
-<article class="simple-event">
-    <a href="/event/{{ event.id }}" class="event-card-link">
-        <div class="event-accent" style="background: {{ event.accent_gradient }}">
+<article>
+    <a href="/event/{{ event.id }}">
+        <div style="background: {{ event.accent_gradient }}">
             {{ event.accent_icon|safe }}
         </div>
-        <h3 class="event-title">{{ event.name }}</h3>
-        <time class="event-start-time" datetime="{{ event.start_iso }}">{{ event.start_formatted }}</time>
+        <h3>{{ event.name }}</h3>
+        <time datetime="{{ event.start_iso }}">{{ event.start_formatted }}</time>
 
-        <div class="event-location">
+        <div>
             {% match event.location %}
             {% when EventLocation::Structured with { name, address, google_maps_link } %}
-            <span>{{ name }}</span>
+            {{ name }}
             {% when EventLocation::Unstructured with (original) %}
-            <span>{{ original }}</span>
+            {{ original }}
             {% when EventLocation::Unknown %}
             {% endmatch %}
         </div>
 
         {% if let Some(end) = event.end_formatted %}
-        <time class="event-end-time" datetime="{{ event.end_iso }}">{{ end }}</time>
-        {% else %}
-        <!-- Empty element to maintain grid structure if needed, or rely on grid auto-placement -->
-        <div class="event-end-time"></div>
+        <time datetime="{{ event.end_iso }}">{{ end }}</time>
         {% endif %}
     </a>
 </article>
