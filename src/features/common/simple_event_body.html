@@ -4,20 +4,18 @@
             {{ event.accent_icon|safe }}
         </div>
         <h3>{{ event.name }}</h3>
+
         <time datetime="{{ event.start_iso }}">{{ event.start_formatted }}</time>
-
-        <div>
-            {% match event.location %}
-            {% when EventLocation::Structured with { name, address, google_maps_link } %}
-            {{ name }}
-            {% when EventLocation::Unstructured with (original) %}
-            {{ original }}
-            {% when EventLocation::Unknown %}
-            {% endmatch %}
-        </div>
-
         {% if let Some(end) = event.end_formatted %}
         <time datetime="{{ event.end_iso }}">{{ end }}</time>
         {% endif %}
+
+        {% match event.location %}
+        {% when EventLocation::Structured with { name, address, google_maps_link } %}
+        <div>{{ name }}</div>
+        {% when EventLocation::Unstructured with (original) %}
+        <div>{{ original }}</div>
+        {% when EventLocation::Unknown %}
+        {% endmatch %}
     </a>
 </article>

@@ -167,7 +167,7 @@
             min-width: 0;
         }
 
-        .events-day article time:first-of-type {
+        .events-day article time {
             grid-column: 2;
             grid-row: 1;
             text-align: right;
@@ -175,6 +175,11 @@
             font-weight: normal;
             font-variant-numeric: tabular-nums;
             white-space: nowrap;
+        }
+
+        .events-day article time:nth-of-type(2) {
+            grid-row: 2;
+            color: light-dark(#666, #aaa);
         }
 
         .events-day article>a>div:nth-of-type(2) {
@@ -186,16 +191,6 @@
             overflow: hidden;
             text-overflow: ellipsis;
             min-width: 0;
-        }
-
-        .events-day article time:nth-of-type(2) {
-            grid-column: 2;
-            grid-row: 2;
-            text-align: right;
-            font-size: 0.9em;
-            color: light-dark(#666, #aaa);
-            font-variant-numeric: tabular-nums;
-            white-space: nowrap;
         }
 
 
