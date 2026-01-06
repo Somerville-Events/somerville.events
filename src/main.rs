@@ -115,7 +115,7 @@ async fn main() -> Result<()> {
 mod tests {
     use super::database::EventsRepo;
     use super::features::view::IndexQuery;
-    use super::models::{Event, EventType};
+    use super::models::{Event, EventSource, EventType};
     use super::AppState;
     use actix_web::web::Data;
     use actix_web::{test, web, App};
@@ -146,19 +146,22 @@ mod tests {
     impl EventsRepo for MockEventsRepo {
         async fn list(
             &self,
-            category: Option<String>,
+            query: IndexQuery,
             since: Option<DateTime<Utc>>,
             until: Option<DateTime<Utc>>,
         ) -> Result<Vec<Event>> {
             let events = self.events.lock().unwrap().clone();
+
             Ok(events
                 .into_iter()
                 .filter(|e| {
-                    let cat_match = if let Some(cat) = &category {
-                        e.event_type
-                            .as_ref()
-                            .map(|c| c.to_string().eq_ignore_ascii_case(cat))
-                            .unwrap_or(false)
+                    let type_match = if !query.event_types.is_empty() {
+                        e.event_types.iter().any(|c| query.event_types.contains(c))
+                    } else {
+                        true
+                    };
+                    let source_match = if let Some(src) = &query.source {
+                        &e.source == src
                     } else {
                         true
                     };
@@ -172,7 +175,7 @@ mod tests {
                     } else {
                         true
                     };
-                    cat_match && since_match && until_match
+                    type_match && source_match && since_match && until_match
                 })
                 .collect())
         }
@@ -232,9 +235,12 @@ mod tests {
             original_location: Some("Gallery".to_string()),
             google_place_id: None,
             location_name: None,
-            event_type: Some(EventType::Art),
+            event_types: vec![EventType::Art],
             url: None,
             confidence: 1.0,
+            age_restrictions: None,
+            price: None,
+            source: EventSource::ImageUpload,
         };
 
         let music_event = Event {
@@ -248,9 +254,12 @@ mod tests {
             original_location: Some("Club".to_string()),
             google_place_id: None,
             location_name: None,
-            event_type: Some(EventType::Music),
+            event_types: vec![EventType::Music],
             url: None,
             confidence: 1.0,
+            age_restrictions: None,
+            price: None,
+            source: EventSource::ImageUpload,
         };
 
         let state = AppState {
@@ -262,7 +271,6 @@ mod tests {
         };
 
         let fixed_now_utc = now_utc;
-        let filter = Some("Art".to_string());
         let app = test::init_service(App::new().app_data(Data::new(state)).route(
             "/",
             web::get().to(move |state: Data<AppState>| {
@@ -270,7 +278,8 @@ mod tests {
                     state,
                     fixed_now_utc,
                     IndexQuery {
-                        category: filter.clone(),
+                        event_types: vec![EventType::Art],
+                        source: None,
                         past: None,
                     },
                 )
@@ -278,7 +287,7 @@ mod tests {
         ))
         .await;
 
-        let req = test::TestRequest::get().uri("/?category=Art").to_request();
+        let req = test::TestRequest::get().uri("/?type=art").to_request();
         let resp = test::call_service(&app, req).await;
         assert_eq!(resp.status(), actix_web::http::StatusCode::OK);
 
@@ -287,7 +296,7 @@ mod tests {
 
         assert!(body_str.contains("Art Show"));
         assert!(!body_str.contains("Music Night"));
-        assert!(body_str.contains(r#"<a href="/?category=Art">Art</a>"#));
+        assert!(body_str.contains(r#"<a href="/?type=art">Art</a>"#));
         assert!(body_str.contains("Somerville Art Events"));
         assert!(body_str.contains(r#"<a class="button" href="/">Show all events</a>"#));
 
@@ -317,9 +326,12 @@ mod tests {
             original_location: Some("Somewhere".to_string()),
             google_place_id: None,
             location_name: None,
-            event_type: None,
+            event_types: vec![],
             url: None,
             confidence: 1.0,
+            age_restrictions: None,
+            price: None,
+            source: EventSource::ImageUpload,
         };
 
         // No end_date: should render only on its start day.
@@ -334,9 +346,12 @@ mod tests {
             original_location: Some("Somerville".to_string()),
             google_place_id: None,
             location_name: None,
-            event_type: None,
+            event_types: vec![],
             url: None,
             confidence: 1.0,
+            age_restrictions: None,
+            price: None,
+            source: EventSource::ImageUpload,
         };
 
         // No end_date from yesterday (within the last 24h) should still render, and should
@@ -352,9 +367,12 @@ mod tests {
             original_location: Some("Somerville".to_string()),
             google_place_id: None,
             location_name: None,
-            event_type: None,
+            event_types: vec![],
             url: None,
             confidence: 1.0,
+            age_restrictions: None,
+            price: None,
+            source: EventSource::ImageUpload,
         };
 
         // Two distinct events on the same local day should both render under the same day section.
@@ -370,9 +388,12 @@ mod tests {
             original_location: Some("Union".to_string()),
             google_place_id: None,
             location_name: None,
-            event_type: None,
+            event_types: vec![],
             url: None,
             confidence: 1.0,
+            age_restrictions: None,
+            price: None,
+            source: EventSource::ImageUpload,
         };
 
         let same_day_2 = Event {
@@ -387,9 +408,12 @@ mod tests {
             original_location: Some("Magoun".to_string()),
             google_place_id: None,
             location_name: None,
-            event_type: None,
+            event_types: vec![],
             url: None,
             confidence: 1.0,
+            age_restrictions: None,
+            price: None,
+            source: EventSource::ImageUpload,
         };
 
         // Explicit multi-day: should appear under each day.
@@ -404,9 +428,12 @@ mod tests {
             original_location: Some("Davis".to_string()),
             google_place_id: None,
             location_name: None,
-            event_type: None,
+            event_types: vec![],
             url: None,
             confidence: 1.0,
+            age_restrictions: None,
+            price: None,
+            source: EventSource::ImageUpload,
         };
 
         // Intentionally shuffled to ensure server-side sorting/grouping is doing the work.
@@ -435,7 +462,8 @@ mod tests {
                     state,
                     fixed_now_utc,
                     IndexQuery {
-                        category: None,
+                        event_types: vec![],
+                        source: None,
                         past: None,
                     },
                 )
@@ -551,9 +579,12 @@ mod tests {
             original_location: Some("Virtual".to_string()),
             google_place_id: None,
             location_name: None,
-            event_type: None,
+            event_types: vec![],
             url: Some("http://example.com/event".to_string()),
             confidence: 1.0,
+            age_restrictions: None,
+            price: None,
+            source: EventSource::ImageUpload,
         };
 
         let state = AppState {
@@ -637,9 +668,12 @@ mod tests {
             original_location: Some("Somerville".to_string()),
             google_place_id: None,
             location_name: None,
-            event_type: None,
+            event_types: vec![],
             url: None,
             confidence: 1.0,
+            age_restrictions: None,
+            price: None,
+            source: EventSource::ImageUpload,
         };
 
         let state = AppState {
@@ -659,7 +693,8 @@ mod tests {
                     state,
                     fixed_now,
                     IndexQuery {
-                        category: None,
+                        event_types: vec![],
+                        source: None,
                         past: None,
                     },
                 )
@@ -679,6 +714,260 @@ mod tests {
             "Body did not contain '10:30 AM'. Content: {}",
             body_str
         );
+        Ok(())
+    }
+
+    #[actix_web::test]
+    async fn test_index_filters_by_source() -> Result<()> {
+        // 2025-01-15 17:00:00 UTC = 12:00:00 EST
+        let now_utc = Utc.with_ymd_and_hms(2025, 1, 15, 17, 0, 0).unwrap();
+
+        // Helper to create a NY datetime
+        let mk_ny = |d, h, m| New_York.with_ymd_and_hms(2025, 1, d, h, m, 0).unwrap();
+
+        let aeronaut_event = Event {
+            id: Some(1),
+            name: "Beer Night".to_string(),
+            description: "Drink beer".to_string(),
+            full_text: "Drink beer".to_string(),
+            start_date: mk_ny(15, 18, 0).with_timezone(&Utc),
+            end_date: None,
+            address: Some("Aeronaut".to_string()),
+            original_location: Some("Aeronaut".to_string()),
+            google_place_id: None,
+            location_name: None,
+            event_types: vec![EventType::Social],
+            url: None,
+            confidence: 1.0,
+            age_restrictions: None,
+            price: None,
+            source: super::models::EventSource::AeronautBrewing,
+        };
+
+        let library_event = Event {
+            id: Some(2),
+            name: "Reading".to_string(),
+            description: "Read books".to_string(),
+            full_text: "Read books".to_string(),
+            start_date: mk_ny(15, 19, 0).with_timezone(&Utc),
+            end_date: None,
+            address: Some("Library".to_string()),
+            original_location: Some("Library".to_string()),
+            google_place_id: None,
+            location_name: None,
+            event_types: vec![EventType::Literature],
+            url: None,
+            confidence: 1.0,
+            age_restrictions: None,
+            price: None,
+            source: super::models::EventSource::CityOfCambridge,
+        };
+
+        let state = AppState {
+            openai_api_key: "dummy".to_string(),
+            google_maps_api_key: "dummy".to_string(),
+            username: "user".to_string(),
+            password: "pass".to_string(),
+            events_repo: Box::new(MockEventsRepo::new(vec![
+                aeronaut_event.clone(),
+                library_event,
+            ])),
+        };
+
+        let fixed_now_utc = now_utc;
+        let filter = Some(crate::models::EventSource::AeronautBrewing);
+        let app = test::init_service(App::new().app_data(Data::new(state)).route(
+            "/",
+            web::get().to(move |state: Data<AppState>| {
+                super::features::view::index_with_now(
+                    state,
+                    fixed_now_utc,
+                    IndexQuery {
+                        event_types: vec![],
+                        source: filter.clone(),
+                        past: None,
+                    },
+                )
+            }),
+        ))
+        .await;
+
+        let req = test::TestRequest::get()
+            .uri("/?source=Aeronaut%20Brewing")
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+        assert_eq!(resp.status(), actix_web::http::StatusCode::OK);
+
+        let body = test::read_body(resp).await;
+        let body_str = std::str::from_utf8(&body)?;
+
+        assert!(body_str.contains("Beer Night"));
+        assert!(!body_str.contains("Reading"));
+
+        Ok(())
+    }
+
+    #[actix_web::test]
+    async fn test_category_deserialization_multiple_params() -> Result<()> {
+        let state = AppState {
+            openai_api_key: "dummy".to_string(),
+            google_maps_api_key: "dummy".to_string(),
+            username: "user".to_string(),
+            password: "pass".to_string(),
+            events_repo: Box::new(MockEventsRepo::new(vec![])),
+        };
+
+        let app = test::init_service(
+            App::new()
+                .app_data(Data::new(state))
+                .route("/", web::get().to(super::features::view::index)),
+        )
+        .await;
+
+        // Test ?type=social&type=family
+        let req = test::TestRequest::get()
+            .uri("/?type=social&type=family")
+            .to_request();
+
+        let resp = test::call_service(&app, req).await;
+
+        assert_eq!(resp.status(), actix_web::http::StatusCode::OK);
+        Ok(())
+    }
+
+    #[actix_web::test]
+    async fn test_category_deserialization_single() -> Result<()> {
+        let state = AppState {
+            openai_api_key: "dummy".to_string(),
+            google_maps_api_key: "dummy".to_string(),
+            username: "user".to_string(),
+            password: "pass".to_string(),
+            events_repo: Box::new(MockEventsRepo::new(vec![])),
+        };
+
+        let app = test::init_service(
+            App::new()
+                .app_data(Data::new(state))
+                .route("/", web::get().to(super::features::view::index)),
+        )
+        .await;
+
+        let req = test::TestRequest::get().uri("/?type=social").to_request();
+
+        let resp = test::call_service(&app, req).await;
+
+        assert_eq!(resp.status(), actix_web::http::StatusCode::OK);
+        Ok(())
+    }
+
+    #[actix_web::test]
+    async fn test_index_filters_by_multiple_categories() -> Result<()> {
+        // 2025-01-15 17:00:00 UTC = 12:00:00 EST
+        let now_utc = Utc.with_ymd_and_hms(2025, 1, 15, 17, 0, 0).unwrap();
+
+        // Helper to create a NY datetime
+        let mk_ny = |d, h, m| New_York.with_ymd_and_hms(2025, 1, d, h, m, 0).unwrap();
+
+        let art_event = Event {
+            id: Some(1),
+            name: "Art Show".to_string(),
+            description: "Paintings".to_string(),
+            full_text: "Paintings".to_string(),
+            start_date: mk_ny(15, 18, 0).with_timezone(&Utc),
+            end_date: None,
+            address: Some("Gallery".to_string()),
+            original_location: Some("Gallery".to_string()),
+            google_place_id: None,
+            location_name: None,
+            event_types: vec![EventType::Art],
+            url: None,
+            confidence: 1.0,
+            age_restrictions: None,
+            price: None,
+            source: EventSource::ImageUpload,
+        };
+
+        let music_event = Event {
+            id: Some(2),
+            name: "Music Night".to_string(),
+            description: "Music".to_string(),
+            full_text: "Music".to_string(),
+            start_date: mk_ny(15, 19, 0).with_timezone(&Utc),
+            end_date: None,
+            address: Some("Club".to_string()),
+            original_location: Some("Club".to_string()),
+            google_place_id: None,
+            location_name: None,
+            event_types: vec![EventType::Music],
+            url: None,
+            confidence: 1.0,
+            age_restrictions: None,
+            price: None,
+            source: EventSource::ImageUpload,
+        };
+
+        let food_event = Event {
+            id: Some(3),
+            name: "Food Fest".to_string(),
+            description: "Food".to_string(),
+            full_text: "Food".to_string(),
+            start_date: mk_ny(15, 20, 0).with_timezone(&Utc),
+            end_date: None,
+            address: Some("Park".to_string()),
+            original_location: Some("Park".to_string()),
+            google_place_id: None,
+            location_name: None,
+            event_types: vec![EventType::Food],
+            url: None,
+            confidence: 1.0,
+            age_restrictions: None,
+            price: None,
+            source: EventSource::ImageUpload,
+        };
+
+        let state = AppState {
+            openai_api_key: "dummy".to_string(),
+            google_maps_api_key: "dummy".to_string(),
+            username: "user".to_string(),
+            password: "pass".to_string(),
+            events_repo: Box::new(MockEventsRepo::new(vec![
+                art_event.clone(),
+                music_event.clone(),
+                food_event,
+            ])),
+        };
+
+        let fixed_now_utc = now_utc;
+        let filter = vec![EventType::Art, EventType::Music];
+        let app = test::init_service(App::new().app_data(Data::new(state)).route(
+            "/",
+            web::get().to(move |state: Data<AppState>| {
+                super::features::view::index_with_now(
+                    state,
+                    fixed_now_utc,
+                    IndexQuery {
+                        event_types: filter.clone(),
+                        source: None,
+                        past: None,
+                    },
+                )
+            }),
+        ))
+        .await;
+
+        let req = test::TestRequest::get()
+            .uri("/?type=art&type=music")
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+        assert_eq!(resp.status(), actix_web::http::StatusCode::OK);
+
+        let body = test::read_body(resp).await;
+        let body_str = std::str::from_utf8(&body)?;
+
+        assert!(body_str.contains("Art Show"));
+        assert!(body_str.contains("Music Night"));
+        assert!(!body_str.contains("Food Fest"));
+
         Ok(())
     }
 }

@@ -4,6 +4,8 @@ use actix_web::http::header::ContentType;
 use actix_web::{web, HttpResponse, Responder};
 use askama::Template;
 
+use crate::features::view::IndexQuery;
+
 #[derive(Template)]
 #[template(path = "edit/index.html")]
 struct EditListTemplate {
@@ -11,7 +13,11 @@ struct EditListTemplate {
 }
 
 pub async fn index(state: web::Data<AppState>) -> impl Responder {
-    match state.events_repo.list(None, None, None).await {
+    match state
+        .events_repo
+        .list(IndexQuery::default(), None, None)
+        .await
+    {
         Ok(events) => {
             let vms: Vec<EventViewModel> = events
                 .iter()

@@ -1,0 +1,5 @@
+[advisories]
+ignore = [
+    "RUSTSEC-2023-0071", # rsa: Marvin Attack. Transitive via sqlx-mysql (unused in this project).
+]
+

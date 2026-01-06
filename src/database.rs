@@ -1,4 +1,5 @@
-use crate::models::{Event, EventType};
+use crate::features::view::IndexQuery;
+use crate::models::{Event, EventSource, EventType};
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
@@ -8,7 +9,7 @@ use strsim::jaro_winkler;
 pub trait EventsRepo: Send + Sync {
     async fn list(
         &self,
-        category: Option<String>,
+        query: IndexQuery,
         since: Option<DateTime<Utc>>,
         until: Option<DateTime<Utc>>,
     ) -> Result<Vec<Event>>;
@@ -22,68 +23,132 @@ pub trait EventsRepo: Send + Sync {
 impl EventsRepo for sqlx::Pool<sqlx::Postgres> {
     async fn list(
         &self,
-        category: Option<String>,
+        query: IndexQuery,
         since: Option<DateTime<Utc>>,
         until: Option<DateTime<Utc>>,
     ) -> Result<Vec<Event>> {
-        let events = sqlx::query_as!(
-            Event,
+        let categories: Vec<String> = query
+            .event_types
+            .iter()
+            .map(|c| c.as_ref().to_string())
+            .collect();
+        let source: Option<String> = query.source.map(|s| s.as_ref().to_string());
+
+        let rows = sqlx::query!(
             r#"
+            WITH filtered_events AS (
+                SELECT DISTINCT e.id
+                FROM app.events e
+                LEFT JOIN app.event_event_types et ON e.id = et.event_id
+                WHERE (cardinality($1::text[]) = 0 OR et.event_type_name = ANY($1::text[]))
+                AND ($2::text IS NULL OR e.source = $2::text)
+                AND ($3::timestamptz IS NULL OR e.start_date >= $3)
+                AND ($4::timestamptz IS NULL OR e.start_date <= $4)
+            )
             SELECT
-                id,
-                name,
-                description,
-                full_text,
-                start_date,
-                end_date,
-                address,
-                original_location,
-                google_place_id,
-                location_name,
-                event_type as "event_type: EventType",
-                url,
-                confidence
-            FROM app.events
-            WHERE ($1::text IS NULL OR event_type::text = $1::text)
-            AND ($2::timestamptz IS NULL OR start_date >= $2)
-            AND ($3::timestamptz IS NULL OR start_date <= $3)
-            ORDER BY start_date ASC NULLS LAST
+                e.id,
+                e.name,
+                e.description,
+                e.full_text,
+                e.start_date,
+                e.end_date,
+                e.address,
+                e.original_location,
+                e.google_place_id,
+                e.location_name,
+                e.url,
+                e.confidence,
+                e.age_restrictions,
+                e.price,
+                e.source,
+                COALESCE(array_agg(et.event_type_name ORDER BY et.event_type_name) FILTER (WHERE et.event_type_name IS NOT NULL), '{}') as "event_types!"
+            FROM app.events e
+            JOIN filtered_events fe ON e.id = fe.id
+            LEFT JOIN app.event_event_types et ON e.id = et.event_id
+            GROUP BY e.id
+            ORDER BY e.start_date ASC NULLS LAST
             "#,
-            category,
+            &categories,
+            source,
             since,
             until
         )
         .fetch_all(self)
         .await?;
+
+        let events = rows
+            .into_iter()
+            .map(|r| Event {
+                id: Some(r.id),
+                name: r.name,
+                description: r.description,
+                full_text: r.full_text,
+                start_date: r.start_date,
+                end_date: r.end_date,
+                address: r.address,
+                original_location: r.original_location,
+                google_place_id: r.google_place_id,
+                location_name: r.location_name,
+                event_types: r.event_types.into_iter().map(EventType::from).collect(),
+                url: r.url,
+                confidence: r.confidence,
+                age_restrictions: r.age_restrictions,
+                price: r.price,
+                source: EventSource::from(r.source),
+            })
+            .collect();
+
         Ok(events)
     }
 
     async fn get(&self, id: i64) -> Result<Option<Event>> {
-        let event = sqlx::query_as!(
-            Event,
+        let row = sqlx::query!(
             r#"
             SELECT
-                id,
-                name,
-                description,
-                full_text,
-                start_date,
-                end_date,
-                address,
-                original_location,
-                google_place_id,
-                location_name,
-                event_type as "event_type: EventType",
-                url,
-                confidence
-            FROM app.events
-            WHERE id = $1
+                e.id,
+                e.name,
+                e.description,
+                e.full_text,
+                e.start_date,
+                e.end_date,
+                e.address,
+                e.original_location,
+                e.google_place_id,
+                e.location_name,
+                e.url,
+                e.confidence,
+                e.age_restrictions,
+                e.price,
+                e.source,
+                COALESCE(array_agg(et.event_type_name ORDER BY et.event_type_name) FILTER (WHERE et.event_type_name IS NOT NULL), '{}') as "event_types!"
+            FROM app.events e
+            LEFT JOIN app.event_event_types et ON e.id = et.event_id
+            WHERE e.id = $1
+            GROUP BY e.id
             "#,
             id,
         )
         .fetch_optional(self)
         .await?;
-        Ok(event)
+
+        Ok(row.map(|r| Event {
+            id: Some(r.id),
+            name: r.name,
+            description: r.description,
+            full_text: r.full_text,
+            start_date: r.start_date,
+            end_date: r.end_date,
+            address: r.address,
+            original_location: r.original_location,
+            google_place_id: r.google_place_id,
+            location_name: r.location_name,
+            event_types: r.event_types.into_iter().map(EventType::from).collect(),
+            url: r.url,
+            confidence: r.confidence,
+            age_restrictions: r.age_restrictions,
+            price: r.price,
+            source: EventSource::from(r.source),
+        }))
     }
 
     async fn claim_idempotency_key(&self, idempotency_key: uuid::Uuid) -> Result<bool> {
@@ -135,25 +200,29 @@ pub async fn save_event_to_db(executor: &sqlx::Pool<sqlx::Postgres>, event: &Eve
         return Ok(duplicate_id);
     }
 
+    let mut tx = executor.begin().await?;
+
     let id = sqlx::query_scalar!(
         r#"
-        INSERT INTO app.events (
-            name,
-            description,
-            full_text,
-            start_date,
-            end_date,
-            address,
-            original_location,
-            google_place_id,
-            location_name,
-            event_type,
-            url,
-            confidence
-        )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::app.event_type, $11, $12)
-        RETURNING id
-        "#,
+            INSERT INTO app.events (
+                name,
+                description,
+                full_text,
+                start_date,
+                end_date,
+                address,
+                original_location,
+                google_place_id,
+                location_name,
+                url,
+                confidence,
+                age_restrictions,
+                price,
+                source
+            )
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+            RETURNING id
+            "#,
         event.name,
         event.description,
         event.full_text,
@@ -163,13 +232,32 @@ pub async fn save_event_to_db(executor: &sqlx::Pool<sqlx::Postgres>, event: &Eve
         event.original_location,
         event.google_place_id,
         event.location_name,
-        event.event_type.as_ref() as Option<&EventType>,
         event.url,
-        event.confidence
+        event.confidence,
+        event.age_restrictions,
+        event.price,
+        event.source.as_ref()
     )
-    .fetch_one(executor)
+    .fetch_one(&mut *tx)
     .await
     .map_err(|e| anyhow!("Database insert failed: {e}"))?;
+
+    for et in &event.event_types {
+        let et_str = et.as_ref();
+        sqlx::query!(
+            r#"
+                INSERT INTO app.event_event_types (event_id, event_type_name)
+                VALUES ($1, $2)
+                ON CONFLICT DO NOTHING
+                "#,
+            id,
+            et_str
+        )
+        .execute(&mut *tx)
+        .await?;
+    }
+
+    tx.commit().await?;
 
     Ok(id)
 }
@@ -178,34 +266,60 @@ async fn find_duplicate(
     executor: &sqlx::Pool<sqlx::Postgres>,
     event: &Event,
 ) -> Result<Option<i64>> {
-    let potential_duplicates = sqlx::query_as!(
-        Event,
-        r#"
-        SELECT 
-            id,
-            name,
-            description,
-            full_text,
-            start_date,
-            end_date,
-            address,
-            original_location,
-            google_place_id,
-            location_name,
-            event_type as "event_type: EventType",
-            url,
-            confidence
-        FROM app.events
-        WHERE start_date = $1 
-          AND end_date IS NOT DISTINCT FROM $2
-          AND address IS NOT DISTINCT FROM $3
-        "#,
-        event.start_date,
-        event.end_date,
-        event.address
-    )
-    .fetch_all(executor)
-    .await?;
+    let rows = sqlx::query!(
+            r#"
+            SELECT 
+                e.id,
+                e.name,
+                e.description,
+                e.full_text,
+                e.start_date,
+                e.end_date,
+                e.address,
+                e.original_location,
+                e.google_place_id,
+                e.location_name,
+                e.url,
+                e.confidence,
+                e.age_restrictions,
+                e.price,
+                e.source,
+                COALESCE(array_agg(et.event_type_name ORDER BY et.event_type_name) FILTER (WHERE et.event_type_name IS NOT NULL), '{}') as "event_types!"
+            FROM app.events e
+            LEFT JOIN app.event_event_types et ON e.id = et.event_id
+            WHERE e.start_date = $1
+              AND e.end_date IS NOT DISTINCT FROM $2
+              AND e.address IS NOT DISTINCT FROM $3
+            GROUP BY e.id
+            "#,
+            event.start_date,
+            event.end_date,
+            event.address
+        )
+        .fetch_all(executor)
+        .await?;
+
+    let potential_duplicates: Vec<Event> = rows
+        .into_iter()
+        .map(|r| Event {
+            id: Some(r.id),
+            name: r.name,
+            description: r.description,
+            full_text: r.full_text,
+            start_date: r.start_date,
+            end_date: r.end_date,
+            address: r.address,
+            original_location: r.original_location,
+            google_place_id: r.google_place_id,
+            location_name: r.location_name,
+            event_types: r.event_types.into_iter().map(EventType::from).collect(),
+            url: r.url,
+            confidence: r.confidence,
+            age_restrictions: r.age_restrictions,
+            price: r.price,
+            source: EventSource::from(r.source),
+        })
+        .collect();
 
     for row in potential_duplicates {
         if is_duplicate(&row, event) {
@@ -245,9 +359,12 @@ mod tests {
             original_location: address.map(|s| s.to_string()),
             google_place_id: None,
             location_name: None,
-            event_type: None,
+            event_types: vec![],
             url: None,
             confidence: 1.0,
+            age_restrictions: None,
+            price: None,
+            source: EventSource::ImageUpload,
         }
     }
 
@@ -407,5 +524,219 @@ mod tests {
             !is_duplicate(&e9, &e10),
             "Descriptions with key activity differences should NOT match"
         );
+    }
+
+    #[sqlx::test]
+    async fn test_event_types_deterministic_order(pool: sqlx::PgPool) -> Result<()> {
+        let mut event = create_event("Sorted Types", "Desc", Some("Loc"));
+        // Insert in mixed order
+        event.event_types = vec![EventType::Social, EventType::Art, EventType::Family];
+        event.source = EventSource::ImageUpload;
+
+        let id = save_event_to_db(&pool, &event).await?;
+
+        let fetched = pool.get(id).await?.expect("Event not found");
+
+        // Should be sorted alphabetically by the string representation
+        // Art, Family, Social
+        assert_eq!(
+            fetched.event_types,
+            vec![EventType::Art, EventType::Family, EventType::Social]
+        );
+
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn test_duplicate_aggregation_bug(pool: sqlx::PgPool) -> Result<()> {
+        let mut event = create_event("Multi Tag Event", "Desc", Some("Loc"));
+        // 2 distinct tags
+        event.event_types = vec![EventType::Art, EventType::Music];
+        event.source = EventSource::ImageUpload;
+
+        save_event_to_db(&pool, &event).await?;
+
+        // Query with no filter
+        let query_all = IndexQuery {
+            event_types: vec![],
+            source: None,
+            past: None,
+        };
+        let events = pool.list(query_all, None, None).await?;
+        assert_eq!(events.len(), 1);
+        let fetched_event = &events[0];
+
+        // This fails if duplicate aggregation occurs (e.g. 4 tags instead of 2)
+        assert_eq!(
+            fetched_event.event_types.len(),
+            2,
+            "Expected 2 tags, got {:?}",
+            fetched_event.event_types
+        );
+        assert!(fetched_event.event_types.contains(&EventType::Art));
+        assert!(fetched_event.event_types.contains(&EventType::Music));
+
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn test_list_filtering(pool: sqlx::PgPool) -> Result<()> {
+        let art_event = {
+            let mut e = create_event("Art Show", "Paintings", Some("Gallery"));
+            e.event_types = vec![EventType::Art];
+            e.source = EventSource::ImageUpload;
+            // 2023-01-01 10:00:00 UTC
+            e.start_date = Utc.timestamp_opt(1672567200, 0).unwrap();
+            e
+        };
+
+        let music_event = {
+            let mut e = create_event("Music Gig", "Bands", Some("Club"));
+            e.event_types = vec![EventType::Music];
+            e.source = EventSource::ImageUpload;
+            // 2023-01-01 12:00:00 UTC
+            e.start_date = Utc.timestamp_opt(1672574400, 0).unwrap();
+            e
+        };
+
+        save_event_to_db(&pool, &art_event).await?;
+        save_event_to_db(&pool, &music_event).await?;
+
+        // Test Category Filter
+        let query = IndexQuery {
+            event_types: vec![EventType::Art],
+            source: None,
+            past: None,
+        };
+
+        let events = pool.list(query, None, None).await?;
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].name, "Art Show");
+
+        // Test Empty Filter (Should return all)
+        let query_all = IndexQuery {
+            event_types: vec![],
+            source: None,
+            past: None,
+        };
+        let events_all = pool.list(query_all, None, None).await?;
+        assert_eq!(events_all.len(), 2);
+
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn test_full_query_edge_cases(pool: sqlx::PgPool) -> Result<()> {
+        // Setup data
+        let base_time = Utc.timestamp_opt(1672531200, 0).unwrap(); // 2023-01-01 00:00:00 UTC
+
+        let event_1 = {
+            let mut e = create_event("Event 1", "Desc 1", Some("Loc 1"));
+            e.event_types = vec![EventType::Art];
+            e.source = EventSource::ImageUpload;
+            e.start_date = base_time; // 2023-01-01
+            e
+        };
+
+        let event_2 = {
+            let mut e = create_event("Event 2", "Desc 2", Some("Loc 2"));
+            e.event_types = vec![EventType::Music];
+            e.source = EventSource::ArtsAtTheArmory; // Different source
+            e.start_date = base_time + chrono::Duration::days(1); // 2023-01-02
+            e
+        };
+
+        let event_3 = {
+            let mut e = create_event("Event 3", "Desc 3", Some("Loc 3"));
+            e.event_types = vec![EventType::Art, EventType::Music]; // Multiple types
+            e.source = EventSource::ImageUpload;
+            e.start_date = base_time + chrono::Duration::days(2); // 2023-01-03
+            e
+        };
+
+        let id1 = save_event_to_db(&pool, &event_1).await?;
+        let id2 = save_event_to_db(&pool, &event_2).await?;
+        let _id3 = save_event_to_db(&pool, &event_3).await?;
+
+        // 1. GET
+        // 1.1 Get existing
+        let fetched = pool.get(id1).await?;
+        assert!(fetched.is_some());
+        assert_eq!(fetched.unwrap().name, "Event 1");
+
+        // 1.2 Get non-existent
+        let fetched_none = pool.get(999999).await?;
+        assert!(fetched_none.is_none());
+
+        // 2. LIST - Source Filtering
+        let query_source = IndexQuery {
+            event_types: vec![],
+            source: Some(EventSource::ArtsAtTheArmory),
+            past: None,
+        };
+        let res_source = pool.list(query_source, None, None).await?;
+        assert_eq!(res_source.len(), 1);
+        assert_eq!(res_source[0].id.unwrap(), id2);
+
+        // 3. LIST - Category Filtering
+        // 3.1 Single category
+        let query_art = IndexQuery {
+            event_types: vec![EventType::Art],
+            source: None,
+            past: None,
+        };
+        let res_art = pool.list(query_art, None, None).await?;
+        assert_eq!(res_art.len(), 2); // Event 1 and 3
+
+        // 3.2 Multiple categories (OR logic)
+        // If I query for Art OR Music, I should get all 3 (since all have at least one)
+        let query_multi = IndexQuery {
+            event_types: vec![EventType::Art, EventType::Music],
+            source: None,
+            past: None,
+        };
+        let res_multi = pool.list(query_multi, None, None).await?;
+        assert_eq!(res_multi.len(), 3);
+
+        // 4. LIST - Date Range
+        // 4.1 Since (After 2023-01-02) - Should get Event 2 (on day) and 3 (after)
+        // Note: The query uses >= for since.
+        let since_date = base_time + chrono::Duration::days(1);
+        let res_since = pool
+            .list(IndexQuery::default(), Some(since_date), None)
+            .await?;
+        assert_eq!(res_since.len(), 2);
+
+        // 4.2 Until (Before 2023-01-02) - Should get Event 1 and 2
+        // Note: The query uses <= for until.
+        let until_date = base_time + chrono::Duration::days(1);
+        let res_until = pool
+            .list(IndexQuery::default(), None, Some(until_date))
+            .await?;
+        assert_eq!(res_until.len(), 2);
+
+        // 4.3 Window (Only 2023-01-02)
+        let res_window = pool
+            .list(IndexQuery::default(), Some(since_date), Some(until_date))
+            .await?;
+        assert_eq!(res_window.len(), 1);
+        assert_eq!(res_window[0].id.unwrap(), id2);
+
+        // 5. DELETE
+        // 5.1 Delete existing
+        pool.delete(id1).await?;
+        let check_del = pool.get(id1).await?;
+        assert!(check_del.is_none());
+
+        // 5.2 Delete non-existent
+        let del_err = pool.delete(id1).await; // Already deleted
+        assert!(del_err.is_err());
+
+        // 6. DUPLICATE INSERT (Integration)
+        // Try inserting event_2 again. Should return id2.
+        let dup_id = save_event_to_db(&pool, &event_2).await?;
+        assert_eq!(dup_id, id2);
+
+        Ok(())
     }
 }

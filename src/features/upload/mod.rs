@@ -181,7 +181,7 @@ pub async fn hydrate_event_locations(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::models::Event;
+    use crate::models::{Event, EventSource};
     use chrono::Utc;
 
     #[actix_rt::test]
@@ -204,10 +204,13 @@ mod tests {
                 address: None,
                 google_place_id: None,
                 location_name: None,
-                event_type: None,
+                event_types: vec![],
                 url: None,
                 confidence: 1.0,
                 id: None,
+                age_restrictions: None,
+                price: None,
+                source: EventSource::ImageUpload,
             },
             Event {
                 name: "Somerville Theatre Event".to_string(),
@@ -219,10 +222,13 @@ mod tests {
                 address: None,
                 google_place_id: None,
                 location_name: None,
-                event_type: None,
+                event_types: vec![],
                 url: None,
                 confidence: 1.0,
                 id: None,
+                age_restrictions: None,
+                price: None,
+                source: EventSource::ImageUpload,
             },
             Event {
                 name: "Unknown Place Event".to_string(),
@@ -234,10 +240,13 @@ mod tests {
                 address: None,
                 google_place_id: None,
                 location_name: None,
-                event_type: None,
+                event_types: vec![],
                 url: None,
                 confidence: 1.0,
                 id: None,
+                age_restrictions: None,
+                price: None,
+                source: EventSource::ImageUpload,
             },
             Event {
                 name: "Another Davis Square Event".to_string(),
@@ -249,10 +258,13 @@ mod tests {
                 address: None,
                 google_place_id: None,
                 location_name: None,
-                event_type: None,
+                event_types: vec![],
                 url: None,
                 confidence: 1.0,
                 id: None,
+                age_restrictions: None,
+                price: None,
+                source: EventSource::ImageUpload,
             },
         ];
 

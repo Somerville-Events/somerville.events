@@ -22,7 +22,9 @@ https://www.postgresql.org/download/
 
 ### Setup `.env`
 
-Copy the sample environment file and set the real values in `.env`
+Copy the sample environment file and set the real values in `.env`.
+
+**Security Note:** For local development, keep `DB_MIGRATOR_PASS` in `.env`. For production, remove `DB_MIGRATOR_PASS` from the `.env` file on the server; it will be injected securely by the deployment pipeline.
 
 ```bash
 cp .env.sample .env
@@ -45,6 +47,17 @@ This runs some safety checks before pushing to main.
 cp pre-commit .git/hooks/pre-commit
 ```
 
+### Security Checks
+
+We use `cargo-audit` to check for vulnerabilities in dependencies.
+
+1. **Install:** `cargo install cargo-audit --features=fix`
+2. **Run:** `cargo audit`
+3. **Fix:**
+   - **Autofix:** Run `cargo audit fix` to automatically upgrade vulnerable dependencies to safe versions.
+   - **Manual Update:** Run `cargo update` to pull in patched versions if autofix doesn't work.
+   - **Ignore:** If a vulnerability is a false positive (e.g. unused feature), add the ID to `.cargo/audit.toml` under `ignore` with a comment explaining why.
+
 ## Running
 
 ```bash
@@ -57,12 +70,6 @@ The server will start at `http://localhost:8080`.
 
 Push to `main`. GitHub Actions will build, test, and deploy to the VPS.
 
-This project uses `sqlx` offline mode for type checking queries without a live DB in CI. If you modify any SQL queries, update the cache:
-
-```bash
-cargo sqlx prepare
-```
-
 You must have the GitHub secrets set up properly.
 
 Go to your repository settings -> Secrets and variables -> Actions -> New repository secret. Add the following:
@@ -72,3 +79,4 @@ Go to your repository settings -> Secrets and variables -> Actions -> New reposi
 - `SSH_PRIVATE_KEY`: The private SSH key matching the public key in `~/.ssh/authorized_keys` on the VPS.
 - `KNOWN_HOSTS`: The output of `ssh-keyscan <VPS_HOST>`.
 - `OPENAI_API_KEY`: The test runner needs this.
+- `DB_MIGRATOR_PASS`: The password for the `migrator` database role. This is injected during CI and deployment and should NOT be in the `.env` file on the server.

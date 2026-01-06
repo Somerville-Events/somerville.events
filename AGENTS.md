@@ -6,7 +6,7 @@
 ## Database
 
 - **Migrations**: Generate with `sqlx migrate add <migration-name>`. Edit the resulting SQL file.
-- **Type-Safety**: Always use `query_as!()` or equivalent macros. Run `cargo sqlx prepare` if the offline cache is stale (CI fails).
+- **Type-Safety**: Always use `query_as!()` or equivalent macros.
 
 ## Code Style
 

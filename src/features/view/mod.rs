@@ -1,5 +1,5 @@
 use crate::features::common::{DateFormat, EventLocation, EventViewModel};
-use crate::models::Event;
+use crate::models::{Event, EventSource, EventType};
 use crate::AppState;
 use actix_web::http::header::ContentType;
 use actix_web::{web, HttpResponse, Responder};
@@ -31,13 +31,18 @@ struct DaySection {
     events: Vec<EventViewModel>,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Default, Clone)]
 pub struct IndexQuery {
-    pub category: Option<String>,
+    #[serde(default, rename = "type")]
+    pub event_types: Vec<EventType>,
+    pub source: Option<EventSource>,
     pub past: Option<bool>,
 }
 
-pub async fn index(state: web::Data<AppState>, query: web::Query<IndexQuery>) -> impl Responder {
+pub async fn index(
+    state: web::Data<AppState>,
+    query: actix_web_lab::extract::Query<IndexQuery>,
+) -> impl Responder {
     index_with_now(state, Utc::now(), query.into_inner()).await
 }
 
@@ -58,10 +63,7 @@ pub async fn index_with_now(
         (Some(now_utc - Duration::days(2)), None)
     };
 
-    let events_result = state
-        .events_repo
-        .list(query.category.clone(), since, until)
-        .await;
+    let events_result = state.events_repo.list(query.clone(), since, until).await;
 
     match events_result {
         Ok(events) => {
@@ -141,14 +143,20 @@ pub async fn index_with_now(
                 });
             }
 
-            let (page_title, filter_badge) = if let Some(ref category_filter) = query.category {
+            let (page_title, filter_badge) = if !query.event_types.is_empty() {
+                let category_filter = query
+                    .event_types
+                    .iter()
+                    .map(|c| c.to_string())
+                    .collect::<Vec<_>>()
+                    .join(", ");
                 (
                     if is_past {
                         format!("Past Somerville {category_filter} Events")
                     } else {
                         format!("Somerville {category_filter} Events")
                     },
-                    category_filter.clone(),
+                    category_filter,
                 )
             } else {
                 (
