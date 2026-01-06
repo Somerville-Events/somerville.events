@@ -1,5 +1,55 @@
-use crate::models::Event;
+use crate::models::{Event, EventType};
 use chrono_tz::America::New_York;
+
+fn get_color_for_type(t: &EventType) -> &'static str {
+    match t {
+        EventType::Art
+        | EventType::Exhibition
+        | EventType::Film
+        | EventType::Theater
+        | EventType::Literature => "#e91e63", // Pink
+        EventType::Music | EventType::Dance | EventType::Performance | EventType::Comedy => {
+            "#9c27b0"
+        } // Purple
+        EventType::YardSale | EventType::Food | EventType::Market => "#ff9800", // Orange
+        EventType::Government
+        | EventType::Meeting
+        | EventType::Volunteer
+        | EventType::PersonalService
+        | EventType::Workshop => "#607d8b", // Blue Grey
+        EventType::Family | EventType::ChildFriendly => "#4caf50",              // Green
+        EventType::Social | EventType::Holiday | EventType::Fundraiser => "#f44336", // Red
+        EventType::Sports | EventType::Fitness => "#2196f3",                    // Blue
+        EventType::Religious => "#795548",                                      // Brown
+        EventType::Other => "#9e9e9e",                                          // Grey
+    }
+}
+
+fn get_icon_for_type(t: &EventType) -> &'static str {
+    match t {
+        EventType::YardSale => r##"<svg><use href="#icon-tag"/></svg>"##, // tag
+        EventType::Art | EventType::Exhibition => r##"<svg><use href="#icon-palette"/></svg>"##, // palette
+        EventType::Music | EventType::Dance | EventType::Performance => {
+            r##"<svg><use href="#icon-music"/></svg>"##
+        } // music
+        EventType::Food => r##"<svg><use href="#icon-utensils"/></svg>"##, // utensils
+        EventType::PersonalService | EventType::Volunteer => {
+            r##"<svg><use href="#icon-heart-handshake"/></svg>"##
+        } // heart-handshake
+        EventType::Meeting | EventType::Government => r##"<svg><use href="#icon-users"/></svg>"##, // users
+        EventType::Fundraiser => r##"<svg><use href="#icon-dollar-sign"/></svg>"##, // dollar-sign
+        EventType::Film => r##"<svg><use href="#icon-film"/></svg>"##,              // film
+        EventType::Theater | EventType::Comedy => r##"<svg><use href="#icon-drama"/></svg>"##, // smile / drama
+        EventType::Literature => r##"<svg><use href="#icon-book-open"/></svg>"##, // book-open
+        EventType::Workshop => r##"<svg><use href="#icon-wrench"/></svg>"##,      // wrench
+        EventType::Fitness | EventType::Sports => r##"<svg><use href="#icon-trophy"/></svg>"##, // trophy
+        EventType::Market => r##"<svg><use href="#icon-store"/></svg>"##, // store
+        EventType::Family | EventType::ChildFriendly => r##"<svg><use href="#icon-baby"/></svg>"##, // baby
+        EventType::Social | EventType::Holiday => r##"<svg><use href="#icon-beer"/></svg>"##, // beer
+        EventType::Religious => r##"<svg><use href="#icon-church"/></svg>"##, // church
+        EventType::Other => r##"<svg><use href="#icon-circle-help"/></svg>"##, // circle-help
+    }
+}
 
 #[derive(Clone)]
 pub enum EventLocation {
@@ -29,6 +79,8 @@ pub struct EventViewModel {
     pub age_restrictions: Option<String>,
     pub price: Option<f64>,
     pub source: String,
+    pub accent_gradient: String,
+    pub accent_icon: String,
 }
 
 pub enum DateFormat {
@@ -113,6 +165,22 @@ impl EventViewModel {
             google_cal_params.finish()
         );
 
+        let colors: Vec<&str> = event.event_types.iter().map(get_color_for_type).collect();
+        let accent_gradient = if colors.is_empty() {
+            // Default grey if no types
+            format!("linear-gradient(to bottom, {}, {})", "#9e9e9e", "#9e9e9e")
+        } else if colors.len() == 1 {
+            // Single color gradient
+            format!("linear-gradient(to bottom, {}, {})", colors[0], colors[0])
+        } else {
+            // Blend colors
+            format!("linear-gradient(to bottom, {})", colors.join(", "))
+        };
+
+        // Use the icon of the first event type, or default to "Other" icon if none
+        let first_type = event.event_types.first().unwrap_or(&EventType::Other);
+        let accent_icon = get_icon_for_type(first_type).to_string();
+
         Self {
             id: event.id.unwrap_or_default(),
             name: event.name.clone(),
@@ -134,6 +202,8 @@ impl EventViewModel {
             age_restrictions: event.age_restrictions.clone(),
             price: event.price,
             source: event.source.to_string(),
+            accent_gradient,
+            accent_icon,
         }
     }
 }

@@ -10,23 +10,28 @@
         :root {
             --link-color: light-dark(rgb(27, 50, 100), rgb(125, 148, 197));
 
-            --button-bg: light-dark(#e0e0e0, #333);
+            --button-bg: light-dark(#e0e0e0, #1a1a1a);
             --button-text: light-dark(#333, #eee);
             --button-shadow-light: light-dark(rgba(255, 255, 255, 0.8), rgba(255, 255, 255, 0.1));
             --button-shadow-dark: rgba(0, 0, 0, 0.1);
-            --button-border: light-dark(#a0a0a0, #555);
+            --button-border: light-dark(#a0a0a0, #333);
 
             --primary-bg: #d13a26;
             --primary-text: #fff;
             --primary-shadow: #8c2415;
+
+            --event-bg: light-dark(#fafafa, #1a1a1a);
+            --header-bg: light-dark(#fff, #000);
         }
 
         body {
             font-family: system-ui, sans-serif;
             max-width: 800px;
             margin: 0 auto;
-            padding: 1rem;
             line-height: 1.5;
+            background-color: var(--header-bg);
+            padding: 1rem;
+            box-sizing: border-box;
         }
 
         a {
@@ -45,6 +50,11 @@
             gap: 1rem;
             flex-wrap: wrap;
             margin-bottom: 2rem;
+            padding: 0;
+        }
+
+        main {
+            padding-bottom: 2rem;
         }
 
         header h1 {
@@ -56,22 +66,160 @@
             margin-bottom: 1rem;
         }
 
-        h2 {
-            margin-top: 2.5rem;
+        h2,
+        h3 {
+            margin: 0;
+            font-size: 1em;
         }
 
         section {
-            margin-bottom: 2.5rem;
+            margin-bottom: 0;
+            /* Removed bottom margin, spacing handled by padding/gap */
         }
 
-        article {
-            padding: 1rem 0;
-            border-top: 1px solid color-mix(in srgb, currentColor 15%, transparent);
+        .events-day {
+            margin-left: -1rem;
+            margin-right: -1rem;
         }
 
-        article:first-child {
-            border-top: 0;
+        /* Sticky Date Headers */
+        section h2 {
+            position: sticky;
+            top: 0;
+            background-color: var(--header-bg);
+            /* Match body background */
+            padding: 0.5rem 1rem 0.25rem;
+            /* Add side padding back to headers */
+            z-index: 10;
+            border-bottom: 1px solid var(--button-border);
+            margin-bottom: 0;
+            /* Remove margin to sit flush with first item */
+            font-weight: 600;
+            opacity: 0.95;
+            backdrop-filter: blur(5px);
         }
+
+        .simple-event {
+            /* Reset article styling */
+            background-color: transparent;
+            margin-bottom: 0;
+            /* Continuous list */
+        }
+
+        /* Event Card Styling */
+        .event-card-link {
+            position: relative;
+            /* For accent positioning */
+            display: grid;
+            grid-template-columns: 1fr auto;
+            /* Title/Loc takes space, Time takes what it needs */
+            grid-template-rows: auto auto;
+            /* Two rows: Title/Start, Location/End */
+            column-gap: 0.75rem;
+            row-gap: 0.1rem;
+            align-items: baseline;
+            padding: 0.8rem 1rem;
+            /* Full bleed means we need padding inside */
+            padding-left: 3rem;
+            /* Extra padding for wider accent + icon */
+
+            /* List view tactile feel */
+            background-color: var(--event-bg);
+            /* Or transparent if we want body bg */
+            color: var(--button-text);
+            border-bottom: 1px solid var(--button-border);
+            /* Separator */
+            /* No border radius for full bleed */
+            border-radius: 0;
+            box-shadow: none;
+            /* Remove chunky shadow */
+
+            text-decoration: none;
+            transition: background-color 0.1s;
+        }
+
+        .event-accent {
+            position: absolute;
+            left: 0;
+            top: 0;
+            bottom: 0;
+            width: 2.2rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            /* Icon color */
+        }
+
+        .event-accent svg {
+            width: 1.2rem;
+            height: 1.2rem;
+            stroke-width: 2.5;
+            filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.3));
+        }
+
+        /* Remove top border for the first item if we wanted, but simple-event loops. 
+           CSS :first-child on the article might work if we select properly. */
+
+        .event-card-link:hover {
+            text-decoration: none;
+            background-color: light-dark(#dcdcdc, #3a3a3a);
+            /* Subtle hover */
+        }
+
+        .event-card-link:active {
+            transform: none;
+            /* Remove push effect */
+            background-color: light-dark(#d0d0d0, #444);
+            /* Active press state */
+            box-shadow: none;
+        }
+
+        /* Grid Children Placement */
+        .event-title {
+            grid-column: 1;
+            grid-row: 1;
+            font-size: 1rem;
+            font-weight: 600;
+            line-height: 1.2;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            min-width: 0;
+        }
+
+        .event-start-time {
+            grid-column: 2;
+            grid-row: 1;
+            text-align: right;
+            font-size: 0.9em;
+            font-weight: normal;
+            font-variant-numeric: tabular-nums;
+            white-space: nowrap;
+        }
+
+
+        .event-location {
+            grid-column: 1;
+            grid-row: 2;
+            font-size: 0.9em;
+            color: light-dark(#666, #aaa);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            min-width: 0;
+        }
+
+        .event-end-time {
+            grid-column: 2;
+            grid-row: 2;
+            text-align: right;
+            font-size: 0.9em;
+            color: light-dark(#666, #aaa);
+            font-variant-numeric: tabular-nums;
+            white-space: nowrap;
+        }
+
 
         article p {
             margin: 0.75rem 0;
@@ -199,6 +347,130 @@
             stroke-linejoin="round">
             <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path>
             <circle cx="12" cy="10" r="3"></circle>
+        </symbol>
+        <!-- Event Type Icons -->
+        <symbol id="icon-tag" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round"
+            stroke-linejoin="round">
+            <path d="M12 2H2v10l9.29 9.29c.94.94 2.48.94 3.42 0l6.58-6.58c.94-.94.94-2.48 0-3.42L12 2Z" />
+            <path d="M7 7h.01" />
+        </symbol>
+        <symbol id="icon-palette" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round"
+            stroke-linejoin="round">
+            <circle cx="13.5" cy="6.5" r=".5" />
+            <circle cx="17.5" cy="10.5" r=".5" />
+            <circle cx="8.5" cy="7.5" r=".5" />
+            <circle cx="6.5" cy="12.5" r=".5" />
+            <path
+                d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.555-2.503 5.555-5.554C21.965 6.012 17.461 2 12 2z" />
+        </symbol>
+        <symbol id="icon-music" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round"
+            stroke-linejoin="round">
+            <path d="M9 18V5l12-2v13" />
+            <circle cx="6" cy="18" r="3" />
+            <circle cx="18" cy="16" r="3" />
+        </symbol>
+        <symbol id="icon-utensils" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round"
+            stroke-linejoin="round">
+            <path d="M3 2v7c0 1.1.9 2 2 2h4a2 2 0 0 0 2-2V2" />
+            <path d="M7 2v20" />
+            <path d="M21 15V2v0a5 5 0 0 0-5 5v6c0 1.1.9 2 2 2h3Zm0 0v7" />
+        </symbol>
+        <symbol id="icon-heart-handshake" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round"
+            stroke-linejoin="round">
+            <path
+                d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z" />
+        </symbol>
+        <symbol id="icon-users" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round"
+            stroke-linejoin="round">
+            <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+            <circle cx="9" cy="7" r="4" />
+            <path d="M22 21v-2a4 4 0 0 0-3-3.87" />
+            <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+        </symbol>
+        <symbol id="icon-dollar-sign" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round"
+            stroke-linejoin="round">
+            <path d="M11 15h2a2 2 0 1 0 0-4h-3c-1.1 0-2 .9-2 2a2 2 0 0 0 2 2h3" />
+            <path d="m9 15-2 2H3l2-2" />
+            <path d="m15 15 2 2h4l-2-2" />
+            <path d="M12 12v3" />
+            <path d="M12 11V3c5.5 0 5.5 8 0 8Z" />
+        </symbol>
+        <symbol id="icon-film" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round"
+            stroke-linejoin="round">
+            <rect width="18" height="18" x="3" y="3" rx="2" />
+            <path d="M7 3v18" />
+            <path d="M3 7.5h4" />
+            <path d="M3 12h18" />
+            <path d="M3 16.5h4" />
+            <path d="M17 3v18" />
+            <path d="M17 7.5h4" />
+            <path d="M17 16.5h4" />
+        </symbol>
+        <symbol id="icon-drama" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round"
+            stroke-linejoin="round">
+            <path d="M12 2a10 10 0 1 0 10 10 4 4 0 0 1-5-5 4 4 0 0 1-5-5" />
+            <path d="M8.5 8.5v.01" />
+            <path d="M16 15.5v.01" />
+            <path d="M12 12v.01" />
+            <path d="M7 16.5a7 7 0 0 1 10-3.5" />
+        </symbol>
+        <symbol id="icon-book-open" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round"
+            stroke-linejoin="round">
+            <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z" />
+            <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z" />
+        </symbol>
+        <symbol id="icon-wrench" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round"
+            stroke-linejoin="round">
+            <path
+                d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z" />
+        </symbol>
+        <symbol id="icon-trophy" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round"
+            stroke-linejoin="round">
+            <path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6" />
+            <path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18" />
+            <path d="M4 22h16" />
+            <path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22" />
+            <path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22" />
+            <path d="M18 2H6v7a6 6 0 0 0 12 0V2Z" />
+        </symbol>
+        <symbol id="icon-store" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round"
+            stroke-linejoin="round">
+            <path d="m2 7 4.41-4.41A2 2 0 0 1 7.83 2h8.34a2 2 0 0 1 1.42.59L22 7" />
+            <path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8" />
+            <path d="M15 22v-4a2 2 0 0 0-2-2h-2a2 2 0 0 0-2 2v4" />
+            <path d="M2 7h20" />
+            <path
+                d="M22 7v3a2 2 0 0 1-2 2v0a2.7 2.7 0 0 1-1.59-.63.7.7 0 0 0-.82 0A2.7 2.7 0 0 1 16 12a2.7 2.7 0 0 1-1.59-.63.7.7 0 0 0-.82 0A2.7 2.7 0 0 1 12 12a2.7 2.7 0 0 1-1.59-.63.7.7 0 0 0-.82 0A2.7 2.7 0 0 1 8 12a2.7 2.7 0 0 1-1.59-.63.7.7 0 0 0-.82 0A2.7 2.7 0 0 1 4 12v0a2 2 0 0 1-2-2V7" />
+        </symbol>
+        <symbol id="icon-baby" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round"
+            stroke-linejoin="round">
+            <path d="M9 12h6" />
+            <path d="M12 3v18" />
+            <circle cx="12" cy="12" r="10" />
+        </symbol>
+        <symbol id="icon-beer" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round"
+            stroke-linejoin="round">
+            <path d="M17 11h1a3 3 0 0 1 0 6h-1" />
+            <path d="M9 12v6" />
+            <path d="M13 12v6" />
+            <path
+                d="M14 7.5c-1 0-1.44.5-3 .5s-2-.5-3-.5-1.72.5-2.5.5a2.5 2.5 0 0 1 0-5c.78 0 1.57.5 2.5.5S9.44 2 11 2s2 .5 3 .5 1.72-.5 2.5-.5a2.5 2.5 0 0 1 0 5c-.78 0-1.57-.5-2.5-.5Z" />
+            <path d="M5 18a2 2 0 0 1-2-2V7" />
+        </symbol>
+        <symbol id="icon-church" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round"
+            stroke-linejoin="round">
+            <path d="m10 7 2-2 2 2" />
+            <path d="M12 21v-6" />
+            <path d="M12 11v-2" />
+            <path d="M12 5V3" />
+            <path d="M6 21v-4c0-1.1.9-2 2-2h8a2 2 0 0 1 2 2v4" />
+            <path d="M18 21v-4a6 6 0 0 0-12 0v4" />
+        </symbol>
+        <symbol id="icon-circle-help" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round"
+            stroke-linejoin="round">
+            <circle cx="12" cy="12" r="10" />
+            <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" />
+            <path d="M12 17h.01" />
         </symbol>
     </svg>
     {% block content %}{% endblock %}

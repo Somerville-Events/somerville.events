@@ -19,13 +19,10 @@
     {% endif %}
 
     {% for day in days %}
-    <section aria-labelledby="{{ day.day_id }}">
+    <section class="events-day" aria-labelledby="{{ day.day_id }}">
         <h2 id="{{ day.day_id }}">{{ day.date_header }}</h2>
         {% for event in day.events %}
-        <article>
-            <h3><a href="/event/{{ event.id }}">{{ event.name }}</a></h3>
-            {% include "common/simple_event_body.html" %}
-        </article>
+        {% include "common/simple_event_body.html" %}
         {% endfor %}
     </section>
     {% endfor %}
