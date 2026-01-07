@@ -211,6 +211,7 @@ mod tests {
                 age_restrictions: None,
                 price: None,
                 source: EventSource::ImageUpload,
+                external_id: None,
             },
             Event {
                 name: "Somerville Theatre Event".to_string(),
@@ -229,6 +230,7 @@ mod tests {
                 age_restrictions: None,
                 price: None,
                 source: EventSource::ImageUpload,
+                external_id: None,
             },
             Event {
                 name: "Unknown Place Event".to_string(),
@@ -247,6 +249,7 @@ mod tests {
                 age_restrictions: None,
                 price: None,
                 source: EventSource::ImageUpload,
+                external_id: None,
             },
             Event {
                 name: "Another Davis Square Event".to_string(),
@@ -265,6 +268,7 @@ mod tests {
                 age_restrictions: None,
                 price: None,
                 source: EventSource::ImageUpload,
+                external_id: None,
             },
         ];
 

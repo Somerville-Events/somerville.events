@@ -1,7 +1,8 @@
 use crate::features::common::{
-    get_color_for_type, get_icon_for_type, DateFormat, EventLocation, EventTypeLink, EventViewModel,
+    get_color_for_type, get_icon_for_type, DateFormat, EventLocation, EventTypeLink,
+    EventViewModel, SimpleEventViewModel,
 };
-use crate::models::{Event, EventSource, EventType};
+use crate::models::{EventSource, EventType, SimpleEvent};
 use crate::AppState;
 use actix_web::http::header::ContentType;
 use actix_web::{web, HttpResponse, Responder};
@@ -31,7 +32,7 @@ pub struct ShowTemplate {
 pub struct DaySection {
     pub day_id: String,
     pub date_header: String,
-    pub events: Vec<EventViewModel>,
+    pub events: Vec<SimpleEventViewModel>,
 }
 
 #[derive(Deserialize, Default, Clone)]
@@ -78,7 +79,7 @@ pub async fn index_with_now(
                     .date_naive()
             };
 
-            let mut events_by_day: BTreeMap<NaiveDate, Vec<Event>> = BTreeMap::new();
+            let mut events_by_day: BTreeMap<NaiveDate, Vec<SimpleEvent>> = BTreeMap::new();
 
             for event in events {
                 let start = event.start_date;
@@ -121,7 +122,7 @@ pub async fn index_with_now(
             let mut days = Vec::new();
             // Process days. If past view, we want descending order.
             // BTreeMap iterates in ascending order.
-            let day_iter: Box<dyn Iterator<Item = (NaiveDate, Vec<Event>)>> = if is_past {
+            let day_iter: Box<dyn Iterator<Item = (NaiveDate, Vec<SimpleEvent>)>> = if is_past {
                 Box::new(events_by_day.into_iter().rev())
             } else {
                 Box::new(events_by_day.into_iter())
@@ -134,9 +135,11 @@ pub async fn index_with_now(
                         .then_with(|| a.name.cmp(&b.name))
                 });
 
-                let vms: Vec<EventViewModel> = day_events
+                let vms: Vec<SimpleEventViewModel> = day_events
                     .iter()
-                    .map(|e| EventViewModel::from_event(e, DateFormat::TimeOnly, is_past))
+                    .map(|e| {
+                        SimpleEventViewModel::from_event(e, DateFormat::TimeOnly, is_past, "/event")
+                    })
                     .collect();
 
                 days.push(DaySection {

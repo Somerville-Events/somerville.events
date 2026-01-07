@@ -1,23 +1,15 @@
-<article>
-    <a href="/event/{{ event.id }}" class="event-card">
-        <div class="event-card__icon" style="color: {{ event.accent_color }}">
-            <svg>
-                <use href="#{{ event.accent_icon }}"></use>
-            </svg>
-        </div>
-        <h3>{{ event.name }}</h3>
-
-        <time datetime="{{ event.start_iso }}">{{ event.start_formatted }}</time>
-        {% if let Some(end) = event.end_formatted %}
-        <time datetime="{{ event.end_iso }}" class="secondary-time">{{ end }}</time>
-        {% endif %}
-
-        {% match event.location %}
-        {% when EventLocation::Structured with { name, address, google_maps_link } %}
-        <div class="event-card__location">{{ name }}</div>
-        {% when EventLocation::Unstructured with (original) %}
-        <div class="event-card__location">{{ original }}</div>
-        {% when EventLocation::Unknown %}
-        {% endmatch %}
-    </a>
-</article>
+<a href="{{ event.detail_url }}">
+<svg style="color:{{ event.accent_color }}"><use href="#{{ event.accent_icon }}"/></svg>
+<h3>{{ event.name }}</h3>
+<time>{{ event.start_formatted }}</time>
+{% if let Some(end) = event.end_formatted %}
+<small>{{ end }}</small>
+{% endif %}
+{% match event.location %}
+{% when EventLocation::Structured with { name, .. } %}
+<div>{{ name }}</div>
+{% when EventLocation::Unstructured with (original) %}
+<div>{{ original }}</div>
+{% when EventLocation::Unknown %}
+{% endmatch %}
+</a>

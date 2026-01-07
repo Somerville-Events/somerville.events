@@ -143,6 +143,8 @@ pub enum EventSource {
     BrattleTheatre,
     CentralSquareTheater,
     CityOfCambridge,
+    FirstParishInCambridge,
+    GrolierPoetryBookShop,
     HarvardArtMuseums,
     HarvardBookStore,
     ImageUpload,
@@ -155,6 +157,7 @@ pub enum EventSource {
     TheDanceComplex,
     TheLilyPad,
     TheMiddleEast,
+    UserSubmitted,
 }
 
 impl fmt::Display for EventSource {
@@ -168,6 +171,8 @@ impl fmt::Display for EventSource {
             EventSource::BrattleTheatre => write!(f, "Brattle Theatre"),
             EventSource::CentralSquareTheater => write!(f, "Central Square Theater"),
             EventSource::CityOfCambridge => write!(f, "City of Cambridge"),
+            EventSource::FirstParishInCambridge => write!(f, "First Parish in Cambridge"),
+            EventSource::GrolierPoetryBookShop => write!(f, "Grolier Poetry Book Shop"),
             EventSource::HarvardArtMuseums => write!(f, "Harvard Art Museums"),
             EventSource::HarvardBookStore => write!(f, "Harvard Book Store"),
             EventSource::ImageUpload => write!(f, "Image Upload"),
@@ -180,6 +185,7 @@ impl fmt::Display for EventSource {
             EventSource::TheDanceComplex => write!(f, "The Dance Complex"),
             EventSource::TheLilyPad => write!(f, "The Lily Pad"),
             EventSource::TheMiddleEast => write!(f, "The Middle East"),
+            EventSource::UserSubmitted => write!(f, "User Submitted"),
         }
     }
 }
@@ -219,4 +225,19 @@ pub struct Event {
     /// Must match a value in the `app.source_names` table.
     /// If you introduce a new source, you must add it to that table first.
     pub source: EventSource,
+    /// External ID for idempotency/updates
+    #[serde(skip, default)]
+    #[schemars(skip)]
+    pub external_id: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, sqlx::FromRow)]
+pub struct SimpleEvent {
+    pub id: i64,
+    pub name: String,
+    pub start_date: DateTime<Utc>,
+    pub end_date: Option<DateTime<Utc>>,
+    pub original_location: Option<String>,
+    pub location_name: Option<String>,
+    pub event_types: Vec<EventType>,
 }

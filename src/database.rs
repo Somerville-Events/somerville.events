@@ -1,5 +1,5 @@
 use crate::features::view::IndexQuery;
-use crate::models::{Event, EventSource, EventType};
+use crate::models::{Event, EventSource, EventType, SimpleEvent};
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
@@ -12,7 +12,7 @@ pub trait EventsRepo: Send + Sync {
         query: IndexQuery,
         since: Option<DateTime<Utc>>,
         until: Option<DateTime<Utc>>,
-    ) -> Result<Vec<Event>>;
+    ) -> Result<Vec<SimpleEvent>>;
     async fn get(&self, id: i64) -> Result<Option<Event>>;
     async fn claim_idempotency_key(&self, idempotency_key: uuid::Uuid) -> Result<bool>;
     async fn insert(&self, event: &Event) -> Result<i64>;
@@ -26,7 +26,7 @@ impl EventsRepo for sqlx::Pool<sqlx::Postgres> {
         query: IndexQuery,
         since: Option<DateTime<Utc>>,
         until: Option<DateTime<Utc>>,
-    ) -> Result<Vec<Event>> {
+    ) -> Result<Vec<SimpleEvent>> {
         let categories: Vec<String> = query
             .event_types
             .iter()
@@ -34,7 +34,8 @@ impl EventsRepo for sqlx::Pool<sqlx::Postgres> {
             .collect();
         let source: Option<String> = query.source.map(|s| s.as_ref().to_string());
 
-        let rows = sqlx::query!(
+        let events = sqlx::query_as!(
+            SimpleEvent,
             r#"
             WITH filtered_events AS (
                 SELECT DISTINCT e.id
@@ -48,20 +49,11 @@ impl EventsRepo for sqlx::Pool<sqlx::Postgres> {
             SELECT
                 e.id,
                 e.name,
-                e.description,
-                e.full_text,
                 e.start_date,
                 e.end_date,
-                e.address,
                 e.original_location,
-                e.google_place_id,
                 e.location_name,
-                e.url,
-                e.confidence,
-                e.age_restrictions,
-                e.price,
-                e.source,
-                COALESCE(array_agg(et.event_type_name ORDER BY et.event_type_name) FILTER (WHERE et.event_type_name IS NOT NULL), '{}') as "event_types!"
+                COALESCE(array_agg(et.event_type_name ORDER BY et.event_type_name) FILTER (WHERE et.event_type_name IS NOT NULL), '{}') as "event_types!: Vec<EventType>"
             FROM app.events e
             JOIN filtered_events fe ON e.id = fe.id
             LEFT JOIN app.event_event_types et ON e.id = et.event_id
@@ -75,28 +67,6 @@ impl EventsRepo for sqlx::Pool<sqlx::Postgres> {
         )
         .fetch_all(self)
         .await?;
-
-        let events = rows
-            .into_iter()
-            .map(|r| Event {
-                id: Some(r.id),
-                name: r.name,
-                description: r.description,
-                full_text: r.full_text,
-                start_date: r.start_date,
-                end_date: r.end_date,
-                address: r.address,
-                original_location: r.original_location,
-                google_place_id: r.google_place_id,
-                location_name: r.location_name,
-                event_types: r.event_types.into_iter().map(EventType::from).collect(),
-                url: r.url,
-                confidence: r.confidence,
-                age_restrictions: r.age_restrictions,
-                price: r.price,
-                source: EventSource::from(r.source),
-            })
-            .collect();
 
         Ok(events)
     }
@@ -148,6 +118,7 @@ impl EventsRepo for sqlx::Pool<sqlx::Postgres> {
             age_restrictions: r.age_restrictions,
             price: r.price,
             source: EventSource::from(r.source),
+            external_id: None,
         }))
     }
 
@@ -218,9 +189,10 @@ pub async fn save_event_to_db(executor: &sqlx::Pool<sqlx::Postgres>, event: &Eve
                 confidence,
                 age_restrictions,
                 price,
-                source
+                source,
+                external_id
             )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
             RETURNING id
             "#,
         event.name,
@@ -236,7 +208,8 @@ pub async fn save_event_to_db(executor: &sqlx::Pool<sqlx::Postgres>, event: &Eve
         event.confidence,
         event.age_restrictions,
         event.price,
-        event.source.as_ref()
+        event.source.as_ref(),
+        event.external_id
     )
     .fetch_one(&mut *tx)
     .await
@@ -288,8 +261,8 @@ async fn find_duplicate(
             FROM app.events e
             LEFT JOIN app.event_event_types et ON e.id = et.event_id
             WHERE e.start_date = $1
-              AND e.end_date IS NOT DISTINCT FROM $2
-              AND e.address IS NOT DISTINCT FROM $3
+            AND e.end_date IS NOT DISTINCT FROM $2
+            AND e.address IS NOT DISTINCT FROM $3
             GROUP BY e.id
             "#,
             event.start_date,
@@ -318,6 +291,7 @@ async fn find_duplicate(
             age_restrictions: r.age_restrictions,
             price: r.price,
             source: EventSource::from(r.source),
+            external_id: None,
         })
         .collect();
 
@@ -365,6 +339,7 @@ mod tests {
             age_restrictions: None,
             price: None,
             source: EventSource::ImageUpload,
+            external_id: None,
         }
     }
 
@@ -676,7 +651,7 @@ mod tests {
         };
         let res_source = pool.list(query_source, None, None).await?;
         assert_eq!(res_source.len(), 1);
-        assert_eq!(res_source[0].id.unwrap(), id2);
+        assert_eq!(res_source[0].id, id2);
 
         // 3. LIST - Category Filtering
         // 3.1 Single category
@@ -720,7 +695,7 @@ mod tests {
             .list(IndexQuery::default(), Some(since_date), Some(until_date))
             .await?;
         assert_eq!(res_window.len(), 1);
-        assert_eq!(res_window[0].id.unwrap(), id2);
+        assert_eq!(res_window[0].id, id2);
 
         // 5. DELETE
         // 5.1 Delete existing

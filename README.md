@@ -66,6 +66,20 @@ cargo run
 
 The server will start at `http://localhost:8080`.
 
+## Running the Ingestor
+
+The ingestor fetches events from external sources and saves them to the database.
+
+```bash
+cargo run --bin ingest_events
+```
+
+It can also be run in dry-run mode (no database writes, no API costs):
+
+```bash
+cargo run --bin ingest_events -- --dry-run
+```
+
 ## UI Development (Storybook)
 
 We use mocked UI templates to develop the UI in isolation without running the full backend or database. This allows for rapid iteration and testing of edge cases.
@@ -100,3 +114,7 @@ Go to your repository settings -> Secrets and variables -> Actions -> New reposi
 - `KNOWN_HOSTS`: The output of `ssh-keyscan <VPS_HOST>`.
 - `OPENAI_API_KEY`: The test runner needs this.
 - `DB_MIGRATOR_PASS`: The password for the `migrator` database role. This is injected during CI and deployment and should NOT be in the `.env` file on the server.
+
+## Cron Job Setup
+
+To keep events up to date, you should set up a cron job to run the ingestor periodically. See [CRON_SETUP.md](CRON_SETUP.md) for instructions.

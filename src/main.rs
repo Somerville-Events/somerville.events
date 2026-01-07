@@ -85,7 +85,8 @@ async fn main() -> Result<()> {
             .service(
                 web::scope("/edit")
                     .wrap(auth_middleware)
-                    .route("", web::get().to(features::edit::index)),
+                    .route("", web::get().to(features::edit::index))
+                    .route("/event/{id}", web::get().to(features::edit::show)),
             )
             .route("/upload-success", web::get().to(features::upload::success))
     })
@@ -106,7 +107,7 @@ mod tests {
     use scraper::{Html, Selector};
     use somerville_events::database::EventsRepo;
     use somerville_events::features::view::IndexQuery;
-    use somerville_events::models::{Event, EventSource, EventType};
+    use somerville_events::models::{Event, EventSource, EventType, SimpleEvent};
     use somerville_events::AppState;
     use std::sync::{Arc, Mutex};
 
@@ -133,9 +134,8 @@ mod tests {
             query: IndexQuery,
             since: Option<DateTime<Utc>>,
             until: Option<DateTime<Utc>>,
-        ) -> Result<Vec<Event>> {
+        ) -> Result<Vec<SimpleEvent>> {
             let events = self.events.lock().unwrap().clone();
-
             Ok(events
                 .into_iter()
                 .filter(|e| {
@@ -160,6 +160,15 @@ mod tests {
                         true
                     };
                     type_match && source_match && since_match && until_match
+                })
+                .map(|e| SimpleEvent {
+                    id: e.id.unwrap_or_default(),
+                    name: e.name,
+                    start_date: e.start_date,
+                    end_date: e.end_date,
+                    original_location: e.original_location,
+                    location_name: e.location_name,
+                    event_types: e.event_types,
                 })
                 .collect())
         }
@@ -225,6 +234,7 @@ mod tests {
             age_restrictions: None,
             price: None,
             source: EventSource::ImageUpload,
+            external_id: None,
         };
 
         let music_event = Event {
@@ -244,6 +254,7 @@ mod tests {
             age_restrictions: None,
             price: None,
             source: EventSource::ImageUpload,
+            external_id: None,
         };
 
         let state = AppState {
@@ -317,6 +328,7 @@ mod tests {
             age_restrictions: None,
             price: None,
             source: EventSource::ImageUpload,
+            external_id: None,
         };
 
         // No end_date: should render only on its start day.
@@ -337,6 +349,7 @@ mod tests {
             age_restrictions: None,
             price: None,
             source: EventSource::ImageUpload,
+            external_id: None,
         };
 
         // No end_date from yesterday (within the last 24h) should still render, and should
@@ -358,6 +371,7 @@ mod tests {
             age_restrictions: None,
             price: None,
             source: EventSource::ImageUpload,
+            external_id: None,
         };
 
         // Two distinct events on the same local day should both render under the same day section.
@@ -379,6 +393,7 @@ mod tests {
             age_restrictions: None,
             price: None,
             source: EventSource::ImageUpload,
+            external_id: None,
         };
 
         let same_day_2 = Event {
@@ -399,6 +414,7 @@ mod tests {
             age_restrictions: None,
             price: None,
             source: EventSource::ImageUpload,
+            external_id: None,
         };
 
         // Explicit multi-day: should appear under each day.
@@ -419,6 +435,7 @@ mod tests {
             age_restrictions: None,
             price: None,
             source: EventSource::ImageUpload,
+            external_id: None,
         };
 
         // Intentionally shuffled to ensure server-side sorting/grouping is doing the work.
@@ -468,7 +485,7 @@ mod tests {
 
         let document = Html::parse_document(body_str);
         let day_sections_sel = Selector::parse("section").unwrap();
-        let event_link_sel = Selector::parse("article a.event-card").unwrap();
+        let event_link_sel = Selector::parse(".events-day > a").unwrap();
 
         let day_ids: Vec<String> = document
             .select(&day_sections_sel)
@@ -513,11 +530,11 @@ mod tests {
             .next()
             .expect("today section");
 
-        let today_articles: Vec<_> = today_section
-            .select(&Selector::parse("article").unwrap())
+        let today_events: Vec<_> = today_section
+            .select(&Selector::parse("a").unwrap())
             .collect();
         assert!(
-            today_articles.len() >= 2,
+            today_events.len() >= 2,
             "Expected at least two events under today's section"
         );
         let today_text = today_section.text().collect::<String>();
@@ -536,14 +553,12 @@ mod tests {
         assert!(links.iter().any(|h| h == "/event/2"));
         assert!(links.iter().any(|h| h == "/event/3"));
 
-        // Best-effort check that sections contain articles (semantic structure).
+        // Best-effort check that sections contain events (links).
         assert!(
-            document.select(&day_sections_sel).any(|s| {
-                s.select(&Selector::parse("article").unwrap())
-                    .next()
-                    .is_some()
-            }),
-            "Expected section to contain article"
+            document
+                .select(&day_sections_sel)
+                .any(|s| { s.select(&Selector::parse("a").unwrap()).next().is_some() }),
+            "Expected section to contain event link"
         );
 
         Ok(())
@@ -570,6 +585,7 @@ mod tests {
             age_restrictions: None,
             price: None,
             source: EventSource::ImageUpload,
+            external_id: None,
         };
 
         let state = AppState {
@@ -659,6 +675,7 @@ mod tests {
             age_restrictions: None,
             price: None,
             source: EventSource::ImageUpload,
+            external_id: None,
         };
 
         let state = AppState {
@@ -727,6 +744,7 @@ mod tests {
             age_restrictions: None,
             price: None,
             source: somerville_events::models::EventSource::AeronautBrewing,
+            external_id: None,
         };
 
         let library_event = Event {
@@ -746,6 +764,7 @@ mod tests {
             age_restrictions: None,
             price: None,
             source: somerville_events::models::EventSource::CityOfCambridge,
+            external_id: None,
         };
 
         let state = AppState {
@@ -870,6 +889,7 @@ mod tests {
             age_restrictions: None,
             price: None,
             source: EventSource::ImageUpload,
+            external_id: None,
         };
 
         let music_event = Event {
@@ -889,6 +909,7 @@ mod tests {
             age_restrictions: None,
             price: None,
             source: EventSource::ImageUpload,
+            external_id: None,
         };
 
         let food_event = Event {
@@ -908,6 +929,7 @@ mod tests {
             age_restrictions: None,
             price: None,
             source: EventSource::ImageUpload,
+            external_id: None,
         };
 
         let state = AppState {
