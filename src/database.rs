@@ -530,7 +530,7 @@ mod tests {
     async fn test_event_types_deterministic_order(pool: sqlx::PgPool) -> Result<()> {
         let mut event = create_event("Sorted Types", "Desc", Some("Loc"));
         // Insert in mixed order
-        event.event_types = vec![EventType::Social, EventType::Art, EventType::Family];
+        event.event_types = vec![EventType::Social, EventType::Art, EventType::ChildFriendly];
         event.source = EventSource::ImageUpload;
 
         let id = save_event_to_db(&pool, &event).await?;
@@ -538,10 +538,10 @@ mod tests {
         let fetched = pool.get(id).await?.expect("Event not found");
 
         // Should be sorted alphabetically by the string representation
-        // Art, Family, Social
+        // Art, ChildFriendly, Social
         assert_eq!(
             fetched.event_types,
-            vec![EventType::Art, EventType::Family, EventType::Social]
+            vec![EventType::Art, EventType::ChildFriendly, EventType::Social]
         );
 
         Ok(())

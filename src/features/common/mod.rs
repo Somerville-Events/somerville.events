@@ -18,11 +18,11 @@ pub fn get_color_for_type(t: &EventType) -> String {
         | EventType::PersonalService
         | EventType::Workshop
         | EventType::Fundraiser => ("#455a64", "#b0bec5"), // Blue Grey 700 / 200
-        EventType::Family | EventType::ChildFriendly => ("#2e7d32", "#a5d6a7"), // Green 800 / 200
-        EventType::Social | EventType::Holiday => ("#d32f2f", "#ef9a9a"),       // Red 700 / 200
-        EventType::Sports | EventType::Fitness => ("#1976d2", "#90caf9"),       // Blue 700 / 200
-        EventType::Religious => ("#5d4037", "#bcaaa4"),                         // Brown 700 / 200
-        EventType::Other => ("#616161", "#eeeeee"),                             // Grey 700 / 200
+        EventType::ChildFriendly => ("#2e7d32", "#a5d6a7"), // Green 800 / 200
+        EventType::Social | EventType::Holiday => ("#d32f2f", "#ef9a9a"), // Red 700 / 200
+        EventType::Sports | EventType::Fitness => ("#1976d2", "#90caf9"), // Blue 700 / 200
+        EventType::Religious => ("#5d4037", "#bcaaa4"),     // Brown 700 / 200
+        EventType::Other => ("#616161", "#eeeeee"),         // Grey 700 / 200
     };
     format!("light-dark({}, {})", light_mode, dark_mode)
 }
@@ -43,7 +43,7 @@ pub fn get_icon_for_type(t: &EventType) -> &'static str {
         EventType::Workshop => "icon-education",
         EventType::Fitness | EventType::Sports => "icon-trophy",
         EventType::Market => "icon-store",
-        EventType::Family | EventType::ChildFriendly => "icon-baby",
+        EventType::ChildFriendly => "icon-baby",
         EventType::Social | EventType::Holiday => "icon-party-popper",
         EventType::Religious => "icon-church",
         EventType::Other => "icon-circle-help",

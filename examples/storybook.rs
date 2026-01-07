@@ -224,7 +224,6 @@ fn ensure_mock_events(data: &web::Data<StorybookState>) {
         EventType::Fitness,
         EventType::Market,
         EventType::Sports,
-        EventType::Family,
         EventType::Social,
         EventType::Holiday,
         EventType::Religious,
@@ -332,7 +331,7 @@ fn ensure_mock_events(data: &web::Data<StorybookState>) {
                 EventType::Government, EventType::Volunteer, EventType::Fundraiser, EventType::Film,
                 EventType::Theater, EventType::Comedy, EventType::Literature, EventType::Exhibition,
                 EventType::Workshop, EventType::Fitness, EventType::Market, EventType::Sports,
-                EventType::Family, EventType::Social, EventType::Holiday, EventType::Religious,
+                EventType::Social, EventType::Holiday, EventType::Religious,
                 EventType::ChildFriendly, EventType::Other
             ])
             .build(id_counter + 7),

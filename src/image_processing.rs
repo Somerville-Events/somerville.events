@@ -36,7 +36,7 @@ pub struct SingleEventExtraction {
     /// Format: YYYY-MM-DDTHH:MM:SS (No timezone)
     pub end_date: Option<NaiveDateTime>,
     pub location: Option<String>,
-    /// "YardSale" | "Art" | "Music" | "Dance" | "Performance" | "Food" | "PersonalService" | "Meeting" | "Government" | "Volunteer" | "Fundraiser" | "Film" | "Theater" | "Comedy" | "Literature" | "Exhibition" | "Workshop" | "Fitness" | "Market" | "Sports" | "Family" | "Social" | "Holiday" | "Religious" | "ChildFriendly" | "Other"
+    /// "YardSale" | "Art" | "Music" | "Dance" | "Performance" | "Food" | "PersonalService" | "Meeting" | "Government" | "Volunteer" | "Fundraiser" | "Film" | "Theater" | "Comedy" | "Literature" | "Exhibition" | "Workshop" | "Fitness" | "Market" | "Sports" | "Social" | "Holiday" | "Religious" | "ChildFriendly" | "Other"
     pub event_types: Option<Vec<String>>,
     pub url: Option<String>,
     pub age_restrictions: Option<String>,
