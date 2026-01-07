@@ -66,6 +66,26 @@ cargo run
 
 The server will start at `http://localhost:8080`.
 
+## UI Development (Storybook)
+
+We use mocked UI templates to develop the UI in isolation without running the full backend or database. This allows for rapid iteration and testing of edge cases.
+
+### Running Storybook
+
+```bash
+cargo run --example storybook
+```
+
+### Auto-reload with `cargo-watch`
+
+For the best developer experience, use `cargo-watch` to automatically recompile and restart the server when you change templates or code.
+
+1. **Install:** `cargo install cargo-watch`
+2. **Run:**
+   ```bash
+   cargo watch -x 'run --example storybook'
+   ```
+
 ## Deployment
 
 Push to `main`. GitHub Actions will build, test, and deploy to the VPS.
