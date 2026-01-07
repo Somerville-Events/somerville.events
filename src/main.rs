@@ -530,11 +530,11 @@ mod tests {
             .next()
             .expect("today section");
 
-        let today_articles: Vec<_> = today_section
-            .select(&Selector::parse("article").unwrap())
+        let today_events: Vec<_> = today_section
+            .select(&Selector::parse("a").unwrap())
             .collect();
         assert!(
-            today_articles.len() >= 2,
+            today_events.len() >= 2,
             "Expected at least two events under today's section"
         );
         let today_text = today_section.text().collect::<String>();
@@ -553,14 +553,12 @@ mod tests {
         assert!(links.iter().any(|h| h == "/event/2"));
         assert!(links.iter().any(|h| h == "/event/3"));
 
-        // Best-effort check that sections contain articles (semantic structure).
+        // Best-effort check that sections contain events (links).
         assert!(
-            document.select(&day_sections_sel).any(|s| {
-                s.select(&Selector::parse("article").unwrap())
-                    .next()
-                    .is_some()
-            }),
-            "Expected section to contain article"
+            document
+                .select(&day_sections_sel)
+                .any(|s| { s.select(&Selector::parse("a").unwrap()).next().is_some() }),
+            "Expected section to contain event link"
         );
 
         Ok(())
