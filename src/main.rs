@@ -485,7 +485,7 @@ mod tests {
 
         let document = Html::parse_document(body_str);
         let day_sections_sel = Selector::parse("section").unwrap();
-        let event_link_sel = Selector::parse("article a.event-card").unwrap();
+        let event_link_sel = Selector::parse(".events-day > a").unwrap();
 
         let day_ids: Vec<String> = document
             .select(&day_sections_sel)

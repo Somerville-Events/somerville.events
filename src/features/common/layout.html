@@ -120,7 +120,7 @@
         }
 
         /* Event Card */
-        .event-card {
+        .events-day > a {
             display: grid;
             grid-template-columns: 2.2rem 1fr auto;
             grid-template-rows: auto auto;
@@ -134,31 +134,27 @@
             transition: background-color 0.1s;
         }
 
-        .event-card:hover {
+        .events-day > a:hover {
             text-decoration: none;
             background-color: var(--event-hover-bg);
         }
 
-        .event-card:active {
+        .events-day > a:active {
             background-color: var(--event-active-bg);
         }
 
         /* Card Children */
-        .event-card__icon {
+        .events-day > a > svg {
             grid-column: 1;
             grid-row: 1 / -1;
             align-self: center;
             justify-self: center;
-            display: flex;
-        }
-
-        .event-card__icon svg {
             width: 1.2rem;
             height: 1.2rem;
             stroke-width: 2.5;
         }
 
-        .event-card h3 {
+        .events-day > a > h3 {
             grid-column: 2;
             grid-row: 1;
             font-weight: 600;
@@ -167,7 +163,7 @@
             text-overflow: ellipsis;
         }
 
-        .event-card time {
+        .events-day > a > time {
             grid-column: 3;
             grid-row: 1;
             text-align: right;
@@ -176,12 +172,17 @@
             white-space: nowrap;
         }
 
-        .event-card .secondary-time {
+        .events-day > a > small {
+            grid-column: 3;
             grid-row: 2;
             color: var(--text-muted);
+            text-align: right;
+            font-size: 0.9em;
+            font-variant-numeric: tabular-nums;
+            white-space: nowrap;
         }
 
-        .event-card__location {
+        .events-day > a > div {
             grid-column: 2;
             grid-row: 2;
             font-size: 0.9em;
