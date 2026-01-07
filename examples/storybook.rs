@@ -424,6 +424,10 @@ async fn story_view_index(data: web::Data<StorybookState>) -> impl Responder {
         active_filters: vec![],
         days,
         is_past_view: false,
+        all_event_types: vec![],
+        all_sources: vec![],
+        all_locations: vec![],
+        query: Default::default(),
     };
     HttpResponse::Ok()
         .content_type("text/html")
@@ -497,6 +501,10 @@ async fn story_view_filtered(data: web::Data<StorybookState>) -> impl Responder 
             events: music_social_events.iter().map(to_simple).collect(),
         }],
         is_past_view: false,
+        all_event_types: vec![],
+        all_sources: vec![],
+        all_locations: vec![],
+        query: Default::default(),
     };
 
     // Example 2: Past Events
@@ -512,6 +520,10 @@ async fn story_view_filtered(data: web::Data<StorybookState>) -> impl Responder 
             events: past_events.iter().map(to_simple).collect(),
         }],
         is_past_view: true,
+        all_event_types: vec![],
+        all_sources: vec![],
+        all_locations: vec![],
+        query: Default::default(),
     };
 
     let html = format!(

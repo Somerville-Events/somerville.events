@@ -12,6 +12,7 @@ use chrono_tz::America::New_York;
 use icalendar::{Calendar, CalendarDateTime, Component, Event as IcalEvent, EventLike};
 use serde::Deserialize;
 use std::collections::BTreeMap;
+use strum::IntoEnumIterator;
 
 #[derive(Template)]
 #[template(path = "view/index.html")]
@@ -21,6 +22,10 @@ pub struct IndexTemplate {
     pub active_filters: Vec<EventTypeLink>,
     pub days: Vec<DaySection>,
     pub is_past_view: bool,
+    pub all_event_types: Vec<EventType>,
+    pub all_sources: Vec<EventSource>,
+    pub all_locations: Vec<String>,
+    pub query: IndexQuery,
 }
 
 #[derive(Template)]
@@ -39,8 +44,23 @@ pub struct DaySection {
 pub struct IndexQuery {
     #[serde(default, rename = "type")]
     pub event_types: Vec<EventType>,
-    pub source: Option<EventSource>,
+    #[serde(default)]
+    pub source: Vec<EventSource>,
+    #[serde(default)]
+    pub location: Vec<String>,
+    pub free: Option<bool>,
+    pub q: Option<String>,
     pub past: Option<bool>,
+}
+
+impl IndexQuery {
+    pub fn has_filters(&self) -> bool {
+        !self.event_types.is_empty()
+            || !self.source.is_empty()
+            || !self.location.is_empty()
+            || self.free.unwrap_or(false)
+            || self.q.as_deref().map(|s| !s.is_empty()).unwrap_or(false)
+    }
 }
 
 pub async fn index(
@@ -67,10 +87,12 @@ pub async fn index_with_now(
         (Some(now_utc - Duration::days(2)), None)
     };
 
+    // Fetch events and distinct locations
     let events_result = state.events_repo.list(query.clone(), since, until).await;
+    let locations_result = state.events_repo.get_distinct_locations().await;
 
-    match events_result {
-        Ok(events) => {
+    match (events_result, locations_result) {
+        (Ok(events), Ok(all_locations)) => {
             let earliest_day_to_render: NaiveDate = if is_past {
                 NaiveDate::MIN
             } else {
@@ -149,24 +171,78 @@ pub async fn index_with_now(
                 });
             }
 
-            let active_filters: Vec<EventTypeLink> = query
-                .event_types
-                .iter()
-                .map(|c| EventTypeLink {
-                    url: c.get_url_with_past(is_past),
-                    label: c.to_string(),
-                    icon: get_icon_for_type(c).to_string(),
-                    color: get_color_for_type(c),
-                })
-                .collect();
+            let mut active_filters: Vec<EventTypeLink> = Vec::new();
 
-            let (page_title, filter_badge) = if !query.event_types.is_empty() {
-                let category_filter = query
+            let mut add_filters = |key: &str, values: Vec<(String, String, String, String)>| {
+                for (val_str, label, icon, color) in values {
+                    let encoded = url::form_urlencoded::byte_serialize(val_str.as_bytes())
+                        .collect::<String>();
+                    let url = if is_past {
+                        format!("/?{}={}&past=true", key, encoded)
+                    } else {
+                        format!("/?{}={}", key, encoded)
+                    };
+                    active_filters.push(EventTypeLink {
+                        url,
+                        label,
+                        icon,
+                        color,
+                    });
+                }
+            };
+
+            add_filters(
+                "type",
+                query
                     .event_types
                     .iter()
-                    .map(|c| c.to_string())
-                    .collect::<Vec<_>>()
-                    .join(", ");
+                    .map(|t| {
+                        (
+                            t.value(),
+                            t.to_string(),
+                            get_icon_for_type(t).to_string(),
+                            get_color_for_type(t),
+                        )
+                    })
+                    .collect(),
+            );
+
+            add_filters(
+                "source",
+                query
+                    .source
+                    .iter()
+                    .map(|s| {
+                        (
+                            s.value(),
+                            s.to_string(),
+                            "icon-map-pin".to_string(),
+                            "var(--text-color)".to_string(),
+                        )
+                    })
+                    .collect(),
+            );
+
+            add_filters(
+                "location",
+                query
+                    .location
+                    .iter()
+                    .map(|l| {
+                        (
+                            l.clone(),
+                            l.clone(),
+                            "icon-map-pin".to_string(),
+                            "var(--text-color)".to_string(),
+                        )
+                    })
+                    .collect(),
+            );
+
+            let (page_title, filter_badge) = if !active_filters.is_empty() {
+                let filter_labels: Vec<String> =
+                    active_filters.iter().map(|f| f.label.clone()).collect();
+                let category_filter = filter_labels.join(", ");
                 (
                     if is_past {
                         format!("Past Somerville {category_filter} Events")
@@ -192,14 +268,18 @@ pub async fn index_with_now(
                 active_filters,
                 days,
                 is_past_view: is_past,
+                all_event_types: EventType::iter().collect(),
+                all_sources: EventSource::iter().collect(),
+                all_locations,
+                query,
             };
 
             HttpResponse::Ok()
                 .content_type(ContentType::html())
                 .body(template.render().unwrap())
         }
-        Err(e) => {
-            log::error!("Failed to fetch events: {e}");
+        (Err(e), _) | (_, Err(e)) => {
+            log::error!("Failed to fetch events or locations: {e}");
             HttpResponse::InternalServerError().body("Failed to fetch events")
         }
     }

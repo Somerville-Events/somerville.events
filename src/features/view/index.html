@@ -21,6 +21,70 @@
     </nav>
 </header>
 <main>
+    <details {% if query.has_filters() %}open{% endif %}>
+        <summary>Filter Events</summary>
+        <form action="/" method="GET">
+            {% if is_past_view %}
+            <input type="hidden" name="past" value="true">
+            {% endif %}
+
+            <label>
+                Search
+                <input type="search" name="q" value="{{ query.q.as_deref().unwrap_or_default() }}"
+                    placeholder="Event name...">
+            </label>
+
+            <label>
+                <input type="checkbox" name="free" value="true" {% if query.free.unwrap_or(false) %}checked{% endif %}>
+                Free events only
+            </label>
+
+            <fieldset>
+                <legend>Event Type</legend>
+                <div class="checkbox-group">
+                    {% for t in all_event_types %}
+                    <label>
+                        <input type="checkbox" name="type" value="{{ t.value() }}" {% if
+                            query.event_types.contains(t) %}checked{% endif %}>
+                        {{ t }}
+                    </label>
+                    {% endfor %}
+                </div>
+            </fieldset>
+
+            <fieldset>
+                <legend>Source</legend>
+                <div class="checkbox-group">
+                    {% for s in all_sources %}
+                    <label>
+                        <input type="checkbox" name="source" value="{{ s.value() }}" {% if
+                            query.source.contains(s) %}checked{% endif %}>
+                        {{ s }}
+                    </label>
+                    {% endfor %}
+                </div>
+            </fieldset>
+
+            <fieldset>
+                <legend>Location</legend>
+                <div class="checkbox-group scrollable">
+                    {% for l in all_locations %}
+                    <label>
+                        <input type="checkbox" name="location" value="{{ l }}" {% if query.location.contains(l)
+                            %}checked{% endif %}>
+                        {{ l }}
+                    </label>
+                    {% endfor %}
+                </div>
+            </fieldset>
+
+            <div>
+                <button type="submit">Apply Filters</button>
+                <a href="/{% if is_past_view %}?past=true{% endif %}" class="button secondary">Clear Filters</a>
+            </div>
+        </form>
+    </details>
+
     {% if !filter_badge.is_empty() %}
     <p>
         <a class="button" href="/{% if is_past_view %}?past=true{% endif %}">Show all events</a>
@@ -46,4 +110,149 @@
     </footer>
     {% endif %}
 </main>
+
+<style>
+    /* Mobile First Styles */
+    details {
+        margin-bottom: 2rem;
+        background: var(--event-bg);
+        border: 1px solid var(--button-border);
+        border-radius: 4px;
+        padding: 1rem;
+    }
+
+    summary {
+        font-weight: 600;
+        cursor: pointer;
+        list-style: none;
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+    }
+
+    summary::-webkit-details-marker {
+        display: none;
+    }
+
+    summary::after {
+        content: '+';
+        margin-left: auto;
+        font-weight: bold;
+    }
+
+    details[open] summary::after {
+        content: '-';
+    }
+
+    details form {
+        margin-top: 1rem;
+        display: flex;
+        flex-direction: column;
+        gap: 1.5rem;
+    }
+
+    details label {
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+        font-weight: 500;
+    }
+
+    fieldset {
+        border: none;
+        padding: 0;
+        margin: 0;
+        min-width: 0; /* Fix for grid overflow */
+    }
+
+    legend {
+        font-weight: 500;
+        margin-bottom: 0.5rem;
+        display: block;
+        padding: 0;
+    }
+
+    .checkbox-group {
+        display: flex;
+        flex-direction: column;
+        gap: 0.25rem;
+    }
+
+    .checkbox-group.scrollable {
+        max-height: 15rem;
+        overflow-y: auto;
+        padding-right: 0.5rem;
+        border: 1px solid var(--button-border);
+        border-radius: 4px;
+        padding: 0.5rem;
+        background: var(--bg-color);
+    }
+
+    /* Checkbox label row layout - applies to both top-level and nested checkboxes */
+    label:has(input[type="checkbox"]) {
+        flex-direction: row;
+        align-items: center;
+        padding: 0.25rem 0;
+        font-weight: normal;
+    }
+
+    /* Make top-level labels bold again if needed, or just rely on legend */
+    details > form > label {
+        font-weight: 500;
+    }
+    
+    /* Specific override for the "Free events" checkbox label to match other inputs' alignment/style if needed */
+    details > form > label:has(input[type="checkbox"]) {
+         padding: 0.5rem 0;
+    }
+
+
+    details input[type="checkbox"] {
+        width: 1.5rem;
+        height: 1.5rem;
+        margin: 0;
+        margin-right: 0.5rem;
+        flex-shrink: 0;
+    }
+
+    details input[type="text"],
+    details input[type="search"],
+    details select {
+        padding: 0.75rem;
+        font-size: 16px;
+        /* Prevent zoom on iOS */
+        border: 1px solid var(--button-border);
+        border-radius: 4px;
+        background: var(--bg-color);
+        color: var(--text-color);
+        width: 100%;
+        box-sizing: border-box;
+    }
+
+
+    /* Actions container - simple div at the end */
+    details form>div:last-child {
+        display: flex;
+        gap: 1rem;
+        margin-top: 1rem;
+        align-items: center;
+    }
+
+    /* Desktop layout */
+    @media (min-width: 600px) {
+        details form {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1.5rem;
+            align-items: start;
+        }
+
+        details label:has(input[type="search"]),
+        details > form > label:has(input[type="checkbox"]),
+        details form>div:last-child,
+        fieldset:has(.scrollable) {
+            grid-column: 1 / -1;
+        }
+    }
+</style>
 {% endblock %}

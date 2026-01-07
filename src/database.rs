@@ -13,6 +13,7 @@ pub trait EventsRepo: Send + Sync {
         since: Option<DateTime<Utc>>,
         until: Option<DateTime<Utc>>,
     ) -> Result<Vec<SimpleEvent>>;
+    async fn get_distinct_locations(&self) -> Result<Vec<String>>;
     async fn get(&self, id: i64) -> Result<Option<Event>>;
     async fn claim_idempotency_key(&self, idempotency_key: uuid::Uuid) -> Result<bool>;
     async fn insert(&self, event: &Event) -> Result<i64>;
@@ -32,7 +33,14 @@ impl EventsRepo for sqlx::Pool<sqlx::Postgres> {
             .iter()
             .map(|c| c.as_ref().to_string())
             .collect();
-        let source: Option<String> = query.source.map(|s| s.as_ref().to_string());
+        let sources: Vec<String> = query
+            .source
+            .iter()
+            .map(|s| s.as_ref().to_string())
+            .collect();
+        let locations: Vec<String> = query.location.clone();
+        let free_only = query.free.unwrap_or(false);
+        let name_query = query.q.clone();
 
         let events = sqlx::query_as!(
             SimpleEvent,
@@ -42,9 +50,12 @@ impl EventsRepo for sqlx::Pool<sqlx::Postgres> {
                 FROM app.events e
                 LEFT JOIN app.event_event_types et ON e.id = et.event_id
                 WHERE (cardinality($1::text[]) = 0 OR et.event_type_name = ANY($1::text[]))
-                AND ($2::text IS NULL OR e.source = $2::text)
-                AND ($3::timestamptz IS NULL OR e.start_date >= $3)
-                AND ($4::timestamptz IS NULL OR e.start_date <= $4)
+                AND (cardinality($2::text[]) = 0 OR e.source = ANY($2::text[]))
+                AND (cardinality($3::text[]) = 0 OR e.location_name = ANY($3::text[]))
+                AND ($4::boolean = false OR e.price = 0)
+                AND ($5::text IS NULL OR e.name ILIKE ('%' || $5::text || '%'))
+                AND ($6::timestamptz IS NULL OR e.start_date >= $6)
+                AND ($7::timestamptz IS NULL OR e.start_date <= $7)
             )
             SELECT
                 e.id,
@@ -61,7 +72,10 @@ impl EventsRepo for sqlx::Pool<sqlx::Postgres> {
             ORDER BY e.start_date ASC NULLS LAST
             "#,
             &categories,
-            source,
+            &sources,
+            &locations,
+            free_only,
+            name_query,
             since,
             until
         )
@@ -69,6 +83,24 @@ impl EventsRepo for sqlx::Pool<sqlx::Postgres> {
         .await?;
 
         Ok(events)
+    }
+
+    async fn get_distinct_locations(&self) -> Result<Vec<String>> {
+        let locations = sqlx::query!(
+            r#"
+            SELECT DISTINCT location_name
+            FROM app.events
+            WHERE location_name IS NOT NULL
+            ORDER BY location_name
+            "#
+        )
+        .fetch_all(self)
+        .await?;
+
+        Ok(locations
+            .into_iter()
+            .filter_map(|r| r.location_name)
+            .collect())
     }
 
     async fn get(&self, id: i64) -> Result<Option<Event>> {
@@ -534,8 +566,9 @@ mod tests {
         // Query with no filter
         let query_all = IndexQuery {
             event_types: vec![],
-            source: None,
+            source: vec![],
             past: None,
+            ..Default::default()
         };
         let events = pool.list(query_all, None, None).await?;
         assert_eq!(events.len(), 1);
@@ -580,8 +613,9 @@ mod tests {
         // Test Category Filter
         let query = IndexQuery {
             event_types: vec![EventType::Art],
-            source: None,
+            source: vec![],
             past: None,
+            ..Default::default()
         };
 
         let events = pool.list(query, None, None).await?;
@@ -591,8 +625,9 @@ mod tests {
         // Test Empty Filter (Should return all)
         let query_all = IndexQuery {
             event_types: vec![],
-            source: None,
+            source: vec![],
             past: None,
+            ..Default::default()
         };
         let events_all = pool.list(query_all, None, None).await?;
         assert_eq!(events_all.len(), 2);
@@ -646,8 +681,9 @@ mod tests {
         // 2. LIST - Source Filtering
         let query_source = IndexQuery {
             event_types: vec![],
-            source: Some(EventSource::ArtsAtTheArmory),
+            source: vec![EventSource::ArtsAtTheArmory],
             past: None,
+            ..Default::default()
         };
         let res_source = pool.list(query_source, None, None).await?;
         assert_eq!(res_source.len(), 1);
@@ -657,8 +693,9 @@ mod tests {
         // 3.1 Single category
         let query_art = IndexQuery {
             event_types: vec![EventType::Art],
-            source: None,
+            source: vec![],
             past: None,
+            ..Default::default()
         };
         let res_art = pool.list(query_art, None, None).await?;
         assert_eq!(res_art.len(), 2); // Event 1 and 3
@@ -667,8 +704,9 @@ mod tests {
         // If I query for Art OR Music, I should get all 3 (since all have at least one)
         let query_multi = IndexQuery {
             event_types: vec![EventType::Art, EventType::Music],
-            source: None,
+            source: vec![],
             past: None,
+            ..Default::default()
         };
         let res_multi = pool.list(query_multi, None, None).await?;
         assert_eq!(res_multi.len(), 3);
@@ -711,6 +749,90 @@ mod tests {
         // Try inserting event_2 again. Should return id2.
         let dup_id = save_event_to_db(&pool, &event_2).await?;
         assert_eq!(dup_id, id2);
+
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn test_advanced_filtering(pool: sqlx::PgPool) -> Result<()> {
+        let base_time = Utc.timestamp_opt(1672531200, 0).unwrap();
+
+        // 1. Free Event
+        let event_free = {
+            let mut e = create_event("Free Concert", "Music", Some("Park"));
+            e.price = Some(0.0);
+            e.source = EventSource::CityOfCambridge;
+            e.location_name = Some("Central Park".to_string());
+            e.start_date = base_time;
+            e
+        };
+
+        // 2. Paid Event
+        let event_paid = {
+            let mut e = create_event("Paid Workshop", "Learn", Some("School"));
+            e.price = Some(50.0);
+            e.source = EventSource::ImageUpload;
+            e.location_name = Some("High School".to_string());
+            e.start_date = base_time;
+            e
+        };
+
+        // 3. Specific Source and Location
+        let event_specific = {
+            let mut e = create_event("Special Gala", "Party", Some("Hotel"));
+            e.price = Some(100.0);
+            e.source = EventSource::ArtsAtTheArmory;
+            e.location_name = Some("The Armory".to_string());
+            e.start_date = base_time;
+            e
+        };
+
+        save_event_to_db(&pool, &event_free).await?;
+        save_event_to_db(&pool, &event_paid).await?;
+        save_event_to_db(&pool, &event_specific).await?;
+
+        // Test 1: Free Filter
+        let query_free = IndexQuery {
+            free: Some(true),
+            ..Default::default()
+        };
+        let res_free = pool.list(query_free, None, None).await?;
+        assert_eq!(res_free.len(), 1);
+        assert_eq!(res_free[0].name, "Free Concert");
+
+        // Test 2: Location Filter
+        let query_loc = IndexQuery {
+            location: vec!["The Armory".to_string()],
+            ..Default::default()
+        };
+        let res_loc = pool.list(query_loc, None, None).await?;
+        assert_eq!(res_loc.len(), 1);
+        assert_eq!(res_loc[0].name, "Special Gala");
+
+        // Test 3: Multiple Source Filter
+        let query_sources = IndexQuery {
+            source: vec![EventSource::CityOfCambridge, EventSource::ArtsAtTheArmory],
+            ..Default::default()
+        };
+        let res_sources = pool.list(query_sources, None, None).await?;
+        assert_eq!(res_sources.len(), 2); // Free Concert and Special Gala
+
+        // Test 4: Fuzzy Search
+        // "Concert" should match "Free Concert"
+        let query_fuzzy = IndexQuery {
+            q: Some("Concert".to_string()),
+            ..Default::default()
+        };
+        let res_fuzzy = pool.list(query_fuzzy, None, None).await?;
+        assert_eq!(res_fuzzy.len(), 1);
+        assert_eq!(res_fuzzy[0].name, "Free Concert");
+
+        // Test 5: Distinct Locations
+        let locations = pool.get_distinct_locations().await?;
+        assert_eq!(locations.len(), 3);
+        assert!(locations.contains(&"Central Park".to_string()));
+        assert!(locations.contains(&"High School".to_string()));
+        assert!(locations.contains(&"The Armory".to_string()));
 
         Ok(())
     }
