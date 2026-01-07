@@ -14,24 +14,24 @@ use std::collections::BTreeMap;
 
 #[derive(Template)]
 #[template(path = "view/index.html")]
-struct IndexTemplate {
-    page_title: String,
-    filter_badge: String,
-    active_filters: Vec<EventTypeLink>,
-    days: Vec<DaySection>,
-    is_past_view: bool,
+pub struct IndexTemplate {
+    pub page_title: String,
+    pub filter_badge: String,
+    pub active_filters: Vec<EventTypeLink>,
+    pub days: Vec<DaySection>,
+    pub is_past_view: bool,
 }
 
 #[derive(Template)]
 #[template(path = "view/show.html")]
-struct ShowTemplate {
-    event: EventViewModel,
+pub struct ShowTemplate {
+    pub event: EventViewModel,
 }
 
-struct DaySection {
-    day_id: String,
-    date_header: String,
-    events: Vec<EventViewModel>,
+pub struct DaySection {
+    pub day_id: String,
+    pub date_header: String,
+    pub events: Vec<EventViewModel>,
 }
 
 #[derive(Deserialize, Default, Clone)]

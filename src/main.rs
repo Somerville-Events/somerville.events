@@ -1,10 +1,3 @@
-mod config;
-mod database;
-mod features;
-pub mod geocoding;
-mod image_processing;
-mod models;
-
 use actix_web::{
     dev::ServiceRequest,
     error::ErrorUnauthorized,
@@ -15,17 +8,8 @@ use actix_web::{
 use actix_web_httpauth::{extractors::basic::BasicAuth, middleware::HttpAuthentication};
 use actix_web_query_method_middleware::QueryMethod;
 use anyhow::Result;
-use config::Config;
-use database::EventsRepo;
+use somerville_events::{config::Config, features, AppState};
 use sqlx::postgres::PgPoolOptions;
-
-pub struct AppState {
-    pub openai_api_key: String,
-    pub google_maps_api_key: String,
-    pub username: String,
-    pub password: String,
-    pub events_repo: Box<dyn EventsRepo>,
-}
 
 async fn basic_auth_validator(
     req: ServiceRequest,
@@ -113,10 +97,6 @@ async fn main() -> Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use super::database::EventsRepo;
-    use super::features::view::IndexQuery;
-    use super::models::{Event, EventSource, EventType};
-    use super::AppState;
     use actix_web::web::Data;
     use actix_web::{test, web, App};
     use anyhow::Result;
@@ -124,6 +104,10 @@ mod tests {
     use chrono::{DateTime, NaiveDateTime, NaiveTime, TimeZone, Timelike, Utc};
     use chrono_tz::America::New_York;
     use scraper::{Html, Selector};
+    use somerville_events::database::EventsRepo;
+    use somerville_events::features::view::IndexQuery;
+    use somerville_events::models::{Event, EventSource, EventType};
+    use somerville_events::AppState;
     use std::sync::{Arc, Mutex};
 
     #[derive(Clone, Default)]
@@ -274,7 +258,7 @@ mod tests {
         let app = test::init_service(App::new().app_data(Data::new(state)).route(
             "/",
             web::get().to(move |state: Data<AppState>| {
-                crate::features::view::index_with_now(
+                somerville_events::features::view::index_with_now(
                     state,
                     fixed_now_utc,
                     IndexQuery {
@@ -459,7 +443,7 @@ mod tests {
         let app = test::init_service(App::new().app_data(Data::new(state)).route(
             "/",
             web::get().to(move |state: Data<AppState>| {
-                crate::features::view::index_with_now(
+                somerville_events::features::view::index_with_now(
                     state,
                     fixed_now_utc,
                     IndexQuery {
@@ -598,7 +582,7 @@ mod tests {
 
         let app = test::init_service(App::new().app_data(Data::new(state)).route(
             "/event/{id}.ical",
-            web::get().to(crate::features::view::ical),
+            web::get().to(somerville_events::features::view::ical),
         ))
         .await;
 
@@ -690,7 +674,7 @@ mod tests {
             "/",
             web::get().to(move |state: Data<AppState>| {
                 // We use fixed_now to ensure the event is considered upcoming
-                crate::features::view::index_with_now(
+                somerville_events::features::view::index_with_now(
                     state,
                     fixed_now,
                     IndexQuery {
@@ -742,7 +726,7 @@ mod tests {
             confidence: 1.0,
             age_restrictions: None,
             price: None,
-            source: super::models::EventSource::AeronautBrewing,
+            source: somerville_events::models::EventSource::AeronautBrewing,
         };
 
         let library_event = Event {
@@ -761,7 +745,7 @@ mod tests {
             confidence: 1.0,
             age_restrictions: None,
             price: None,
-            source: super::models::EventSource::CityOfCambridge,
+            source: somerville_events::models::EventSource::CityOfCambridge,
         };
 
         let state = AppState {
@@ -776,11 +760,11 @@ mod tests {
         };
 
         let fixed_now_utc = now_utc;
-        let filter = Some(crate::models::EventSource::AeronautBrewing);
+        let filter = Some(somerville_events::models::EventSource::AeronautBrewing);
         let app = test::init_service(App::new().app_data(Data::new(state)).route(
             "/",
             web::get().to(move |state: Data<AppState>| {
-                super::features::view::index_with_now(
+                somerville_events::features::view::index_with_now(
                     state,
                     fixed_now_utc,
                     IndexQuery {
@@ -821,7 +805,7 @@ mod tests {
         let app = test::init_service(
             App::new()
                 .app_data(Data::new(state))
-                .route("/", web::get().to(super::features::view::index)),
+                .route("/", web::get().to(somerville_events::features::view::index)),
         )
         .await;
 
@@ -849,7 +833,7 @@ mod tests {
         let app = test::init_service(
             App::new()
                 .app_data(Data::new(state))
-                .route("/", web::get().to(super::features::view::index)),
+                .route("/", web::get().to(somerville_events::features::view::index)),
         )
         .await;
 
@@ -943,7 +927,7 @@ mod tests {
         let app = test::init_service(App::new().app_data(Data::new(state)).route(
             "/",
             web::get().to(move |state: Data<AppState>| {
-                super::features::view::index_with_now(
+                somerville_events::features::view::index_with_now(
                     state,
                     fixed_now_utc,
                     IndexQuery {

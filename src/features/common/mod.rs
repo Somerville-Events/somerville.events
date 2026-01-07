@@ -16,12 +16,13 @@ pub fn get_color_for_type(t: &EventType) -> String {
         | EventType::Meeting
         | EventType::Volunteer
         | EventType::PersonalService
-        | EventType::Workshop => ("#455a64", "#b0bec5"), // Blue Grey 700 / 200
+        | EventType::Workshop
+        | EventType::Fundraiser => ("#455a64", "#b0bec5"), // Blue Grey 700 / 200
         EventType::Family | EventType::ChildFriendly => ("#2e7d32", "#a5d6a7"), // Green 800 / 200
-        EventType::Social | EventType::Holiday | EventType::Fundraiser => ("#d32f2f", "#ef9a9a"), // Red 700 / 200
-        EventType::Sports | EventType::Fitness => ("#1976d2", "#90caf9"), // Blue 700 / 200
-        EventType::Religious => ("#5d4037", "#bcaaa4"),                   // Brown 700 / 200
-        EventType::Other => ("#616161", "#eeeeee"),                       // Grey 700 / 200
+        EventType::Social | EventType::Holiday => ("#d32f2f", "#ef9a9a"),       // Red 700 / 200
+        EventType::Sports | EventType::Fitness => ("#1976d2", "#90caf9"),       // Blue 700 / 200
+        EventType::Religious => ("#5d4037", "#bcaaa4"),                         // Brown 700 / 200
+        EventType::Other => ("#616161", "#eeeeee"),                             // Grey 700 / 200
     };
     format!("light-dark({}, {})", light_mode, dark_mode)
 }
@@ -35,11 +36,11 @@ pub fn get_icon_for_type(t: &EventType) -> &'static str {
         EventType::PersonalService | EventType::Volunteer => "icon-heart-handshake",
         EventType::Meeting => "icon-users",
         EventType::Government => "icon-landmark",
-        EventType::Fundraiser => "icon-dollar-sign",
+        EventType::Fundraiser => "icon-hand-coins",
         EventType::Film => "icon-film",
         EventType::Theater | EventType::Comedy | EventType::Performance => "icon-drama",
         EventType::Literature => "icon-book-open",
-        EventType::Workshop => "icon-wrench",
+        EventType::Workshop => "icon-education",
         EventType::Fitness | EventType::Sports => "icon-trophy",
         EventType::Market => "icon-store",
         EventType::Family | EventType::ChildFriendly => "icon-baby",

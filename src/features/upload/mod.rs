@@ -11,13 +11,13 @@ use uuid::Uuid;
 
 #[derive(Template)]
 #[template(path = "upload/upload.html")]
-struct UploadTemplate {
-    idempotency_key: String,
+pub struct UploadTemplate {
+    pub idempotency_key: String,
 }
 
 #[derive(Template)]
 #[template(path = "upload/success.html")]
-struct SuccessTemplate;
+pub struct SuccessTemplate;
 
 #[derive(Debug, MultipartForm)]
 pub struct UploadForm {
