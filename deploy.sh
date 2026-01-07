@@ -26,6 +26,7 @@ sqlx migrate run --database-url "$DATABASE_URL"
 
 # 2. Update Symlinks
 ln -sfn "$LATEST/${APP_NAME}" "$HOME/bin/${APP_NAME}"
+ln -sfn "$LATEST/ingest_events" "$HOME/bin/ingest_events"
 ln -sfn "$LATEST/static" "$HOME/srv/static"
 
 # 3. Restart Service
