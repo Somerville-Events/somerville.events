@@ -225,6 +225,7 @@ mod tests {
             age_restrictions: None,
             price: None,
             source: EventSource::ImageUpload,
+            external_id: None,
         };
 
         let music_event = Event {
@@ -244,6 +245,7 @@ mod tests {
             age_restrictions: None,
             price: None,
             source: EventSource::ImageUpload,
+            external_id: None,
         };
 
         let state = AppState {
@@ -317,6 +319,7 @@ mod tests {
             age_restrictions: None,
             price: None,
             source: EventSource::ImageUpload,
+            external_id: None,
         };
 
         // No end_date: should render only on its start day.
@@ -337,6 +340,7 @@ mod tests {
             age_restrictions: None,
             price: None,
             source: EventSource::ImageUpload,
+            external_id: None,
         };
 
         // No end_date from yesterday (within the last 24h) should still render, and should
@@ -358,6 +362,7 @@ mod tests {
             age_restrictions: None,
             price: None,
             source: EventSource::ImageUpload,
+            external_id: None,
         };
 
         // Two distinct events on the same local day should both render under the same day section.
@@ -379,6 +384,7 @@ mod tests {
             age_restrictions: None,
             price: None,
             source: EventSource::ImageUpload,
+            external_id: None,
         };
 
         let same_day_2 = Event {
@@ -399,6 +405,7 @@ mod tests {
             age_restrictions: None,
             price: None,
             source: EventSource::ImageUpload,
+            external_id: None,
         };
 
         // Explicit multi-day: should appear under each day.
@@ -419,6 +426,7 @@ mod tests {
             age_restrictions: None,
             price: None,
             source: EventSource::ImageUpload,
+            external_id: None,
         };
 
         // Intentionally shuffled to ensure server-side sorting/grouping is doing the work.
@@ -570,6 +578,7 @@ mod tests {
             age_restrictions: None,
             price: None,
             source: EventSource::ImageUpload,
+            external_id: None,
         };
 
         let state = AppState {
@@ -659,6 +668,7 @@ mod tests {
             age_restrictions: None,
             price: None,
             source: EventSource::ImageUpload,
+            external_id: None,
         };
 
         let state = AppState {
@@ -727,6 +737,7 @@ mod tests {
             age_restrictions: None,
             price: None,
             source: somerville_events::models::EventSource::AeronautBrewing,
+            external_id: None,
         };
 
         let library_event = Event {
@@ -746,6 +757,7 @@ mod tests {
             age_restrictions: None,
             price: None,
             source: somerville_events::models::EventSource::CityOfCambridge,
+            external_id: None,
         };
 
         let state = AppState {
@@ -870,6 +882,7 @@ mod tests {
             age_restrictions: None,
             price: None,
             source: EventSource::ImageUpload,
+            external_id: None,
         };
 
         let music_event = Event {
@@ -889,6 +902,7 @@ mod tests {
             age_restrictions: None,
             price: None,
             source: EventSource::ImageUpload,
+            external_id: None,
         };
 
         let food_event = Event {
@@ -908,6 +922,7 @@ mod tests {
             age_restrictions: None,
             price: None,
             source: EventSource::ImageUpload,
+            external_id: None,
         };
 
         let state = AppState {

@@ -272,6 +272,7 @@ fn parse_and_validate_response(content: &str) -> Result<Vec<Event>> {
             age_restrictions: extracted_event.age_restrictions,
             price: extracted_event.price,
             source: EventSource::ImageUpload,
+            external_id: None,
         });
     }
 

@@ -95,6 +95,7 @@ impl EventsRepo for sqlx::Pool<sqlx::Postgres> {
                 age_restrictions: r.age_restrictions,
                 price: r.price,
                 source: EventSource::from(r.source),
+                external_id: None,
             })
             .collect();
 
@@ -148,6 +149,7 @@ impl EventsRepo for sqlx::Pool<sqlx::Postgres> {
             age_restrictions: r.age_restrictions,
             price: r.price,
             source: EventSource::from(r.source),
+            external_id: None,
         }))
     }
 
@@ -218,9 +220,10 @@ pub async fn save_event_to_db(executor: &sqlx::Pool<sqlx::Postgres>, event: &Eve
                 confidence,
                 age_restrictions,
                 price,
-                source
+                source,
+                external_id
             )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
             RETURNING id
             "#,
         event.name,
@@ -236,7 +239,8 @@ pub async fn save_event_to_db(executor: &sqlx::Pool<sqlx::Postgres>, event: &Eve
         event.confidence,
         event.age_restrictions,
         event.price,
-        event.source.as_ref()
+        event.source.as_ref(),
+        event.external_id
     )
     .fetch_one(&mut *tx)
     .await
@@ -318,6 +322,7 @@ async fn find_duplicate(
             age_restrictions: r.age_restrictions,
             price: r.price,
             source: EventSource::from(r.source),
+            external_id: None,
         })
         .collect();
 
@@ -365,6 +370,7 @@ mod tests {
             age_restrictions: None,
             price: None,
             source: EventSource::ImageUpload,
+            external_id: None,
         }
     }
 
