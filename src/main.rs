@@ -107,7 +107,7 @@ mod tests {
     use scraper::{Html, Selector};
     use somerville_events::database::EventsRepo;
     use somerville_events::features::view::IndexQuery;
-    use somerville_events::models::{Event, EventSource, EventType};
+    use somerville_events::models::{Event, EventSource, EventType, SimpleEvent};
     use somerville_events::AppState;
     use std::sync::{Arc, Mutex};
 

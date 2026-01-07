@@ -5,6 +5,7 @@ use somerville_events::{
     features::{
         common::{
             get_color_for_type, get_icon_for_type, EventLocation, EventTypeLink, EventViewModel,
+            SimpleEventViewModel,
         },
         upload::{SuccessTemplate, UploadTemplate},
         view::{DaySection, IndexTemplate, ShowTemplate},
@@ -46,6 +47,22 @@ use std::sync::Mutex;
     ext = "html"
 )]
 struct StorybookIndexTemplate;
+
+fn to_simple(vm: &EventViewModel) -> SimpleEventViewModel {
+    SimpleEventViewModel {
+        id: vm.id,
+        name: vm.name.clone(),
+        start_iso: vm.start_iso.clone(),
+        start_formatted: vm.start_formatted.clone(),
+        end_iso: vm.end_iso.clone(),
+        end_formatted: vm.end_formatted.clone(),
+        location: vm.location.clone(),
+        event_types: vm.event_types.clone(),
+        accent_color: vm.accent_color.clone(),
+        accent_icon: vm.accent_icon.clone(),
+        detail_url: format!("/event/{}", vm.id),
+    }
+}
 
 async fn index() -> impl Responder {
     let html = StorybookIndexTemplate.render().unwrap();
@@ -372,7 +389,7 @@ async fn story_view_index(data: web::Data<StorybookState>) -> impl Responder {
     days.push(DaySection {
         day_id: "day-types".to_string(),
         date_header: "All Event Types".to_string(),
-        events: type_events,
+        events: type_events.iter().map(to_simple).collect(),
     });
 
     // Group 2: Variations (next 5)
@@ -385,7 +402,7 @@ async fn story_view_index(data: web::Data<StorybookState>) -> impl Responder {
     days.push(DaySection {
         day_id: "day-variations".to_string(),
         date_header: "Field Variations".to_string(),
-        events: variation_events,
+        events: variation_events.iter().map(to_simple).collect(),
     });
 
     // Group 3: Text (next 4)
@@ -398,7 +415,7 @@ async fn story_view_index(data: web::Data<StorybookState>) -> impl Responder {
     days.push(DaySection {
         day_id: "day-text".to_string(),
         date_header: "Text Lengths".to_string(),
-        events: text_events,
+        events: text_events.iter().map(to_simple).collect(),
     });
 
     let template = IndexTemplate {
@@ -477,7 +494,7 @@ async fn story_view_filtered(data: web::Data<StorybookState>) -> impl Responder 
         days: vec![DaySection {
             day_id: "day-1".to_string(),
             date_header: "Filtered Results".to_string(),
-            events: music_social_events,
+            events: music_social_events.iter().map(to_simple).collect(),
         }],
         is_past_view: false,
     };
@@ -492,7 +509,7 @@ async fn story_view_filtered(data: web::Data<StorybookState>) -> impl Responder 
         days: vec![DaySection {
             day_id: "day-past".to_string(),
             date_header: "Yesterday".to_string(),
-            events: past_events,
+            events: past_events.iter().map(to_simple).collect(),
         }],
         is_past_view: true,
     };

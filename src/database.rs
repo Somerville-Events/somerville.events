@@ -651,7 +651,7 @@ mod tests {
         };
         let res_source = pool.list(query_source, None, None).await?;
         assert_eq!(res_source.len(), 1);
-        assert_eq!(res_source[0].id.unwrap(), id2);
+        assert_eq!(res_source[0].id, id2);
 
         // 3. LIST - Category Filtering
         // 3.1 Single category
@@ -695,7 +695,7 @@ mod tests {
             .list(IndexQuery::default(), Some(since_date), Some(until_date))
             .await?;
         assert_eq!(res_window.len(), 1);
-        assert_eq!(res_window[0].id.unwrap(), id2);
+        assert_eq!(res_window[0].id, id2);
 
         // 5. DELETE
         // 5.1 Delete existing
