@@ -11,13 +11,7 @@
 </header>
 <section>
     {% for event in events %}
-    <article>
-        <h3><a href="/event/{{ event.id }}">{{ event.name }}</a></h3>
-        {% include "common/detailed_event_body.html" %}
-        <form action="/event/{{ event.id }}?_method=DELETE" method="post">
-            <button type="submit">Delete</button>
-        </form>
-    </article>
+    {% include "common/simple_event_body.html" %}
     {% endfor %}
 </section>
 {% endblock %}

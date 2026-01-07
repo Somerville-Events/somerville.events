@@ -85,7 +85,8 @@ async fn main() -> Result<()> {
             .service(
                 web::scope("/edit")
                     .wrap(auth_middleware)
-                    .route("", web::get().to(features::edit::index)),
+                    .route("", web::get().to(features::edit::index))
+                    .route("/event/{id}", web::get().to(features::edit::show)),
             )
             .route("/upload-success", web::get().to(features::upload::success))
     })
@@ -133,9 +134,8 @@ mod tests {
             query: IndexQuery,
             since: Option<DateTime<Utc>>,
             until: Option<DateTime<Utc>>,
-        ) -> Result<Vec<Event>> {
+        ) -> Result<Vec<SimpleEvent>> {
             let events = self.events.lock().unwrap().clone();
-
             Ok(events
                 .into_iter()
                 .filter(|e| {
@@ -160,6 +160,15 @@ mod tests {
                         true
                     };
                     type_match && source_match && since_match && until_match
+                })
+                .map(|e| SimpleEvent {
+                    id: e.id.unwrap_or_default(),
+                    name: e.name,
+                    start_date: e.start_date,
+                    end_date: e.end_date,
+                    original_location: e.original_location,
+                    location_name: e.location_name,
+                    event_types: e.event_types,
                 })
                 .collect())
         }

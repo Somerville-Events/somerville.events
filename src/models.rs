@@ -230,3 +230,14 @@ pub struct Event {
     #[schemars(skip)]
     pub external_id: Option<String>,
 }
+
+#[derive(Debug, Clone, PartialEq, sqlx::FromRow)]
+pub struct SimpleEvent {
+    pub id: i64,
+    pub name: String,
+    pub start_date: DateTime<Utc>,
+    pub end_date: Option<DateTime<Utc>>,
+    pub original_location: Option<String>,
+    pub location_name: Option<String>,
+    pub event_types: Vec<EventType>,
+}
