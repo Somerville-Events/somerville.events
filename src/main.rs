@@ -69,7 +69,7 @@ async fn main() -> Result<()> {
             .wrap(middleware::Logger::default())
             .service(actix_files::Files::new("/static", &static_file_dir).show_files_listing())
             .route("/", web::get().to(features::view::index))
-            .route("/event/{id}.ical", web::get().to(features::view::ical))
+            .route("/event/{id}.ics", web::get().to(features::view::ical))
             .route("/event/{id}", web::get().to(features::view::show))
             .service(
                 web::resource("/upload")
@@ -581,12 +581,12 @@ mod tests {
         };
 
         let app = test::init_service(App::new().app_data(Data::new(state)).route(
-            "/event/{id}.ical",
+            "/event/{id}.ics",
             web::get().to(somerville_events::features::view::ical),
         ))
         .await;
 
-        let req = test::TestRequest::get().uri("/event/1.ical").to_request();
+        let req = test::TestRequest::get().uri("/event/1.ics").to_request();
         let resp = test::call_service(&app, req).await;
         assert_eq!(resp.status(), actix_web::http::StatusCode::OK);
 
