@@ -80,3 +80,4 @@ log "Profiling complete!"
 log "Results saved to: $PROFILE_OUTPUT"
 log "To view results, run: samply load $PROFILE_OUTPUT"
 
+

@@ -73,3 +73,4 @@ If you want to run the steps manually without the script:
 - **Flame Graph**: Visual representation of the call stack frequency.
 
 Look for "wide" blocks in the Flame Graph or high percentages in the Call Tree that correspond to your application logic (e.g., `somerville_events::...`). Ignore idle time or system calls unless they are unexpected.
+
