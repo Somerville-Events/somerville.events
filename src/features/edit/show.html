@@ -2,6 +2,10 @@
 
 {% block title %}{{ event.name }} - Somerville Events{% endblock %}
 
+{% block css %}
+    {% include "common/detailed_event_body.css" %}
+{% endblock %}
+
 {% block content %}
 <article>
     <h1>{{ event.name }}</h1>

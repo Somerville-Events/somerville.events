@@ -2,9 +2,16 @@
 
 {% block title %}Edit Events{% endblock %}
 
+{% block css %}
+    {% include "common/simple_event_body.css" %}
+{% endblock %}
+
 {% block content %}
 <header>
     <h1>Edit Events</h1>
+    <nav>
+        <a href="/">&larr; Back to Home</a>
+    </nav>
 </header>
 <section class="events-day">
     {% for event in events %}

@@ -1,0 +1,50 @@
+.detail-row {
+    display: flex;
+    gap: 0.75rem;
+    margin: 0.5rem 0;
+    align-items: flex-start;
+}
+
+.detail-row .icon {
+    margin-top: 0.2em;
+    flex-shrink: 0;
+    width: 1.2em;
+    height: 1.2em;
+}
+
+.event-website {
+    display: inline-block;
+    max-width: 100%;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    vertical-align: bottom;
+}
+
+.event-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin: 0.75rem 0;
+}
+
+.event-tag {
+    padding: 0.2rem 0.6rem;
+    font-size: 0.9em;
+    background-color: var(--tag-bg);
+    color: var(--link-color);
+    border: 1px solid var(--button-border);
+    border-radius: 1rem;
+}
+
+.event-tag:hover {
+    background-color: var(--tag-hover-bg);
+    color: var(--button-text);
+}
+
+.event-tag svg {
+    width: 1em;
+    height: 1em;
+    vertical-align: -0.15em;
+    margin-right: 0.1em;
+}
