@@ -25,6 +25,10 @@
 aside {
     flex-grow: 1;
     flex-shrink: 0;
+    flex-basis: 100%;
+}
+
+aside:has(> details[open]) {
     flex-basis: 20rem;
 }
 
