@@ -236,7 +236,7 @@ details.filter-group fieldset.chips {
     flex-wrap: wrap;
 }
 
-details.filter-group .filter-list-item {
+.filter-list-item {
     display: flex;
     align-items: center;
     gap: 0.75rem;
@@ -248,11 +248,11 @@ details.filter-group .filter-list-item {
     /* Slightly larger for readability */
 }
 
-details.filter-group .filter-list-item:hover {
+.filter-list-item:hover {
     background-color: var(--button-bg);
 }
 
-details.filter-group .filter-list-item input[type="checkbox"] {
+.filter-list-item input[type="checkbox"] {
     width: 1.25rem;
     height: 1.25rem;
     margin: 0;

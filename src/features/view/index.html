@@ -38,8 +38,9 @@
                     <input type="hidden" name="past" value="true">
                     {% endif %}
 
-                    <label>
-                        <input type="checkbox" name="free" value="true" {% if query.free.unwrap_or(false) %}checked{% endif %}>
+                    <label class="filter-list-item">
+                        <input type="checkbox" name="free" value="true" {% if query.free.unwrap_or(false) %}checked{%
+                            endif %}>
                         Free events only
                     </label>
 
