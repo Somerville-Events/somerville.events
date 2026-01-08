@@ -1,11 +1,11 @@
-{% extends "common/layout.html" %}
+{% extends "common/index.html" %}
 
 {% block head %}
 <script type="module" src="/static/upload.js"></script>
 {% endblock %}
 
 {% block css %}
-    {% include "upload/upload.css" %}
+{% include "upload/upload.css" %}
 {% endblock %}
 
 {% block body_class %}no-camera{% endblock %}
@@ -20,7 +20,7 @@
         <div class="skeleton"></div>
         <video class="loading" autoplay playsinline muted></video>
     </div>
-    
+
     <div class="controls-bar">
         <button type="button">Choose Photo</button>
         <button type="button" class="primary">Take Photo</button>
@@ -33,7 +33,7 @@
 <!-- Actual Form (Visible, hidden when Camera UI active) -->
 <form action="/upload" method="post" enctype="multipart/form-data">
     <input type="hidden" name="idempotency_key" value="{{ idempotency_key }}">
-    
+
     <input type="file" name="image" accept="image/*" required>
 
     <button type="submit">Upload</button>
