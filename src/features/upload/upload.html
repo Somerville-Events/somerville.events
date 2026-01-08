@@ -12,23 +12,6 @@
 <h1>Upload Event Flyer</h1>
 <p>Upload an image of a flyer or event poster.</p>
 
-<!-- Full Screen Camera UI -->
-<div class="camera-ui">
-    <div class="viewport-container">
-        <div class="skeleton"></div>
-        <video class="loading" autoplay playsinline muted></video>
-    </div>
-
-    <div class="controls-bar">
-        <button type="button">Choose Photo</button>
-        <button type="button" class="primary">Take Photo</button>
-    </div>
-</div>
-
-<!-- Hidden canvas for capture -->
-<canvas style="display: none;"></canvas>
-
-<!-- Actual Form (Visible, hidden when Camera UI active) -->
 <form action="/upload" method="post" enctype="multipart/form-data">
     <input type="hidden" name="idempotency_key" value="{{ idempotency_key }}">
 
