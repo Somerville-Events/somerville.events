@@ -419,8 +419,6 @@ async fn story_view_index(data: web::Data<StorybookState>) -> impl Responder {
     });
 
     let template = IndexTemplate {
-        page_title: "Somerville Events (Storybook)".to_string(),
-        filter_badge: "".to_string(),
         active_filters: vec![],
         days,
         is_past_view: false,
@@ -479,8 +477,6 @@ async fn story_view_filtered(data: web::Data<StorybookState>) -> impl Responder 
         .collect();
 
     let example_1 = IndexTemplate {
-        page_title: "Somerville Music, Social Events".to_string(),
-        filter_badge: "Music, Social".to_string(),
         active_filters: vec![
             EventTypeLink {
                 url: "#".to_string(),
@@ -511,8 +507,6 @@ async fn story_view_filtered(data: web::Data<StorybookState>) -> impl Responder 
     let past_events: Vec<EventViewModel> =
         all_events.iter().take(3).map(|e| (*e).clone()).collect();
     let example_2 = IndexTemplate {
-        page_title: "Past Somerville Events".to_string(),
-        filter_badge: "".to_string(),
         active_filters: vec![],
         days: vec![DaySection {
             day_id: "day-past".to_string(),

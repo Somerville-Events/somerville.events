@@ -17,8 +17,6 @@ use strum::IntoEnumIterator;
 #[derive(Template)]
 #[template(path = "view/index.html")]
 pub struct IndexTemplate {
-    pub page_title: String,
-    pub filter_badge: String,
     pub active_filters: Vec<EventTypeLink>,
     pub days: Vec<DaySection>,
     pub is_past_view: bool,
@@ -258,32 +256,7 @@ pub async fn index_with_now(
                     .collect(),
             );
 
-            let (page_title, filter_badge) = if !active_filters.is_empty() {
-                let filter_labels: Vec<String> =
-                    active_filters.iter().map(|f| f.label.clone()).collect();
-                let category_filter = filter_labels.join(", ");
-                (
-                    if is_past {
-                        format!("Past Somerville {category_filter} Events")
-                    } else {
-                        format!("Somerville {category_filter} Events")
-                    },
-                    category_filter,
-                )
-            } else {
-                (
-                    if is_past {
-                        "Past Somerville Events".to_string()
-                    } else {
-                        "Somerville Events".to_string()
-                    },
-                    String::new(),
-                )
-            };
-
             let template = IndexTemplate {
-                page_title,
-                filter_badge,
                 active_filters,
                 days,
                 is_past_view: is_past,

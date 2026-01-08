@@ -211,6 +211,7 @@ details.filter-group .filter-list-item input[type="checkbox"] {
     height: 1.25rem;
     margin: 0;
     accent-color: var(--link-color);
+    flex-shrink: 0;
 }
 
 /* Actions */

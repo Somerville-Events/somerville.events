@@ -305,8 +305,8 @@ mod tests {
         assert!(!body_str.contains("Music Night"));
         // Icon for Art should be present
         assert!(body_str.contains("icon-palette"));
-        assert!(body_str.contains("Somerville Art Events"));
-        assert!(body_str.contains(r#"<a class="button" href="/">Show all events</a>"#));
+        assert!(!body_str.contains("Somerville Art Events"));
+        assert!(body_str.contains("Somerville Events"));
 
         Ok(())
     }
