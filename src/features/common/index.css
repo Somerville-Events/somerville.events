@@ -81,16 +81,21 @@ h3 {
 button,
 .button,
 input[type=file]::file-selector-button {
-    display: inline-block;
-    padding: 0.8rem 1.4rem;
+    box-sizing: border-box;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    padding: 0.75rem 1.4rem;
     font-family: inherit;
     font-size: 1rem;
+    line-height: 1.2;
     font-weight: 600;
     text-decoration: none;
     text-align: center;
     color: var(--button-text);
     background-color: var(--button-bg);
-    border: none;
+    border: 1px solid transparent;
     border-radius: 4px;
     box-shadow:
         inset 1px 1px 0px var(--button-highlight),
