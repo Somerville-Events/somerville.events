@@ -2,9 +2,9 @@
     --link-color: light-dark(rgb(27, 50, 100), rgb(125, 148, 197));
 
     /* Button Colors */
-    --button-bg: light-dark(#e0e0e0, #1a1a1a);
+    --button-bg: light-dark(#e0e0e0, #4a4a4a);
     --button-text: light-dark(#333, #eee);
-    --button-border: light-dark(#a0a0a0, #333);
+    --button-border: light-dark(#a0a0a0, #363636);
     /* Highlight/Shadow colors for 3D effect */
     --button-highlight: light-dark(rgba(255, 255, 255, 0.8), rgba(255, 255, 255, 0.1));
     --button-shadow: rgba(0, 0, 0, 0.1);
