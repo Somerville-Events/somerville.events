@@ -20,104 +20,163 @@
         <a href="/upload" class="button primary">Upload an event flyer</a>
     </nav>
 </header>
-<main>
-    <details {% if query.has_filters() %}open{% endif %}>
-        <summary>Filter Events</summary>
-        <form action="/" method="GET">
-            {% if is_past_view %}
-            <input type="hidden" name="past" value="true">
-            {% endif %}
+<main class="events-container">
+    <div class="sidebar">
+        <details class="filters-panel" {% if query.has_filters() %}open{% endif %}>
+            <summary>Filter Events</summary>
+            <form action="/" method="GET">
+                <div class="filter-scroll-area">
+                    {% if is_past_view %}
+                    <input type="hidden" name="past" value="true">
+                    {% endif %}
 
-            <label>
-                Search
+                    <label>
+                        <input type="checkbox" name="free" value="true" {% if query.free.unwrap_or(false) %}checked{%
+                            endif %}>
+                        Free events only
+                    </label>
+
+                    <fieldset>
+                        <legend>Event Type</legend>
+                        <div class="checkbox-group chips">
+                            {% for t in all_event_types %}
+                            <label class="chip" style="--chip-color: {{ t.color|safe }}">
+                                <input type="checkbox" name="type" value="{{ t.value }}" {% if
+                                    query.has_event_type(t.value.as_str()) %}checked{% endif %}>
+                                <svg class="icon">
+                                    <use href="#{{ t.icon }}"></use>
+                                </svg>
+                                {{ t.label }}
+                            </label>
+                            {% endfor %}
+                        </div>
+                    </fieldset>
+
+                    <fieldset>
+                        <legend>Source</legend>
+                        <div class="checkbox-group scrollable compact">
+                            {% for s in all_sources %}
+                            <label class="filter-option">
+                                <input type="checkbox" name="source" value="{{ s.value }}" {% if
+                                    query.has_source(s.value.as_str()) %}checked{% endif %}>
+                                {{ s.label }}
+                            </label>
+                            {% endfor %}
+                        </div>
+                    </fieldset>
+
+                    <fieldset>
+                        <legend>Location</legend>
+                        <div class="checkbox-group scrollable compact">
+                            {% for l in all_locations %}
+                            <label class="filter-option">
+                                <input type="checkbox" name="location" value="{{ l }}" {% if
+                                    query.has_location(l.as_str()) %}checked{% endif %}>
+                                {{ l }}
+                            </label>
+                            {% endfor %}
+                        </div>
+                    </fieldset>
+                </div>
+
+                <div class="filter-actions">
+                    <button type="submit">Apply Filters</button>
+                    <a href="/{% if is_past_view %}?past=true{% endif %}" class="button secondary">Clear</a>
+                </div>
+            </form>
+        </details>
+    </div>
+
+    <div class="content">
+        <div class="search-bar">
+            <form action="/" method="GET" class="search-form">
+                {% if is_past_view %} <input type="hidden" name="past" value="true"> {% endif %}
+                {% if query.free.unwrap_or(false) %} <input type="hidden" name="free" value="true"> {% endif %}
+                {% for t in query.event_types %} <input type="hidden" name="type" value="{{ t.value() }}"> {% endfor %}
+                {% for s in query.source %} <input type="hidden" name="source" value="{{ s.value() }}"> {% endfor %}
+                {% for l in query.location %} <input type="hidden" name="location" value="{{ l }}"> {% endfor %}
+
                 <input type="search" name="q" value="{{ query.q.as_deref().unwrap_or_default() }}"
-                    placeholder="Event name...">
-            </label>
+                    placeholder="Search events...">
+                <button type="submit" class="button icon-only" aria-label="Search">
+                    <svg style="width: 1.2em; height: 1.2em; stroke-width: 2.5;">
+                        <use href="#icon-circle-help" style="display:none"></use>
+                        <circle cx="11" cy="11" r="8" fill="none" stroke="currentColor"></circle>
+                        <path d="m21 21-4.3-4.3" fill="none" stroke="currentColor"></path>
+                    </svg>
+                </button>
+            </form>
+        </div>
 
-            <label>
-                <input type="checkbox" name="free" value="true" {% if query.free.unwrap_or(false) %}checked{% endif %}>
-                Free events only
-            </label>
+        {% if !filter_badge.is_empty() %}
+        <p>
+            <a class="button" href="/{% if is_past_view %}?past=true{% endif %}">Show all events</a>
+        </p>
+        {% endif %}
 
-            <fieldset>
-                <legend>Event Type</legend>
-                <div class="checkbox-group">
-                    {% for t in all_event_types %}
-                    <label>
-                        <input type="checkbox" name="type" value="{{ t.value() }}" {% if
-                            query.event_types.contains(t) %}checked{% endif %}>
-                        {{ t }}
-                    </label>
-                    {% endfor %}
-                </div>
-            </fieldset>
+        {% if is_past_view %}
+        <p><a class="button" href="/">Show upcoming events</a></p>
+        {% endif %}
 
-            <fieldset>
-                <legend>Source</legend>
-                <div class="checkbox-group">
-                    {% for s in all_sources %}
-                    <label>
-                        <input type="checkbox" name="source" value="{{ s.value() }}" {% if
-                            query.source.contains(s) %}checked{% endif %}>
-                        {{ s }}
-                    </label>
-                    {% endfor %}
-                </div>
-            </fieldset>
-
-            <fieldset>
-                <legend>Location</legend>
-                <div class="checkbox-group scrollable">
-                    {% for l in all_locations %}
-                    <label>
-                        <input type="checkbox" name="location" value="{{ l }}" {% if query.location.contains(l)
-                            %}checked{% endif %}>
-                        {{ l }}
-                    </label>
-                    {% endfor %}
-                </div>
-            </fieldset>
-
-            <div>
-                <button type="submit">Apply Filters</button>
-                <a href="/{% if is_past_view %}?past=true{% endif %}" class="button secondary">Clear Filters</a>
-            </div>
-        </form>
-    </details>
-
-    {% if !filter_badge.is_empty() %}
-    <p>
-        <a class="button" href="/{% if is_past_view %}?past=true{% endif %}">Show all events</a>
-    </p>
-    {% endif %}
-
-    {% if is_past_view %}
-    <p><a class="button" href="/">Show upcoming events</a></p>
-    {% endif %}
-
-    {% for day in days %}
-    <section class="events-day" aria-labelledby="{{ day.day_id }}">
-        <h2 id="{{ day.day_id }}">{{ day.date_header }}</h2>
-        {% for event in day.events %}
-        {% include "common/simple_event_body.html" %}
+        {% for day in days %}
+        <section class="events-day" aria-labelledby="{{ day.day_id }}">
+            <h2 id="{{ day.day_id }}">{{ day.date_header }}</h2>
+            {% for event in day.events %}
+            {% include "common/simple_event_body.html" %}
+            {% endfor %}
+        </section>
         {% endfor %}
-    </section>
-    {% endfor %}
 
-    {% if !is_past_view %}
-    <footer>
-        <a href="/?past=true" class="button secondary">View past events</a>
-    </footer>
-    {% endif %}
+        {% if !is_past_view %}
+        <footer>
+            <a href="/?past=true" class="button secondary">View past events</a>
+        </footer>
+        {% endif %}
+    </div>
 </main>
 
 <style>
-    /* Mobile First Styles */
-    details {
-        margin-bottom: 2rem;
-        background: var(--event-bg);
+    /* Layout */
+    .events-container {
+        display: flex;
+        flex-direction: column;
+        gap: 2rem;
+    }
+
+    /* Search Bar - Moved out of filters for direct access */
+    .search-bar {
+        margin-bottom: 1rem;
+    }
+
+    .search-form {
+        display: flex;
+        gap: 0.5rem;
+    }
+
+    .search-form input[type="search"] {
+        flex-grow: 1;
+        padding: 0.75rem;
+        font-size: 1rem;
         border: 1px solid var(--button-border);
         border-radius: 4px;
+        background: var(--bg-color);
+        color: var(--text-color);
+    }
+
+    .button.icon-only {
+        padding: 0.75rem;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    /* Filters Panel Styling */
+    .filters-panel {
+        margin-bottom: 1rem;
+        background: var(--event-bg);
+        border: 1px solid var(--button-border);
+        border-radius: 8px;
+        /* Softer corners */
         padding: 1rem;
     }
 
@@ -128,6 +187,8 @@
         display: flex;
         align-items: center;
         gap: 0.5rem;
+        padding: 0.5rem 0;
+        /* Larger touch target for summary */
     }
 
     summary::-webkit-details-marker {
@@ -144,32 +205,32 @@
         content: '-';
     }
 
-    details form {
-        margin-top: 1rem;
+    details[open] summary {
+        border-bottom: 1px solid var(--button-border);
+        margin-bottom: 1rem;
+    }
+
+    .filters-panel form {
         display: flex;
         flex-direction: column;
         gap: 1.5rem;
-    }
-
-    details label {
-        display: flex;
-        flex-direction: column;
-        gap: 0.5rem;
-        font-weight: 500;
     }
 
     fieldset {
         border: none;
         padding: 0;
         margin: 0;
-        min-width: 0; /* Fix for grid overflow */
+        min-width: 0;
     }
 
     legend {
-        font-weight: 500;
-        margin-bottom: 0.5rem;
+        font-weight: 600;
+        font-size: 0.95rem;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        margin-bottom: 0.75rem;
         display: block;
-        padding: 0;
+        color: var(--text-muted);
     }
 
     .checkbox-group {
@@ -180,78 +241,166 @@
 
     .checkbox-group.scrollable {
         max-height: 15rem;
+        /* ~5-6 items */
         overflow-y: auto;
-        padding-right: 0.5rem;
-        border: 1px solid var(--button-border);
-        border-radius: 4px;
-        padding: 0.5rem;
-        background: var(--bg-color);
+        padding-right: 0.25rem;
+        /* Custom scrollbar for webkit */
+        scrollbar-width: thin;
     }
 
-    /* Checkbox label row layout - applies to both top-level and nested checkboxes */
-    label:has(input[type="checkbox"]) {
-        flex-direction: row;
+    /* Unified Filter Option Style (for Source/Location) */
+    .filter-option {
+        display: flex;
         align-items: center;
-        padding: 0.25rem 0;
-        font-weight: normal;
-    }
-
-    /* Make top-level labels bold again if needed, or just rely on legend */
-    details > form > label {
-        font-weight: 500;
-    }
-    
-    /* Specific override for the "Free events" checkbox label to match other inputs' alignment/style if needed */
-    details > form > label:has(input[type="checkbox"]) {
-         padding: 0.5rem 0;
-    }
-
-
-    details input[type="checkbox"] {
-        width: 1.5rem;
-        height: 1.5rem;
-        margin: 0;
-        margin-right: 0.5rem;
-        flex-shrink: 0;
-    }
-
-    details input[type="text"],
-    details input[type="search"],
-    details select {
-        padding: 0.75rem;
-        font-size: 16px;
-        /* Prevent zoom on iOS */
-        border: 1px solid var(--button-border);
+        gap: 0.5rem;
+        padding: 0.35rem 0.5rem;
         border-radius: 4px;
-        background: var(--bg-color);
-        color: var(--text-color);
-        width: 100%;
-        box-sizing: border-box;
+        cursor: pointer;
+        transition: background-color 0.1s;
+        font-size: 0.95rem;
     }
 
+    .filter-option:hover {
+        background-color: var(--button-bg);
+        /* subtle hover */
+    }
 
-    /* Actions container - simple div at the end */
-    details form>div:last-child {
+    .filter-option input[type="checkbox"] {
+        width: 1.1rem;
+        height: 1.1rem;
+        margin: 0;
+        accent-color: var(--link-color);
+        /* Match site link color */
+    }
+
+    /* Chips Style for Event Types */
+    .checkbox-group.chips {
+        flex-direction: row;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+    }
+
+    .chip {
+        display: inline-flex !important;
+        align-items: center;
+        gap: 0.5rem;
+        padding: 0.4rem 0.8rem !important;
+        border: 1px solid var(--button-border);
+        border-radius: 999px;
+        background: var(--bg-color);
+        /* Default background */
+        cursor: pointer;
+        transition: all 0.2s ease;
+        user-select: none;
+        font-size: 0.95rem;
+        color: var(--text-color);
+        /* Ensure border has contrast */
+        border-color: light-dark(#ccc, #444);
+    }
+
+    .chip:hover {
+        background: var(--button-bg);
+    }
+
+    .chip input[type="checkbox"] {
+        display: none;
+    }
+
+    /* Selected State: Colored Border, Tinted Background, Standard Text */
+    .chip:has(input:checked) {
+        border-color: var(--chip-color);
+        border-width: 1px;
+        /* Subtle background tint based on chip color */
+        background-color: color-mix(in srgb, var(--chip-color), transparent 85%);
+        font-weight: 500;
+        /* Optional: Add a subtle glow or shadow */
+        box-shadow: 0 0 0 1px var(--chip-color);
+    }
+
+    /* Icon styling */
+    .chip svg.icon {
+        width: 1em;
+        height: 1em;
+        /* Use the chip color for the icon in both states for consistency/branding */
+        fill: var(--chip-color);
+    }
+
+    .filter-actions {
         display: flex;
         gap: 1rem;
-        margin-top: 1rem;
-        align-items: center;
+        margin-top: 0.5rem;
+        padding-top: 1rem;
+        border-top: 1px solid var(--button-border);
     }
 
-    /* Desktop layout */
-    @media (min-width: 600px) {
-        details form {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 1.5rem;
-            align-items: start;
+    /* Desktop layout - Sidebar */
+    @media (min-width: 800px) {
+        .events-container {
+            flex-direction: row;
+            align-items: flex-start;
+            gap: 2rem;
         }
 
-        details label:has(input[type="search"]),
-        details > form > label:has(input[type="checkbox"]),
-        details form>div:last-child,
-        fieldset:has(.scrollable) {
-            grid-column: 1 / -1;
+        .sidebar {
+            flex: 1 1 400px;
+            max-width: 800px;
+            position: sticky;
+            top: 1rem;
+            /* Sidebar itself doesn't scroll, inner content does */
+            height: calc(100vh - 2rem);
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .content {
+            flex: 1 1 500px;
+            min-width: 0;
+        }
+
+        /* Make the details/summary container full height and flex */
+        .filters-panel {
+            display: flex;
+            flex-direction: column;
+            height: 100%;
+            overflow: hidden;
+            margin-bottom: 0;
+            /* Remove margin as it's full height */
+            box-sizing: border-box;
+        }
+
+        .filters-panel>summary {
+            font-size: 1rem;
+            flex-shrink: 0;
+        }
+
+        /* Ensure the form items stack vertically and take remaining space */
+        .filters-panel form {
+            display: flex;
+            flex-direction: column;
+            gap: 0;
+            /* Gap handled by padding in scroll area */
+            height: 100%;
+            overflow: hidden;
+        }
+
+        /* The scrollable area for inputs */
+        .filter-scroll-area {
+            flex: 1;
+            overflow-y: auto;
+            padding-right: 0.5rem;
+            display: flex;
+            flex-direction: column;
+            gap: 1.5rem;
+            padding-bottom: 1rem;
+        }
+
+        /* Fixed actions at bottom */
+        .filter-actions {
+            flex-shrink: 0;
+            background: var(--event-bg);
+            margin-top: 0;
+            z-index: 10;
         }
     }
 </style>

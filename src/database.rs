@@ -52,7 +52,7 @@ impl EventsRepo for sqlx::Pool<sqlx::Postgres> {
                 WHERE (cardinality($1::text[]) = 0 OR et.event_type_name = ANY($1::text[]))
                 AND (cardinality($2::text[]) = 0 OR e.source = ANY($2::text[]))
                 AND (cardinality($3::text[]) = 0 OR e.location_name = ANY($3::text[]))
-                AND ($4::boolean = false OR e.price = 0)
+                AND ($4::boolean = false OR e.price = 0 OR e.price IS NULL)
                 AND ($5::text IS NULL OR e.name ILIKE ('%' || $5::text || '%'))
                 AND ($6::timestamptz IS NULL OR e.start_date >= $6)
                 AND ($7::timestamptz IS NULL OR e.start_date <= $7)

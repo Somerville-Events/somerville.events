@@ -1151,4 +1151,99 @@ mod tests {
 
         Ok(())
     }
+
+    #[sqlx::test]
+    async fn test_free_filter_includes_null_price(pool: sqlx::PgPool) -> Result<()> {
+        use somerville_events::database::save_event_to_db;
+
+        // 1. Setup events
+        // 2025-01-15 17:00:00 UTC = 12:00:00 EST
+        let base_time = Utc.with_ymd_and_hms(2025, 1, 15, 17, 0, 0).unwrap();
+
+        // Event with price 0 (explicitly free)
+        let free_event = Event {
+            id: None,
+            name: "Free Event".to_string(),
+            description: "Free".to_string(),
+            full_text: "Free".to_string(),
+            start_date: base_time,
+            end_date: None,
+            address: Some("Loc".to_string()),
+            original_location: Some("Loc".to_string()),
+            google_place_id: None,
+            location_name: None,
+            event_types: vec![],
+            url: None,
+            confidence: 1.0,
+            age_restrictions: None,
+            price: Some(0.0),
+            source: EventSource::ImageUpload,
+            external_id: None,
+        };
+        save_event_to_db(&pool, &free_event).await?;
+
+        // Event with price NULL (implicitly free)
+        let mut null_price_event = free_event.clone();
+        null_price_event.name = "Null Price Event".to_string();
+        null_price_event.price = None;
+        save_event_to_db(&pool, &null_price_event).await?;
+
+        // Event with price > 0 (paid)
+        let mut paid_event = free_event.clone();
+        paid_event.name = "Paid Event".to_string();
+        paid_event.price = Some(10.0);
+        save_event_to_db(&pool, &paid_event).await?;
+
+        // 2. Setup App with Real DB
+        let state = AppState {
+            openai_api_key: "dummy".to_string(),
+            google_maps_api_key: "dummy".to_string(),
+            username: "user".to_string(),
+            password: "pass".to_string(),
+            events_repo: Box::new(pool),
+        };
+
+        // We also want to control "now" for consistency, although since we insert events at a fixed time,
+        // and index_with_now allows us to pass a fixed time, it should be fine.
+        let fixed_now_utc = base_time;
+
+        let app = test::init_service(App::new().app_data(Data::new(state)).route(
+            "/",
+            web::get().to(move |state: Data<AppState>| {
+                somerville_events::features::view::index_with_now(
+                    state,
+                    fixed_now_utc,
+                    IndexQuery {
+                        free: Some(true),
+                        ..Default::default()
+                    },
+                )
+            }),
+        ))
+        .await;
+
+        // 3. Request
+        let req = test::TestRequest::get().uri("/?free=true").to_request();
+        let resp = test::call_service(&app, req).await;
+        assert_eq!(resp.status(), actix_web::http::StatusCode::OK);
+
+        let body = test::read_body(resp).await;
+        let body_str = std::str::from_utf8(&body)?;
+
+        // 4. Verify
+        assert!(
+            body_str.contains("Free Event"),
+            "Should contain explicit free event"
+        );
+        assert!(
+            body_str.contains("Null Price Event"),
+            "Should contain null price event"
+        );
+        assert!(
+            !body_str.contains("Paid Event"),
+            "Should NOT contain paid event"
+        );
+
+        Ok(())
+    }
 }

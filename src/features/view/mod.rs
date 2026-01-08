@@ -22,10 +22,17 @@ pub struct IndexTemplate {
     pub active_filters: Vec<EventTypeLink>,
     pub days: Vec<DaySection>,
     pub is_past_view: bool,
-    pub all_event_types: Vec<EventType>,
-    pub all_sources: Vec<EventSource>,
+    pub all_event_types: Vec<FilterViewModel>,
+    pub all_sources: Vec<FilterViewModel>,
     pub all_locations: Vec<String>,
     pub query: IndexQuery,
+}
+
+pub struct FilterViewModel {
+    pub value: String,
+    pub label: String,
+    pub icon: String,
+    pub color: String,
 }
 
 #[derive(Template)]
@@ -60,6 +67,18 @@ impl IndexQuery {
             || !self.location.is_empty()
             || self.free.unwrap_or(false)
             || self.q.as_deref().map(|s| !s.is_empty()).unwrap_or(false)
+    }
+
+    pub fn has_event_type(&self, type_val: &str) -> bool {
+        self.event_types.iter().any(|t| t.value() == type_val)
+    }
+
+    pub fn has_source(&self, source_val: &str) -> bool {
+        self.source.iter().any(|s| s.value() == source_val)
+    }
+
+    pub fn has_location(&self, location_val: &str) -> bool {
+        self.location.iter().any(|l| l == location_val)
     }
 }
 
@@ -268,8 +287,22 @@ pub async fn index_with_now(
                 active_filters,
                 days,
                 is_past_view: is_past,
-                all_event_types: EventType::iter().collect(),
-                all_sources: EventSource::iter().collect(),
+                all_event_types: EventType::iter()
+                    .map(|t| FilterViewModel {
+                        value: t.value(),
+                        label: t.to_string(),
+                        icon: get_icon_for_type(&t).to_string(),
+                        color: get_color_for_type(&t),
+                    })
+                    .collect(),
+                all_sources: EventSource::iter()
+                    .map(|s| FilterViewModel {
+                        value: s.value(),
+                        label: s.to_string(),
+                        icon: "icon-map-pin".to_string(),
+                        color: "var(--text-color)".to_string(),
+                    })
+                    .collect(),
                 all_locations,
                 query,
             };
