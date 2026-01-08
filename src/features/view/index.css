@@ -1,0 +1,285 @@
+/* Search Bar */
+.search-form {
+    display: flex;
+    gap: 0.5rem;
+    flex: 1;
+}
+
+.search-form input[type="search"] {
+    flex-grow: 1;
+    padding: 0.75rem;
+    font-size: 1rem;
+    border: 1px solid var(--button-border);
+    border-radius: 4px;
+    background: var(--bg-color);
+    color: var(--text-color);
+}
+
+.search-form button {
+    /* make it more square */
+    align-self: center;
+    padding: 0.75rem;
+}
+
+/* Layout for the filters and events list */
+.layout {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 2rem;
+}
+
+aside {
+    flex-grow: 1;
+    flex-shrink: 0;
+    flex-basis: 100%;
+}
+
+aside:has(> details[open]) {
+    flex-basis: 20rem;
+}
+
+main {
+    flex-grow: 1;
+    flex-shrink: 0;
+    flex-basis: 20rem;
+}
+
+/* Main Filters Container */
+aside>details {
+    background: var(--event-bg);
+    border: 1px solid var(--button-border);
+    border-radius: 8px;
+    padding: 1rem;
+    scrollbar-width: thin;
+    scrollbar-color: var(--button-border) transparent;
+}
+
+aside>details[open] {
+    padding: 0 1rem;
+}
+
+@media (min-width: 45rem) {
+    aside>details {
+        position: sticky;
+        top: 1rem;
+        max-height: calc(100vh - 8rem);
+        overflow-y: auto;
+    }
+}
+
+aside>details::-webkit-scrollbar {
+    width: 10px;
+}
+
+aside>details::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+aside>details::-webkit-scrollbar-thumb {
+    background-color: var(--button-border);
+    border-radius: 5px;
+    border: 2px solid var(--event-bg);
+}
+
+
+aside>details>summary {
+    font-weight: 600;
+    cursor: pointer;
+    list-style: none;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem 0;
+    background: var(--event-bg);
+    z-index: 10;
+    margin: 0;
+    position: sticky;
+    top: 0;
+}
+
+aside>details[open]>summary {
+    border-bottom: 1px solid var(--button-border);
+    padding: 1.5rem 0;
+    margin-bottom: 1rem;
+}
+
+aside>details>summary::-webkit-details-marker {
+    display: none;
+}
+
+aside>details>summary::after {
+    content: '+';
+    margin-left: auto;
+    font-weight: bold;
+}
+
+aside>details[open]>summary::after {
+    content: '-';
+}
+
+
+
+aside form {
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+}
+
+aside>details[open]>summary {
+    border-bottom: 1px solid var(--button-border);
+    margin-bottom: 1rem;
+}
+
+
+/* Fieldsets */
+fieldset {
+    border: none;
+    padding: 0;
+    margin: 0;
+    min-width: 0;
+}
+
+legend {
+    font-weight: 600;
+    font-size: 0.95rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-bottom: 0.75rem;
+    display: block;
+    color: var(--text-muted);
+}
+
+/* Chips Fieldset */
+fieldset.chips {
+    display: flex;
+    flex-direction: row;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+}
+
+fieldset.chips label {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.4rem 0.8rem;
+    border: 1px solid var(--button-border);
+    border-radius: 999px;
+    background: var(--bg-color);
+    cursor: pointer;
+    transition: all 0.2s ease;
+    user-select: none;
+    font-size: 0.95rem;
+    color: var(--text-color);
+    border-color: light-dark(#ccc, #444);
+    font-weight: 500;
+    margin: 1px;
+}
+
+fieldset.chips label:hover {
+    background: var(--button-bg);
+}
+
+fieldset.chips input[type="checkbox"] {
+    display: none;
+}
+
+fieldset.chips label:has(input:checked) {
+    border-color: var(--chip-color);
+    margin: 1px;
+    background-color: color-mix(in srgb, var(--chip-color), transparent 85%);
+    box-shadow: 0 0 0 1px var(--chip-color);
+}
+
+fieldset.chips svg.icon {
+    width: 1em;
+    height: 1em;
+    fill: var(--chip-color);
+}
+
+/* Filter Groups (Collapsible Source/Location) */
+details.filter-group {
+    border-bottom: 1px solid var(--button-border);
+    padding-bottom: 0.5rem;
+}
+
+details.filter-group:last-of-type {
+    border-bottom: none;
+}
+
+details.filter-group summary {
+    font-weight: 600;
+    font-size: 0.95rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--text-muted);
+    cursor: pointer;
+    list-style: none;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.75rem 0;
+}
+
+details.filter-group summary::-webkit-details-marker {
+    display: none;
+}
+
+details.filter-group summary::after {
+    content: '+';
+    font-weight: bold;
+    font-size: 1.2em;
+}
+
+details.filter-group[open] summary::after {
+    content: '-';
+}
+
+details.filter-group fieldset {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    padding: 0.5rem 0;
+}
+
+details.filter-group fieldset.chips {
+    flex-direction: row;
+    flex-wrap: wrap;
+}
+
+.filter-list-item {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.5rem;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background-color 0.1s;
+    font-size: 1rem;
+    /* Slightly larger for readability */
+}
+
+.filter-list-item:hover {
+    background-color: var(--button-bg);
+}
+
+.filter-list-item input[type="checkbox"] {
+    width: 1.25rem;
+    height: 1.25rem;
+    margin: 0;
+    accent-color: var(--link-color);
+    flex-shrink: 0;
+}
+
+/* Filter controls */
+.actions {
+    position: sticky;
+    bottom: 0;
+    display: flex;
+    gap: 1rem;
+    padding-top: 1rem;
+    border-top: 1px solid var(--button-border);
+    flex-shrink: 0;
+    background: var(--event-bg);
+    z-index: 10;
+    padding-bottom: 0.5rem;
+}

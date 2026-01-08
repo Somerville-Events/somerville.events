@@ -1,0 +1,141 @@
+:root {
+    --link-color: light-dark(rgb(27, 50, 100), rgb(125, 148, 197));
+
+    /* Button Colors */
+    --button-bg: light-dark(#e0e0e0, #4a4a4a);
+    --button-text: light-dark(#333, #eee);
+    --button-border: light-dark(#a0a0a0, #363636);
+    /* Highlight/Shadow colors for 3D effect */
+    --button-highlight: light-dark(rgba(255, 255, 255, 0.8), rgba(255, 255, 255, 0.1));
+    --button-shadow: rgba(0, 0, 0, 0.1);
+
+    --primary-bg: #d13a26;
+    --primary-text: #fff;
+    --primary-shadow: #8c2415;
+
+    /* Base Colors */
+    --bg-color: light-dark(#fff, #000);
+    --text-color: light-dark(#000, #fff);
+    --text-muted: light-dark(#666, #aaa);
+
+    /* Event Card Colors */
+    --event-bg: light-dark(#fafafa, #1a1a1a);
+    --event-hover-bg: light-dark(#ececec, #252525);
+    --event-active-bg: light-dark(#e0e0e0, #303030);
+
+    /* Tag Colors */
+    --tag-bg: light-dark(#f0f0f0, #2a2a2a);
+    --tag-hover-bg: light-dark(#d9d9d9, #3a3a3a);
+}
+
+body {
+    font-family: system-ui, sans-serif;
+    margin: 0;
+    line-height: 1.5;
+    background-color: var(--bg-color);
+    color: var(--text-color);
+    padding: 1rem;
+    box-sizing: border-box;
+    max-width: 1200px;
+}
+
+a {
+    text-decoration: none;
+    color: var(--link-color);
+}
+
+a:hover {
+    text-decoration: underline;
+}
+
+header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    flex-wrap: wrap;
+    margin-bottom: 2rem;
+}
+
+header h1 {
+    margin-bottom: 0;
+}
+
+main {
+    padding-bottom: 2rem;
+}
+
+h1 {
+    margin: 0 0 1rem;
+    font-size: 2em;
+    line-height: 1.1;
+}
+
+h2,
+h3 {
+    margin: 0;
+    font-size: 1em;
+}
+
+/* Buttons */
+button,
+.button,
+input[type=file]::file-selector-button {
+    box-sizing: border-box;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    padding: 0.75rem 1.4rem;
+    font-family: inherit;
+    font-size: 1rem;
+    line-height: 1.2;
+    font-weight: 600;
+    text-decoration: none;
+    text-align: center;
+    color: var(--button-text);
+    background-color: var(--button-bg);
+    border: 1px solid transparent;
+    border-radius: 4px;
+    box-shadow:
+        inset 1px 1px 0px var(--button-highlight),
+        inset -1px -1px 0px var(--button-shadow),
+        0 4px 0 var(--button-border),
+        0 5px 8px rgba(0, 0, 0, 0.2);
+    cursor: pointer;
+    transition: transform 0.1s, box-shadow 0.1s;
+    transform: translateY(-4px);
+}
+
+button:active,
+.button:active,
+input[type=file]::file-selector-button:active {
+    transform: translateY(0);
+    box-shadow: inset 2px 2px 5px rgba(0, 0, 0, 0.1), 0 0 0 var(--button-border);
+}
+
+.button.primary,
+button.primary,
+button[type=submit] {
+    background-color: var(--primary-bg);
+    color: var(--primary-text);
+    box-shadow:
+        inset 1px 1px 0px rgba(255, 255, 255, 0.2),
+        inset -1px -1px 0px rgba(0, 0, 0, 0.2),
+        0 4px 0 var(--primary-shadow),
+        0 5px 8px rgba(0, 0, 0, 0.3);
+}
+
+.button.primary:active,
+button.primary:active,
+button[type=submit]:active {
+    box-shadow: inset 2px 2px 5px rgba(0, 0, 0, 0.2), 0 0 0 var(--primary-shadow);
+}
+
+.hidden {
+    display: none !important;
+}
+
+footer {
+    margin-top: 1rem;
+}

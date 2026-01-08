@@ -1,0 +1,31 @@
+form {
+    gap: 1.5rem;
+    margin-top: 1rem;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+}
+
+/* File Input Styling */
+/* Use ::file-selector-button for modern native styling */
+form input[type=file] {
+    display: block;
+    /* Ensure it's visible */
+    width: 100%;
+    cursor: pointer;
+    font-family: system-ui, sans-serif;
+    font-size: 1rem;
+}
+
+/* Style the button part specifically */
+form input[type=file]::file-selector-button {
+    margin-right: 1rem;
+}
+
+/* Image Preview (No JS specific, but if JS fails to load camera) */
+form img {
+    max-width: 100%;
+    margin-top: 1rem;
+    display: none;
+    border-radius: 4px;
+}

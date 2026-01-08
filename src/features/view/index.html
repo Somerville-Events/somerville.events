@@ -1,49 +1,139 @@
-{% extends "common/layout.html" %}
+{% extends "common/index.html" %}
+
+{% block css %}
+{% include "common/simple_event_body.css" %}
+{% include "view/index.css" %}
+{% endblock %}
 
 {% block content %}
 <header>
-    {% if !active_filters.is_empty() %}
-    <div class="header-with-icons">
-        {% for filter in active_filters %}
-        <span class="header-icon" style="color: {{ filter.color|safe }}" title="{{ filter.label }}">
-            <svg>
-                <use href="#{{ filter.icon }}"></use>
+    <h1>Somerville Events</h1>
+    <form action="/" method="GET" class="search-form" role="search">
+        {% if is_past_view %} <input type="hidden" name="past" value="true"> {% endif %}
+        {% if query.free.unwrap_or(false) %} <input type="hidden" name="free" value="true"> {% endif %}
+        {% for t in query.event_types %} <input type="hidden" name="type" value="{{ t.value() }}"> {% endfor %}
+        {% for s in query.source %} <input type="hidden" name="source" value="{{ s.value() }}"> {% endfor %}
+        {% for l in query.location %} <input type="hidden" name="location" value="{{ l }}"> {% endfor %}
+
+        <input type="search" name="q" value="{{ query.q.as_deref().unwrap_or_default() }}" placeholder="Search">
+        <button type="submit" aria-label="Search">
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none"
+                stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+                style="width: 1.2em; height: 1.2em;">
+                <circle cx="11" cy="11" r="8"></circle>
+                <path d="m21 21-4.3-4.3"></path>
             </svg>
-        </span>
-        {% endfor %}
-        <h1>{{ page_title }}</h1>
-    </div>
-    {% else %}
-    <h1>{{ page_title }}</h1>
-    {% endif %}
-    <nav aria-label="Site">
-        <a href="/upload" class="button primary">Upload an event flyer</a>
-    </nav>
+        </button>
+    </form>
+    <a href="/upload" class="button primary">Upload an event flyer</a>
 </header>
-<main>
-    {% if !filter_badge.is_empty() %}
-    <p>
-        <a class="button" href="/{% if is_past_view %}?past=true{% endif %}">Show all events</a>
-    </p>
-    {% endif %}
 
-    {% if is_past_view %}
-    <p><a class="button" href="/">Show upcoming events</a></p>
-    {% endif %}
+<div class="layout">
+    <aside>
+        <details {% if query.has_filters() %}open{% endif %}>
+            <summary>Filter Events</summary>
+            <form action="/" method="GET">
+                <div class="filters-body">
+                    {% if is_past_view %}
+                    <input type="hidden" name="past" value="true">
+                    {% endif %}
 
-    {% for day in days %}
-    <section class="events-day" aria-labelledby="{{ day.day_id }}">
-        <h2 id="{{ day.day_id }}">{{ day.date_header }}</h2>
-        {% for event in day.events %}
-        {% include "common/simple_event_body.html" %}
+                    <label class="filter-list-item">
+                        <input type="checkbox" name="free" value="true" {% if query.free.unwrap_or(false) %}checked{%
+                            endif %}>
+                        Free events only
+                    </label>
+
+                    <details class="filter-group" {% if !query.event_types.is_empty() %}open{% endif %}>
+                        <summary>Event Type</summary>
+                        <fieldset class="chips">
+                            {% for t in all_event_types %}
+                            <label style="--chip-color: {{ t.color|safe }}">
+                                <input type="checkbox" name="type" value="{{ t.value }}" {% if
+                                    query.has_event_type(t.value.as_str()) %}checked{% endif %}>
+                                <svg class="icon">
+                                    <use href="#{{ t.icon }}"></use>
+                                </svg>
+                                {{ t.label }}
+                            </label>
+                            {% endfor %}
+                        </fieldset>
+                    </details>
+
+                    <details class="filter-group" {% if !query.source.is_empty() %}open{% endif %}>
+                        <summary>Source</summary>
+                        <fieldset>
+                            {% for s in all_sources %}
+                            {% if query.has_source(s.value.as_str()) %}
+                            <label class="filter-list-item">
+                                <input type="checkbox" name="source" value="{{ s.value }}" checked>
+                                {{ s.label }}
+                            </label>
+                            {% endif %}
+                            {% endfor %}
+
+                            {% for s in all_sources %}
+                            {% if !query.has_source(s.value.as_str()) %}
+                            <label class="filter-list-item">
+                                <input type="checkbox" name="source" value="{{ s.value }}">
+                                {{ s.label }}
+                            </label>
+                            {% endif %}
+                            {% endfor %}
+                        </fieldset>
+                    </details>
+
+                    <details class="filter-group" {% if !query.location.is_empty() %}open{% endif %}>
+                        <summary>Location</summary>
+                        <fieldset>
+                            {% for l in all_locations %}
+                            {% if query.has_location(l.as_str()) %}
+                            <label class="filter-list-item">
+                                <input type="checkbox" name="location" value="{{ l }}" checked>
+                                {{ l }}
+                            </label>
+                            {% endif %}
+                            {% endfor %}
+
+                            {% for l in all_locations %}
+                            {% if !query.has_location(l.as_str()) %}
+                            <label class="filter-list-item">
+                                <input type="checkbox" name="location" value="{{ l }}">
+                                {{ l }}
+                            </label>
+                            {% endif %}
+                            {% endfor %}
+                        </fieldset>
+                    </details>
+                </div>
+
+                <div class="actions">
+                    <button type="submit">Apply Filters</button>
+                    <a href="/{% if is_past_view %}?past=true{% endif %}" class="button secondary">Clear</a>
+                </div>
+            </form>
+        </details>
+    </aside>
+
+    <main>
+        {% if is_past_view %}
+        <p><a class="button" href="/">Show upcoming events</a></p>
+        {% endif %}
+
+        {% for day in days %}
+        <section class="events-day" aria-labelledby="{{ day.day_id }}">
+            <h2 id="{{ day.day_id }}">{{ day.date_header }}</h2>
+            {% for event in day.events %}
+            {% include "common/simple_event_body.html" %}
+            {% endfor %}
+        </section>
         {% endfor %}
-    </section>
-    {% endfor %}
 
-    {% if !is_past_view %}
-    <footer>
-        <a href="/?past=true" class="button secondary">View past events</a>
-    </footer>
-    {% endif %}
-</main>
+        {% if !is_past_view %}
+        <footer>
+            <a href="/?past=true" class="button secondary">View past events</a>
+        </footer>
+        {% endif %}
+    </main>
+</div>
 {% endblock %}

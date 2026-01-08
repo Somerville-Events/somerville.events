@@ -1,192 +1,20 @@
-{% extends "common/layout.html" %}
+{% extends "common/index.html" %}
 
 {% block head %}
 <script type="module" src="/static/upload.js"></script>
-<style>
-    /* Camera Mode Layout (applied when camera is active) */
-    body:not(.no-camera) {
-        margin: 0;
-        padding: 0;
-        width: 100%;
-        height: 100dvh;
-        max-width: none;
-        display: flex;
-        flex-direction: column;
-        background-color: #000;
-        overflow: hidden;
-    }
-
-    /* Hide standard headers in camera mode */
-    body:not(.no-camera) h1, 
-    body:not(.no-camera) p {
-        display: none;
-    }
-    
-    /* Fallback mode uses default body styles from common_styles */
-
-    /* Main container takes available space */
-    .camera-ui {
-        flex: 1;
-        display: flex;
-        flex-direction: column;
-        position: relative;
-        background: #000;
-        overflow: hidden;
-    }
-
-    /* Video fills the available space, reserving bottom for controls */
-    /* Container for video/preview to manage flex layout correctly */
-    .viewport-container {
-        flex: 1;
-        position: relative;
-        width: 100%;
-        overflow: hidden;
-        background: #000;
-        display: flex;
-        justify-content: center;
-        align-items: center;
-    }
-
-    video {
-        width: 100%;
-        height: 100%;
-        object-fit: contain;
-        display: block;
-    }
-    
-    video.loading {
-        opacity: 0;
-    }
-
-    /* Skeleton Loader */
-    .skeleton {
-        position: absolute;
-        top: 0;
-        left: 0;
-        width: 100%;
-        height: 100%;
-        background: #1a1a1a;
-        display: flex;
-        justify-content: center;
-        align-items: center;
-        z-index: 10;
-    }
-    
-    .skeleton::after {
-        content: "";
-        width: 40px;
-        height: 40px;
-        border: 3px solid rgba(255,255,255,0.1);
-        border-top-color: rgba(255,255,255,0.5);
-        border-radius: 50%;
-        animation: spin 1s ease-in-out infinite;
-    }
-    
-    /* Hide skeleton when not loading */
-    .skeleton.hidden {
-        display: none;
-    }
-
-    /* Controls bar at bottom - now static, not absolute */
-    .controls-bar {
-        width: 100%;
-        padding: 20px;
-        box-sizing: border-box;
-        background: #000; /* Solid black background */
-        display: flex;
-        justify-content: center;
-        align-items: center;
-        min-height: 100px; /* Explicit space reserved */
-        gap: 1rem;
-        z-index: 20;
-    }
-
-    /* Upload Form (Hidden if JS active and camera works) */
-    form {
-        display: none;
-        gap: 1.5rem;
-        margin-top: 1rem;
-    }
-
-    /* State: No Camera / No JS */
-    body.no-camera {
-        background-color: canvas; /* Reset to default */
-        height: auto;
-        display: block;
-    }
-    body.no-camera .camera-ui {
-        display: none;
-    }
-    body.no-camera form {
-        display: flex;
-        flex-direction: column;
-        align-items: flex-start;
-    }
-
-    /* Spinner */
-    .spinner {
-        display: inline-block;
-        width: 1em;
-        height: 1em;
-        border: 3px solid rgba(255,255,255,0.3);
-        border-radius: 50%;
-        border-top-color: #fff;
-        animation: spin 1s ease-in-out infinite;
-        margin-right: 0.5rem;
-    }
-    @keyframes spin { to { transform: rotate(360deg); } }
-    
-    /* File Input Styling */
-    /* Use ::file-selector-button for modern native styling */
-    form input[type=file] {
-        display: block; /* Ensure it's visible */
-        width: 100%;
-        cursor: pointer;
-        font-family: system-ui, sans-serif;
-        font-size: 1rem;
-    }
-
-    /* Style the button part specifically */
-    form input[type=file]::file-selector-button {
-        margin-right: 1rem;
-    }
-
-    /* Image Preview (No JS specific, but if JS fails to load camera) */
-    form img {
-        max-width: 100%;
-        margin-top: 1rem;
-        display: none;
-        border-radius: 4px;
-    }
-</style>
 {% endblock %}
 
-{% block body_class %}no-camera{% endblock %}
+{% block css %}
+{% include "upload/upload.css" %}
+{% endblock %}
 
 {% block content %}
 <h1>Upload Event Flyer</h1>
 <p>Upload an image of a flyer or event poster.</p>
 
-<!-- Full Screen Camera UI -->
-<div class="camera-ui">
-    <div class="viewport-container">
-        <div class="skeleton"></div>
-        <video class="loading" autoplay playsinline muted></video>
-    </div>
-    
-    <div class="controls-bar">
-        <button type="button">Choose Photo</button>
-        <button type="button" class="primary">Take Photo</button>
-    </div>
-</div>
-
-<!-- Hidden canvas for capture -->
-<canvas style="display: none;"></canvas>
-
-<!-- Actual Form (Visible, hidden when Camera UI active) -->
 <form action="/upload" method="post" enctype="multipart/form-data">
     <input type="hidden" name="idempotency_key" value="{{ idempotency_key }}">
-    
+
     <input type="file" name="image" accept="image/*" required>
 
     <button type="submit">Upload</button>

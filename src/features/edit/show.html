@@ -1,15 +1,16 @@
-{% extends "common/layout.html" %}
+{% extends "common/index.html" %}
 
 {% block title %}{{ event.name }} - Somerville Events{% endblock %}
 
+{% block css %}
+{% include "common/detailed_event_body.css" %}
+{% endblock %}
+
 {% block content %}
-<p><a href="/edit">&larr; Back to Edit Events</a></p>
 <article>
     <h1>{{ event.name }}</h1>
     {% include "common/detailed_event_body.html" %}
-    <br>
-    <br>
-    <form action="/event/{{ event.id }}?_method=DELETE" method="post" style="text-align: right;">
+    <form action="/event/{{ event.id }}?_method=DELETE" method="post">
         <button type="submit" class="button primary">Delete Event</button>
     </form>
 </article>

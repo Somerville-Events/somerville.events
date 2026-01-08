@@ -3,7 +3,7 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use std::fmt;
 use std::str::FromStr;
-use strum::{AsRefStr, EnumString};
+use strum::{AsRefStr, EnumIter, EnumString};
 
 #[derive(
     Debug,
@@ -16,6 +16,7 @@ use strum::{AsRefStr, EnumString};
     sqlx::Type,
     EnumString,
     AsRefStr,
+    EnumIter,
 )]
 #[serde(rename_all = "kebab-case")] // Maps to kebab-case for url query params
 #[sqlx(type_name = "text")] // Maps to standard TEXT in Postgres, not a custom enum type
@@ -89,21 +90,20 @@ impl fmt::Display for EventType {
 }
 
 impl EventType {
-    pub fn get_url(&self) -> String {
-        let slug = serde_json::to_string(&self)
+    pub fn value(&self) -> String {
+        serde_json::to_string(&self)
             .unwrap_or_else(|_| format!("\"{}\"", self.as_ref().to_lowercase()))
             .trim_matches('"')
-            .to_string();
-        format!("/?type={}", slug)
+            .to_string()
+    }
+
+    pub fn get_url(&self) -> String {
+        format!("/?type={}", self.value())
     }
 
     pub fn get_url_with_past(&self, past: bool) -> String {
         if past {
-            let slug = serde_json::to_string(&self)
-                .unwrap_or_else(|_| format!("\"{}\"", self.as_ref().to_lowercase()))
-                .trim_matches('"')
-                .to_string();
-            format!("/?type={}&past=true", slug)
+            format!("/?type={}&past=true", self.value())
         } else {
             self.get_url()
         }
@@ -128,7 +128,9 @@ impl From<String> for EventType {
     sqlx::Type,
     EnumString,
     AsRefStr,
+    EnumIter,
 )]
+#[serde(rename_all = "kebab-case")] // Maps to kebab-case for url query params
 #[sqlx(type_name = "text")] // Maps to standard TEXT in Postgres, not a custom enum type
 /// IMPORTANT: This enum is coupled to the `app.source_names` table in the database.
 /// If you add a new variant here, you MUST create a migration to insert the corresponding
@@ -187,6 +189,15 @@ impl fmt::Display for EventSource {
             EventSource::TheMiddleEast => write!(f, "The Middle East"),
             EventSource::UserSubmitted => write!(f, "User Submitted"),
         }
+    }
+}
+
+impl EventSource {
+    pub fn value(&self) -> String {
+        serde_json::to_string(&self)
+            .unwrap_or_else(|_| format!("\"{}\"", self.as_ref().to_lowercase()))
+            .trim_matches('"')
+            .to_string()
     }
 }
 
