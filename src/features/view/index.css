@@ -1,15 +1,3 @@
-/* Layout */
-body {
-    max-width: none;
-    /* allow the grid to extend fully */
-}
-
-.layout {
-    display: flex;
-    flex-direction: column;
-    gap: 2rem;
-}
-
 /* Search Bar */
 .search-form {
     display: flex;
@@ -27,26 +15,51 @@ body {
     color: var(--text-color);
 }
 
-.button.icon-only {
-    /* Make buttons with an icon more "square" looking.
-    rather than a wide rectangle. */
-    padding: 0.75rem;
+/* Layout for the filters and events list */
+.layout {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 2rem;
 }
 
-/* Sidebar (Aside) */
 aside {
-    margin-bottom: 1rem;
+    flex-grow: 1;
+    flex-shrink: 0;
+    flex-basis: 20rem;
+}
+
+main {
+    flex-grow: 1;
+    flex-shrink: 0;
+    flex-basis: 20rem;
 }
 
 /* Main Filters Container */
-aside details.filters-container {
+aside>details {
     background: var(--event-bg);
     border: 1px solid var(--button-border);
     border-radius: 8px;
     padding: 1rem;
+    scrollbar-width: thin;
+    scrollbar-color: var(--button-border) transparent;
 }
 
-aside details.filters-container > summary {
+aside>details::-webkit-scrollbar {
+    width: 10px;
+}
+
+aside>details::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+aside>details::-webkit-scrollbar-thumb {
+    background-color: var(--button-border);
+    border-radius: 5px;
+    border: 2px solid var(--event-bg);
+}
+
+
+aside>details>summary {
     font-weight: 600;
     cursor: pointer;
     list-style: none;
@@ -54,23 +67,28 @@ aside details.filters-container > summary {
     align-items: center;
     gap: 0.5rem;
     padding: 0.5rem 0;
+    position: sticky;
+    top: 0;
+    background: var(--event-bg);
+    z-index: 10;
+    margin: 0;
 }
 
-aside details.filters-container > summary::-webkit-details-marker {
+aside>details>summary::-webkit-details-marker {
     display: none;
 }
 
-aside details.filters-container > summary::after {
+aside>details>summary::after {
     content: '+';
     margin-left: auto;
     font-weight: bold;
 }
 
-aside details.filters-container[open] > summary::after {
+aside>details[open]>summary::after {
     content: '-';
 }
 
-aside details.filters-container[open] > summary {
+aside>details[open]>summary {
     border-bottom: 1px solid var(--button-border);
     margin-bottom: 1rem;
 }
@@ -79,6 +97,18 @@ aside form {
     display: flex;
     flex-direction: column;
     gap: 1.5rem;
+}
+
+aside>details[open]>summary {
+    border-bottom: 1px solid var(--button-border);
+    margin-bottom: 1rem;
+}
+
+.actions {
+    flex-shrink: 0;
+    background: var(--event-bg);
+    margin-top: 0;
+    z-index: 10;
 }
 
 /* Fieldsets */
@@ -220,152 +250,10 @@ details.filter-group .filter-list-item input[type="checkbox"] {
     flex-shrink: 0;
 }
 
-/* Actions */
+/* Filter controls */
 .actions {
     display: flex;
     gap: 1rem;
-    margin-top: 0.5rem;
     padding-top: 1rem;
     border-top: 1px solid var(--button-border);
-}
-
-/* Desktop layout */
-@media (min-width: 850px) {
-    .layout {
-        display: grid;
-        grid-template-columns: 1fr 800px 1fr;
-        /* Center column fixed at 800px, sides fill space */
-        align-items: start;
-        gap: 0;
-        /* Gap managed by margins if needed, or within grid */
-    }
-
-    /* Content and Header go in the center column */
-    header,
-    main {
-        grid-column: 2;
-        max-width: 100%;
-        /* Ensure they don't overflow the 800px track */
-    }
-
-    /* Sidebar goes in the left column */
-    aside {
-        grid-column: 1;
-        width: 300px;
-        /* Fixed width for sidebar */
-        justify-self: end;
-        /* Align to right side of left column (next to content) */
-        margin-right: 2rem;
-        /* Gap between sidebar and content */
-        position: sticky;
-        top: 1rem;
-    }
-
-    aside details.filters-container {
-        /* 
-           Adjust max-height to account for the header height (~6-8rem) so it doesn't 
-           bleed off the bottom of the screen on initial load.
-        */
-        max-height: calc(100vh - 2rem);
-        display: block;
-        overflow-y: scroll;
-        padding: 0;
-        scrollbar-width: thin;
-        scrollbar-color: var(--button-border) transparent;
-    }
-
-    aside details.filters-container::-webkit-scrollbar {
-        width: 10px;
-    }
-
-    aside details.filters-container::-webkit-scrollbar-track {
-        background: transparent;
-    }
-
-    aside details.filters-container::-webkit-scrollbar-thumb {
-        background-color: var(--button-border);
-        border-radius: 5px;
-        border: 2px solid var(--event-bg);
-    }
-
-    aside details.filters-container > summary {
-        position: sticky;
-        top: 0;
-        background: var(--event-bg);
-        z-index: 10;
-        padding: 1rem;
-        margin: 0;
-    }
-
-    aside details.filters-container[open] > summary {
-        border-bottom: 1px solid var(--button-border);
-        margin-bottom: 0;
-    }
-
-    aside form {
-        padding: 1rem;
-        height: auto;
-        overflow: visible;
-    }
-
-    main {
-        min-width: 0;
-        /* prevent flex/grid blowout */
-    }
-
-    /* Collapsed Sidebar State */
-    aside details.filters-container:not([open]) {
-        width: auto;
-        padding: 0;
-        background: transparent;
-        border: none;
-        height: auto;
-        max-height: none;
-        overflow: visible;
-    }
-
-    aside details.filters-container:not([open]) > summary {
-        width: auto;
-        padding: 0.75rem;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        background-color: var(--button-bg);
-        border: 1px solid var(--button-border);
-        border-radius: 4px;
-        color: var(--button-text);
-        box-shadow:
-            inset 1px 1px 0px var(--button-highlight),
-            inset -1px -1px 0px var(--button-shadow),
-            0 4px 0 var(--button-border),
-            0 5px 8px rgba(0, 0, 0, 0.2);
-        font-size: 0;
-    }
-
-    aside details.filters-container:not([open]) > summary:active {
-        transform: translateY(4px);
-        box-shadow: inset 2px 2px 5px rgba(0, 0, 0, 0.1), 0 0 0 var(--button-border);
-    }
-
-    aside details.filters-container:not([open]) > summary::before {
-        content: "";
-        display: block;
-        width: 1.2rem;
-        height: 1.2rem;
-        background-color: currentColor;
-        -webkit-mask: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>') no-repeat center;
-        mask: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>') no-repeat center;
-    }
-
-    aside details.filters-container:not([open]) > summary::after {
-        display: none;
-    }
-
-    .actions {
-        flex-shrink: 0;
-        background: var(--event-bg);
-        margin-top: 0;
-        z-index: 10;
-        /* Position sticky at bottom of form if needed, but flex column handles it if form has height */
-    }
 }
