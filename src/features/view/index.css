@@ -44,6 +44,15 @@ aside>details {
     scrollbar-color: var(--button-border) transparent;
 }
 
+@media (min-width: 45rem) {
+    aside>details {
+        position: sticky;
+        top: 1rem;
+        max-height: calc(100vh - 8rem);
+        overflow-y: auto;
+    }
+}
+
 aside>details::-webkit-scrollbar {
     width: 10px;
 }
@@ -67,8 +76,6 @@ aside>details>summary {
     align-items: center;
     gap: 0.5rem;
     padding: 0.5rem 0;
-    position: sticky;
-    top: 0;
     background: var(--event-bg);
     z-index: 10;
     margin: 0;
