@@ -1,5 +1,5 @@
 /* Layout */
-main {
+.layout {
     display: flex;
     flex-direction: column;
     gap: 2rem;
@@ -29,16 +29,19 @@ main {
     justify-content: center;
 }
 
-/* Filters Panel Styling */
-.filters-panel {
+/* Sidebar (Aside) */
+aside {
     margin-bottom: 1rem;
+}
+
+aside details {
     background: var(--event-bg);
     border: 1px solid var(--button-border);
     border-radius: 8px;
     padding: 1rem;
 }
 
-summary {
+aside summary {
     font-weight: 600;
     cursor: pointer;
     list-style: none;
@@ -48,31 +51,32 @@ summary {
     padding: 0.5rem 0;
 }
 
-summary::-webkit-details-marker {
+aside summary::-webkit-details-marker {
     display: none;
 }
 
-summary::after {
+aside summary::after {
     content: '+';
     margin-left: auto;
     font-weight: bold;
 }
 
-details[open] summary::after {
+aside details[open] summary::after {
     content: '-';
 }
 
-details[open] summary {
+aside details[open] summary {
     border-bottom: 1px solid var(--button-border);
     margin-bottom: 1rem;
 }
 
-.filters-panel form {
+aside form {
     display: flex;
     flex-direction: column;
     gap: 1.5rem;
 }
 
+/* Fieldsets */
 fieldset {
     border: none;
     padding: 0;
@@ -90,58 +94,19 @@ legend {
     color: var(--text-muted);
 }
 
-.scroll-area {
-    display: flex;
-    flex-direction: column;
-    gap: 1.5rem;
-}
-
-.scrollable {
-    max-height: 15rem;
-    overflow-y: auto;
-    padding-right: 0.25rem;
-    scrollbar-width: thin;
-    display: flex;
-    flex-direction: column;
-    gap: 0.25rem;
-}
-
-/* Unified Filter Option Style (for Source/Location) */
-.filter-option {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    padding: 0.35rem 0.5rem;
-    border-radius: 4px;
-    cursor: pointer;
-    transition: background-color 0.1s;
-    font-size: 0.95rem;
-}
-
-.filter-option:hover {
-    background-color: var(--button-bg);
-}
-
-.filter-option input[type="checkbox"] {
-    width: 1.1rem;
-    height: 1.1rem;
-    margin: 0;
-    accent-color: var(--link-color);
-}
-
-/* Chips Style for Event Types */
-.chips {
+/* Chips Fieldset */
+fieldset.chips {
     display: flex;
     flex-direction: row;
     flex-wrap: wrap;
     gap: 0.5rem;
 }
 
-.chip {
-    display: inline-flex !important;
+fieldset.chips label {
+    display: inline-flex;
     align-items: center;
     gap: 0.5rem;
-    padding: 0.4rem 0.8rem !important;
+    padding: 0.4rem 0.8rem;
     border: 1px solid var(--button-border);
     border-radius: 999px;
     background: var(--bg-color);
@@ -155,15 +120,15 @@ legend {
     margin: 1px;
 }
 
-.chip:hover {
+fieldset.chips label:hover {
     background: var(--button-bg);
 }
 
-.chip input[type="checkbox"] {
+fieldset.chips input[type="checkbox"] {
     display: none;
 }
 
-.chip:has(input:checked) {
+fieldset.chips label:has(input:checked) {
     border-color: var(--chip-color);
     border-width: 2px;
     margin: 0;
@@ -171,12 +136,46 @@ legend {
     box-shadow: 0 0 0 1px var(--chip-color);
 }
 
-.chip svg.icon {
+fieldset.chips svg.icon {
     width: 1em;
     height: 1em;
     fill: var(--chip-color);
 }
 
+/* Scrollable Fieldset (Source/Location) */
+fieldset.scrollable {
+    max-height: 15rem;
+    overflow-y: auto;
+    padding-right: 0.25rem;
+    scrollbar-width: thin;
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+}
+
+fieldset.scrollable label {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.35rem 0.5rem;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background-color 0.1s;
+    font-size: 0.95rem;
+}
+
+fieldset.scrollable label:hover {
+    background-color: var(--button-bg);
+}
+
+fieldset.scrollable input[type="checkbox"] {
+    width: 1.1rem;
+    height: 1.1rem;
+    margin: 0;
+    accent-color: var(--link-color);
+}
+
+/* Actions */
 .actions {
     display: flex;
     gap: 1rem;
@@ -185,52 +184,51 @@ legend {
     border-top: 1px solid var(--button-border);
 }
 
-/* Desktop layout - Sidebar */
+/* Desktop layout */
 @media (min-width: 800px) {
-    main {
+    .layout {
         flex-direction: row;
         align-items: flex-start;
     }
 
-    .filters-panel {
+    aside {
         position: sticky;
         top: 1rem;
         width: 300px;
         flex-shrink: 0;
-        /* Scroll internal content if too tall */
-        max-height: calc(100vh - 2rem);
-        overflow: hidden;
-        display: flex;
-        flex-direction: column;
+        margin-right: 1rem;
     }
 
-    .content {
+    aside details {
+        max-height: calc(100vh - 2rem);
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+    }
+
+    aside form {
+        height: 100%;
+        overflow-y: auto;
+    }
+
+    main {
         flex: 1;
         min-width: 0;
     }
 
     /* Collapsed Sidebar State */
-    .filters-panel:not([open]) {
+    aside details:not([open]) {
         width: auto;
         padding: 0;
         background: transparent;
         border: none;
         max-height: none;
         overflow: visible;
-        margin-right: 1rem;
-        /* Position static to flow with flex? No, if it's sticky it stays. */
-        /* If closed, we might want it to unstick or just stay at top. */
-        position: sticky; 
     }
 
-    /* Style the summary as a button when collapsed */
-    .filters-panel:not([open]) summary {
-        writing-mode: horizontal-tb;
-        text-orientation: initial;
-        transform: none;
+    aside details:not([open]) summary {
         width: auto;
-        padding: 0.75rem; 
-        
+        padding: 0.75rem;
         display: flex;
         align-items: center;
         justify-content: center;
@@ -238,23 +236,20 @@ legend {
         border: 1px solid var(--button-border);
         border-radius: 4px;
         color: var(--button-text);
-        box-shadow: 
+        box-shadow:
             inset 1px 1px 0px var(--button-highlight),
             inset -1px -1px 0px var(--button-shadow),
             0 4px 0 var(--button-border),
             0 5px 8px rgba(0, 0, 0, 0.2);
-        
-        /* Hide text content visibly but keep for accessibility */
         font-size: 0;
     }
-    
-    .filters-panel:not([open]) summary:active {
+
+    aside details:not([open]) summary:active {
         transform: translateY(4px);
         box-shadow: inset 2px 2px 5px rgba(0, 0, 0, 0.1), 0 0 0 var(--button-border);
     }
 
-    /* Inject Icon for collapsed state */
-    .filters-panel:not([open]) summary::before {
+    aside details:not([open]) summary::before {
         content: "";
         display: block;
         width: 1.2rem;
@@ -264,22 +259,8 @@ legend {
         mask: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>') no-repeat center;
     }
 
-    /* Hide the default arrow marker completely when collapsed */
-    .filters-panel:not([open]) summary::after {
+    aside details:not([open]) summary::after {
         display: none;
-    }
-
-    /* Ensure the form items stack vertically and take remaining space */
-    .filters-panel form {
-        height: 100%;
-        overflow: hidden;
-    }
-
-    .scroll-area {
-        flex: 1;
-        overflow-y: auto;
-        padding-right: 0.5rem;
-        padding-bottom: 1rem;
     }
 
     .actions {
@@ -287,5 +268,6 @@ legend {
         background: var(--event-bg);
         margin-top: 0;
         z-index: 10;
+        /* Position sticky at bottom of form if needed, but flex column handles it if form has height */
     }
 }
