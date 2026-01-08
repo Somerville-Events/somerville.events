@@ -1,4 +1,9 @@
 /* Layout */
+body {
+    max-width: none;
+    /* allow the grid to extend fully */
+}
+
 .layout {
     display: flex;
     flex-direction: column;
@@ -23,7 +28,7 @@
 }
 
 .button.icon-only {
-/* Make buttons with an icon more "square" looking.
+    /* Make buttons with an icon more "square" looking.
     rather than a wide rectangle. */
     padding: 0.75rem;
 }
@@ -199,7 +204,8 @@ details.filter-group .filter-list-item {
     border-radius: 4px;
     cursor: pointer;
     transition: background-color 0.1s;
-    font-size: 1rem; /* Slightly larger for readability */
+    font-size: 1rem;
+    /* Slightly larger for readability */
 }
 
 details.filter-group .filter-list-item:hover {
@@ -224,18 +230,35 @@ details.filter-group .filter-list-item input[type="checkbox"] {
 }
 
 /* Desktop layout */
-@media (min-width: 800px) {
+@media (min-width: 850px) {
     .layout {
-        flex-direction: row;
-        align-items: flex-start;
+        display: grid;
+        grid-template-columns: 1fr 800px 1fr;
+        /* Center column fixed at 800px, sides fill space */
+        align-items: start;
+        gap: 0;
+        /* Gap managed by margins if needed, or within grid */
     }
 
+    /* Content and Header go in the center column */
+    header,
+    main {
+        grid-column: 2;
+        max-width: 100%;
+        /* Ensure they don't overflow the 800px track */
+    }
+
+    /* Sidebar goes in the left column */
     aside {
+        grid-column: 1;
+        width: 300px;
+        /* Fixed width for sidebar */
+        justify-self: end;
+        /* Align to right side of left column (next to content) */
+        margin-right: 2rem;
+        /* Gap between sidebar and content */
         position: sticky;
         top: 1rem;
-        width: 300px;
-        flex-shrink: 0;
-        margin-right: 1rem;
     }
 
     aside details.filters-container {
@@ -243,7 +266,7 @@ details.filter-group .filter-list-item input[type="checkbox"] {
            Adjust max-height to account for the header height (~6-8rem) so it doesn't 
            bleed off the bottom of the screen on initial load.
         */
-        max-height: calc(100vh - 9rem);
+        max-height: calc(100vh - 2rem);
         display: block;
         overflow-y: scroll;
         padding: 0;
@@ -286,8 +309,8 @@ details.filter-group .filter-list-item input[type="checkbox"] {
     }
 
     main {
-        flex: 1;
         min-width: 0;
+        /* prevent flex/grid blowout */
     }
 
     /* Collapsed Sidebar State */
