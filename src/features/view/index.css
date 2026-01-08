@@ -15,6 +15,12 @@
     color: var(--text-color);
 }
 
+.search-form button {
+    /* make it more square */
+    align-self: center;
+    padding: 0.75rem;
+}
+
 /* Layout for the filters and events list */
 .layout {
     display: flex;
