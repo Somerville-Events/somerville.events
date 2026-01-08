@@ -64,10 +64,21 @@
                         <summary>Source</summary>
                         <fieldset>
                             {% for s in all_sources %}
+                            {% if query.has_source(s.value.as_str()) %}
                             <label class="filter-list-item">
-                                <input type="checkbox" name="source" value="{{ s.value }}" {% if query.has_source(s.value.as_str()) %}checked{% endif %}>
+                                <input type="checkbox" name="source" value="{{ s.value }}" checked>
                                 {{ s.label }}
                             </label>
+                            {% endif %}
+                            {% endfor %}
+
+                            {% for s in all_sources %}
+                            {% if !query.has_source(s.value.as_str()) %}
+                            <label class="filter-list-item">
+                                <input type="checkbox" name="source" value="{{ s.value }}">
+                                {{ s.label }}
+                            </label>
+                            {% endif %}
                             {% endfor %}
                         </fieldset>
                     </details>
@@ -76,10 +87,21 @@
                         <summary>Location</summary>
                         <fieldset>
                             {% for l in all_locations %}
+                            {% if query.has_location(l.as_str()) %}
                             <label class="filter-list-item">
-                                <input type="checkbox" name="location" value="{{ l }}" {% if query.has_location(l.as_str()) %}checked{% endif %}>
+                                <input type="checkbox" name="location" value="{{ l }}" checked>
                                 {{ l }}
                             </label>
+                            {% endif %}
+                            {% endfor %}
+
+                            {% for l in all_locations %}
+                            {% if !query.has_location(l.as_str()) %}
+                            <label class="filter-list-item">
+                                <input type="checkbox" name="location" value="{{ l }}">
+                                {{ l }}
+                            </label>
+                            {% endif %}
                             {% endfor %}
                         </fieldset>
                     </details>
