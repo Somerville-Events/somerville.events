@@ -50,11 +50,15 @@ a:hover {
 
 header {
     display: flex;
-    align-items: baseline;
+    align-items: center;
     justify-content: space-between;
     gap: 1rem;
     flex-wrap: wrap;
     margin-bottom: 2rem;
+}
+
+header h1 {
+    margin-bottom: 0;
 }
 
 main {
@@ -95,12 +99,13 @@ input[type=file]::file-selector-button {
         0 5px 8px rgba(0, 0, 0, 0.2);
     cursor: pointer;
     transition: transform 0.1s, box-shadow 0.1s;
+    transform: translateY(-4px);
 }
 
 button:active,
 .button:active,
 input[type=file]::file-selector-button:active {
-    transform: translateY(4px);
+    transform: translateY(0);
     box-shadow: inset 2px 2px 5px rgba(0, 0, 0, 0.1), 0 0 0 var(--button-border);
 }
 
