@@ -8,6 +8,21 @@
 {% block content %}
 <header>
     <h1>{{ page_title }}</h1>
+    <form action="/" method="GET" class="search-form" role="search">
+        {% if is_past_view %} <input type="hidden" name="past" value="true"> {% endif %}
+        {% if query.free.unwrap_or(false) %} <input type="hidden" name="free" value="true"> {% endif %}
+        {% for t in query.event_types %} <input type="hidden" name="type" value="{{ t.value() }}"> {% endfor %}
+        {% for s in query.source %} <input type="hidden" name="source" value="{{ s.value() }}"> {% endfor %}
+        {% for l in query.location %} <input type="hidden" name="location" value="{{ l }}"> {% endfor %}
+
+        <input type="search" name="q" value="{{ query.q.as_deref().unwrap_or_default() }}" placeholder="Search events...">
+        <button type="submit" class="button icon-only" aria-label="Search">
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 1.2em; height: 1.2em;">
+                <circle cx="11" cy="11" r="8"></circle>
+                <path d="m21 21-4.3-4.3"></path>
+            </svg>
+        </button>
+    </form>
     <nav aria-label="Site">
         <a href="/upload" class="button primary">Upload an event flyer</a>
     </nav>
@@ -15,9 +30,10 @@
 
 <div class="layout">
     <aside>
-        <details {% if query.has_filters() %}open{% endif %}>
+        <details class="filters-container" {% if query.has_filters() %}open{% endif %}>
             <summary>Filter Events</summary>
             <form action="/" method="GET">
+                <div class="filters-body">
                 {% if is_past_view %}
                 <input type="hidden" name="past" value="true">
                 {% endif %}
@@ -40,25 +56,30 @@
                     {% endfor %}
                 </fieldset>
 
-                <fieldset class="scrollable">
-                    <legend>Source</legend>
-                    {% for s in all_sources %}
-                    <label>
-                        <input type="checkbox" name="source" value="{{ s.value }}" {% if query.has_source(s.value.as_str()) %}checked{% endif %}>
-                        {{ s.label }}
-                    </label>
-                    {% endfor %}
-                </fieldset>
+                <details class="filter-group" {% if !query.source.is_empty() %}open{% endif %}>
+                    <summary>Source</summary>
+                    <fieldset>
+                        {% for s in all_sources %}
+                        <label>
+                            <input type="checkbox" name="source" value="{{ s.value }}" {% if query.has_source(s.value.as_str()) %}checked{% endif %}>
+                            {{ s.label }}
+                        </label>
+                        {% endfor %}
+                    </fieldset>
+                </details>
 
-                <fieldset class="scrollable">
-                    <legend>Location</legend>
-                    {% for l in all_locations %}
-                    <label>
-                        <input type="checkbox" name="location" value="{{ l }}" {% if query.has_location(l.as_str()) %}checked{% endif %}>
-                        {{ l }}
-                    </label>
-                    {% endfor %}
-                </fieldset>
+                <details class="filter-group" {% if !query.location.is_empty() %}open{% endif %}>
+                    <summary>Location</summary>
+                    <fieldset>
+                        {% for l in all_locations %}
+                        <label>
+                            <input type="checkbox" name="location" value="{{ l }}" {% if query.has_location(l.as_str()) %}checked{% endif %}>
+                            {{ l }}
+                        </label>
+                        {% endfor %}
+                    </fieldset>
+                </details>
+                </div>
 
                 <div class="actions">
                     <button type="submit">Apply Filters</button>
@@ -69,22 +90,6 @@
     </aside>
 
     <main>
-        <form action="/" method="GET" class="search-form" role="search">
-            {% if is_past_view %} <input type="hidden" name="past" value="true"> {% endif %}
-            {% if query.free.unwrap_or(false) %} <input type="hidden" name="free" value="true"> {% endif %}
-            {% for t in query.event_types %} <input type="hidden" name="type" value="{{ t.value() }}"> {% endfor %}
-            {% for s in query.source %} <input type="hidden" name="source" value="{{ s.value() }}"> {% endfor %}
-            {% for l in query.location %} <input type="hidden" name="location" value="{{ l }}"> {% endfor %}
-
-            <input type="search" name="q" value="{{ query.q.as_deref().unwrap_or_default() }}" placeholder="Search events...">
-            <button type="submit" class="button icon-only" aria-label="Search">
-                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 1.2em; height: 1.2em;">
-                    <circle cx="11" cy="11" r="8"></circle>
-                    <path d="m21 21-4.3-4.3"></path>
-                </svg>
-            </button>
-        </form>
-
         {% if !filter_badge.is_empty() %}
         <p>
             <a class="button" href="/{% if is_past_view %}?past=true{% endif %}">Show all events</a>
