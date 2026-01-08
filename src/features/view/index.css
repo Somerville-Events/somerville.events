@@ -45,7 +45,7 @@ aside>details {
 }
 
 aside>details[open] {
-    padding-bottom: 0;
+    padding: 0 1rem;
 }
 
 @media (min-width: 45rem) {
@@ -83,6 +83,14 @@ aside>details>summary {
     background: var(--event-bg);
     z-index: 10;
     margin: 0;
+    position: sticky;
+    top: 0;
+}
+
+aside>details[open]>summary {
+    border-bottom: 1px solid var(--button-border);
+    padding: 1.5rem 0;
+    margin-bottom: 1rem;
 }
 
 aside>details>summary::-webkit-details-marker {
@@ -99,11 +107,7 @@ aside>details[open]>summary::after {
     content: '-';
 }
 
-aside>details[open]>summary {
-    border-bottom: 1px solid var(--button-border);
-    padding-bottom: 1rem;
-    margin-bottom: 1rem;
-}
+
 
 aside form {
     display: flex;
