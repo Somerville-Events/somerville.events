@@ -12,76 +12,73 @@
         <a href="/upload" class="button primary">Upload an event flyer</a>
     </nav>
 </header>
-<main class="events-container">
-    <div class="sidebar">
-        <details class="filters-panel" {% if query.has_filters() %}open{% endif %}>
-            <summary>Filter Events</summary>
-            <form action="/" method="GET">
-                <div class="filter-scroll-area">
-                    {% if is_past_view %}
-                    <input type="hidden" name="past" value="true">
-                    {% endif %}
+<main>
+    <details class="filters-panel" {% if query.has_filters() %}open{% endif %}>
+        <summary>Filter Events</summary>
+        <form action="/" method="GET">
+            <div class="scroll-area">
+                {% if is_past_view %}
+                <input type="hidden" name="past" value="true">
+                {% endif %}
 
-                    <label>
-                        <input type="checkbox" name="free" value="true" {% if query.free.unwrap_or(false) %}checked{%
-                            endif %}>
-                        Free events only
-                    </label>
+                <label>
+                    <input type="checkbox" name="free" value="true" {% if query.free.unwrap_or(false) %}checked{%
+                        endif %}>
+                    Free events only
+                </label>
 
-                    <fieldset>
-                        <legend>Event Type</legend>
-                        <div class="checkbox-group chips">
-                            {% for t in all_event_types %}
-                            <label class="chip" style="--chip-color: {{ t.color|safe }}">
-                                <input type="checkbox" name="type" value="{{ t.value }}" {% if
-                                    query.has_event_type(t.value.as_str()) %}checked{% endif %}>
-                                <svg class="icon">
-                                    <use href="#{{ t.icon }}"></use>
-                                </svg>
-                                {{ t.label }}
-                            </label>
-                            {% endfor %}
-                        </div>
-                    </fieldset>
+                <fieldset>
+                    <legend>Event Type</legend>
+                    <div class="chips">
+                        {% for t in all_event_types %}
+                        <label class="chip" style="--chip-color: {{ t.color|safe }}">
+                            <input type="checkbox" name="type" value="{{ t.value }}" {% if
+                                query.has_event_type(t.value.as_str()) %}checked{% endif %}>
+                            <svg class="icon">
+                                <use href="#{{ t.icon }}"></use>
+                            </svg>
+                            {{ t.label }}
+                        </label>
+                        {% endfor %}
+                    </div>
+                </fieldset>
 
-                    <fieldset>
-                        <legend>Source</legend>
-                        <div class="checkbox-group scrollable compact">
-                            {% for s in all_sources %}
-                            <label class="filter-option">
-                                <input type="checkbox" name="source" value="{{ s.value }}" {% if
-                                    query.has_source(s.value.as_str()) %}checked{% endif %}>
-                                {{ s.label }}
-                            </label>
-                            {% endfor %}
-                        </div>
-                    </fieldset>
+                <fieldset>
+                    <legend>Source</legend>
+                    <div class="scrollable compact">
+                        {% for s in all_sources %}
+                        <label class="filter-option">
+                            <input type="checkbox" name="source" value="{{ s.value }}" {% if
+                                query.has_source(s.value.as_str()) %}checked{% endif %}>
+                            {{ s.label }}
+                        </label>
+                        {% endfor %}
+                    </div>
+                </fieldset>
 
-                    <fieldset>
-                        <legend>Location</legend>
-                        <div class="checkbox-group scrollable compact">
-                            {% for l in all_locations %}
-                            <label class="filter-option">
-                                <input type="checkbox" name="location" value="{{ l }}" {% if
-                                    query.has_location(l.as_str()) %}checked{% endif %}>
-                                {{ l }}
-                            </label>
-                            {% endfor %}
-                        </div>
-                    </fieldset>
-                </div>
+                <fieldset>
+                    <legend>Location</legend>
+                    <div class="scrollable compact">
+                        {% for l in all_locations %}
+                        <label class="filter-option">
+                            <input type="checkbox" name="location" value="{{ l }}" {% if
+                                query.has_location(l.as_str()) %}checked{% endif %}>
+                            {{ l }}
+                        </label>
+                        {% endfor %}
+                    </div>
+                </fieldset>
+            </div>
 
-                <div class="filter-actions">
-                    <button type="submit">Apply Filters</button>
-                    <a href="/{% if is_past_view %}?past=true{% endif %}" class="button secondary">Clear</a>
-                </div>
-            </form>
-        </details>
-    </div>
+            <div class="actions">
+                <button type="submit">Apply Filters</button>
+                <a href="/{% if is_past_view %}?past=true{% endif %}" class="button secondary">Clear</a>
+            </div>
+        </form>
+    </details>
 
     <div class="content">
-        <div class="search-bar">
-            <form action="/" method="GET" class="search-form">
+        <form action="/" method="GET" class="search-form">
                 {% if is_past_view %} <input type="hidden" name="past" value="true"> {% endif %}
                 {% if query.free.unwrap_or(false) %} <input type="hidden" name="free" value="true"> {% endif %}
                 {% for t in query.event_types %} <input type="hidden" name="type" value="{{ t.value() }}"> {% endfor %}
@@ -91,14 +88,12 @@
                 <input type="search" name="q" value="{{ query.q.as_deref().unwrap_or_default() }}"
                     placeholder="Search events...">
                 <button type="submit" class="button icon-only" aria-label="Search">
-                    <svg style="width: 1.2em; height: 1.2em; stroke-width: 2.5;">
-                        <use href="#icon-circle-help" style="display:none"></use>
-                        <circle cx="11" cy="11" r="8" fill="none" stroke="currentColor"></circle>
-                        <path d="m21 21-4.3-4.3" fill="none" stroke="currentColor"></path>
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 1.2em; height: 1.2em;">
+                        <circle cx="11" cy="11" r="8"></circle>
+                        <path d="m21 21-4.3-4.3"></path>
                     </svg>
                 </button>
             </form>
-        </div>
 
         {% if !filter_badge.is_empty() %}
         <p>

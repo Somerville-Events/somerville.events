@@ -1,37 +1,15 @@
-.header-with-icons {
-    display: flex;
-    align-items: center;
-    gap: 0.75rem;
-    flex-wrap: wrap;
-    margin-bottom: 1rem;
-    /* Match h1 margin */
-}
-
-.header-with-icons h1 {
-    margin-bottom: 0;
-}
-
-.header-icon svg {
-    width: 2.5em;
-    height: 2.5em;
-    stroke-width: 2;
-}
-
 /* Layout */
-.events-container {
+main {
     display: flex;
     flex-direction: column;
     gap: 2rem;
 }
 
-/* Search Bar - Moved out of filters for direct access */
-.search-bar {
-    margin-bottom: 1rem;
-}
-
+/* Search Bar */
 .search-form {
     display: flex;
     gap: 0.5rem;
+    margin-bottom: 1rem;
 }
 
 .search-form input[type="search"] {
@@ -57,7 +35,6 @@
     background: var(--event-bg);
     border: 1px solid var(--button-border);
     border-radius: 8px;
-    /* Softer corners */
     padding: 1rem;
 }
 
@@ -69,7 +46,6 @@ summary {
     align-items: center;
     gap: 0.5rem;
     padding: 0.5rem 0;
-    /* Larger touch target for summary */
 }
 
 summary::-webkit-details-marker {
@@ -114,19 +90,20 @@ legend {
     color: var(--text-muted);
 }
 
-.checkbox-group {
+.scroll-area {
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+}
+
+.scrollable {
+    max-height: 15rem;
+    overflow-y: auto;
+    padding-right: 0.25rem;
+    scrollbar-width: thin;
     display: flex;
     flex-direction: column;
     gap: 0.25rem;
-}
-
-.checkbox-group.scrollable {
-    max-height: 15rem;
-    /* ~5-6 items */
-    overflow-y: auto;
-    padding-right: 0.25rem;
-    /* Custom scrollbar for webkit */
-    scrollbar-width: thin;
 }
 
 /* Unified Filter Option Style (for Source/Location) */
@@ -143,7 +120,6 @@ legend {
 
 .filter-option:hover {
     background-color: var(--button-bg);
-    /* subtle hover */
 }
 
 .filter-option input[type="checkbox"] {
@@ -151,11 +127,11 @@ legend {
     height: 1.1rem;
     margin: 0;
     accent-color: var(--link-color);
-    /* Match site link color */
 }
 
 /* Chips Style for Event Types */
-.checkbox-group.chips {
+.chips {
+    display: flex;
     flex-direction: row;
     flex-wrap: wrap;
     gap: 0.5rem;
@@ -169,15 +145,12 @@ legend {
     border: 1px solid var(--button-border);
     border-radius: 999px;
     background: var(--bg-color);
-    /* Default background */
     cursor: pointer;
     transition: all 0.2s ease;
     user-select: none;
     font-size: 0.95rem;
     color: var(--text-color);
-    /* Ensure border has contrast */
     border-color: light-dark(#ccc, #444);
-    /* Prevent layout shift on selection */
     font-weight: 500;
     margin: 1px;
 }
@@ -190,26 +163,21 @@ legend {
     display: none;
 }
 
-/* Selected State: Colored Border, Tinted Background, Standard Text */
 .chip:has(input:checked) {
     border-color: var(--chip-color);
     border-width: 2px;
-    /* Remove margin to compensate for increased border width */
     margin: 0;
-    /* Subtle background tint based on chip color */
     background-color: color-mix(in srgb, var(--chip-color), transparent 85%);
     box-shadow: 0 0 0 1px var(--chip-color);
 }
 
-/* Icon styling */
 .chip svg.icon {
     width: 1em;
     height: 1em;
-    /* Use the chip color for the icon in both states for consistency/branding */
     fill: var(--chip-color);
 }
 
-.filter-actions {
+.actions {
     display: flex;
     gap: 1rem;
     margin-top: 0.5rem;
@@ -217,148 +185,107 @@ legend {
     border-top: 1px solid var(--button-border);
 }
 
-    /* Desktop layout - Sidebar */
-    @media (min-width: 800px) {
-        .events-container {
-            flex-direction: row;
-            align-items: flex-start;
-            gap: 2rem;
-        }
-
-        .sidebar {
-            flex: 0 1 400px;
-            width: 400px; /* Explicit width for some browsers/flex interaction stability */
-            position: sticky;
-            top: 1rem;
-            height: calc(100vh - 2rem);
-            overflow: hidden;
-            display: flex;
-            flex-direction: column;
-        }
-
-        .content {
-            flex: 1;
-            min-width: 0;
-        }
-
-        /* Collapsed Sidebar State */
-        .events-container:has(.sidebar details:not([open])) {
-            display: block;
-        }
-
-        .events-container:has(.sidebar details:not([open])) .content > :not(.search-bar) {
-            /* Ensure events list drops below the floated button and aligns left */
-            clear: left;
-        }
-
-        .sidebar:has(details:not([open])) {
-            /* Float the button to sit inline with search bar */
-            float: left;
-            margin-right: 1rem;
-            position: static;
-            
-            width: auto;
-            min-width: 0;
-            max-width: none;
-            /* Don't force height when collapsed, just sit at top */
-            height: auto;
-            overflow: visible;
-            background: transparent;
-        }
-
-        /* Adjust filters panel when collapsed to look like a button */
-        .sidebar:has(details:not([open])) .filters-panel {
-            padding: 0;
-            background: transparent;
-            border: none;
-            cursor: pointer;
-            width: auto;
-            height: auto;
-        }
-
-        /* Style the summary as a button when collapsed */
-        .sidebar:has(details:not([open])) summary {
-            /* Reset vertical text styles */
-            writing-mode: horizontal-tb;
-            text-orientation: initial;
-            transform: none;
-            width: auto;
-            height: auto;
-            padding: 0.75rem; /* Match other icon buttons */
-            
-            /* Button styling */
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            background-color: var(--button-bg);
-            border: 1px solid var(--button-border);
-            border-radius: 4px;
-            color: var(--button-text);
-            box-shadow: 
-                inset 1px 1px 0px var(--button-highlight),
-                inset -1px -1px 0px var(--button-shadow),
-                0 4px 0 var(--button-border),
-                0 5px 8px rgba(0, 0, 0, 0.2);
-            
-            /* Hide text content visibly but keep for accessibility/structure */
-            font-size: 0; 
-        }
-        
-        .sidebar:has(details:not([open])) summary:active {
-            transform: translateY(4px);
-            box-shadow: inset 2px 2px 5px rgba(0, 0, 0, 0.1), 0 0 0 var(--button-border);
-        }
-
-        /* Inject Icon for collapsed state */
-        .sidebar:has(details:not([open])) summary::before {
-            /* Simple filter icon using CSS shapes or unicode if not using SVG */
-            /* Using a simple unicode character for now or existing icon */
-            content: "";
-            display: block;
-            width: 1.2rem;
-            height: 1.2rem;
-            background-color: currentColor;
-            -webkit-mask: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>') no-repeat center;
-            mask: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>') no-repeat center;
-        }
-
-        /* Hide the default arrow marker completely when collapsed */
-        .sidebar:has(details:not([open])) summary::after {
-            display: none;
-        }
-
-        /* Ensure the form items stack vertically and take remaining space */
-        .filters-panel form {
-            display: flex;
-            flex-direction: column;
-            gap: 0;
-            height: 100%;
-            overflow: hidden;
-            opacity: 1;
-        }
-
-        /* Fade out content when collapsing (though details handles visibility, this helps smoothness) */
-        .sidebar:has(details:not([open])) form {
-            opacity: 0;
-            pointer-events: none;
-        }
-
-        /* The scrollable area for inputs */
-        .filter-scroll-area {
-            flex: 1;
-            overflow-y: auto;
-            padding-right: 0.5rem;
-            display: flex;
-            flex-direction: column;
-            gap: 1.5rem;
-            padding-bottom: 1rem;
-        }
-
-        /* Fixed actions at bottom */
-        .filter-actions {
-            flex-shrink: 0;
-            background: var(--event-bg);
-            margin-top: 0;
-            z-index: 10;
-        }
+/* Desktop layout - Sidebar */
+@media (min-width: 800px) {
+    main {
+        flex-direction: row;
+        align-items: flex-start;
     }
+
+    .filters-panel {
+        position: sticky;
+        top: 1rem;
+        width: 300px;
+        flex-shrink: 0;
+        /* Scroll internal content if too tall */
+        max-height: calc(100vh - 2rem);
+        overflow: hidden;
+        display: flex;
+        flex-direction: column;
+    }
+
+    .content {
+        flex: 1;
+        min-width: 0;
+    }
+
+    /* Collapsed Sidebar State */
+    .filters-panel:not([open]) {
+        width: auto;
+        padding: 0;
+        background: transparent;
+        border: none;
+        max-height: none;
+        overflow: visible;
+        margin-right: 1rem;
+        /* Position static to flow with flex? No, if it's sticky it stays. */
+        /* If closed, we might want it to unstick or just stay at top. */
+        position: sticky; 
+    }
+
+    /* Style the summary as a button when collapsed */
+    .filters-panel:not([open]) summary {
+        writing-mode: horizontal-tb;
+        text-orientation: initial;
+        transform: none;
+        width: auto;
+        padding: 0.75rem; 
+        
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background-color: var(--button-bg);
+        border: 1px solid var(--button-border);
+        border-radius: 4px;
+        color: var(--button-text);
+        box-shadow: 
+            inset 1px 1px 0px var(--button-highlight),
+            inset -1px -1px 0px var(--button-shadow),
+            0 4px 0 var(--button-border),
+            0 5px 8px rgba(0, 0, 0, 0.2);
+        
+        /* Hide text content visibly but keep for accessibility */
+        font-size: 0;
+    }
+    
+    .filters-panel:not([open]) summary:active {
+        transform: translateY(4px);
+        box-shadow: inset 2px 2px 5px rgba(0, 0, 0, 0.1), 0 0 0 var(--button-border);
+    }
+
+    /* Inject Icon for collapsed state */
+    .filters-panel:not([open]) summary::before {
+        content: "";
+        display: block;
+        width: 1.2rem;
+        height: 1.2rem;
+        background-color: currentColor;
+        -webkit-mask: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>') no-repeat center;
+        mask: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>') no-repeat center;
+    }
+
+    /* Hide the default arrow marker completely when collapsed */
+    .filters-panel:not([open]) summary::after {
+        display: none;
+    }
+
+    /* Ensure the form items stack vertically and take remaining space */
+    .filters-panel form {
+        height: 100%;
+        overflow: hidden;
+    }
+
+    .scroll-area {
+        flex: 1;
+        overflow-y: auto;
+        padding-right: 0.5rem;
+        padding-bottom: 1rem;
+    }
+
+    .actions {
+        flex-shrink: 0;
+        background: var(--event-bg);
+        margin-top: 0;
+        z-index: 10;
+    }
+}
