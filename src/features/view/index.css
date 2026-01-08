@@ -44,6 +44,10 @@ aside>details {
     scrollbar-color: var(--button-border) transparent;
 }
 
+aside>details[open] {
+    padding-bottom: 0;
+}
+
 @media (min-width: 45rem) {
     aside>details {
         position: sticky;
@@ -97,6 +101,7 @@ aside>details[open]>summary::after {
 
 aside>details[open]>summary {
     border-bottom: 1px solid var(--button-border);
+    padding-bottom: 1rem;
     margin-bottom: 1rem;
 }
 
@@ -111,12 +116,6 @@ aside>details[open]>summary {
     margin-bottom: 1rem;
 }
 
-.actions {
-    flex-shrink: 0;
-    background: var(--event-bg);
-    margin-top: 0;
-    z-index: 10;
-}
 
 /* Fieldsets */
 fieldset {
@@ -259,8 +258,14 @@ details.filter-group .filter-list-item input[type="checkbox"] {
 
 /* Filter controls */
 .actions {
+    position: sticky;
+    bottom: 0;
     display: flex;
     gap: 1rem;
     padding-top: 1rem;
     border-top: 1px solid var(--button-border);
+    flex-shrink: 0;
+    background: var(--event-bg);
+    z-index: 10;
+    padding-bottom: 0.5rem;
 }
