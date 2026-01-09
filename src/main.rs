@@ -1334,13 +1334,15 @@ mod tests {
 
         let app = test::init_service(App::new().app_data(Data::new(state)).route(
             "/",
-            web::get().to(move |state: Data<AppState>, query: web::Query<IndexQuery>| {
-                somerville_events::features::view::index_with_now(
-                    state,
-                    fixed_now_utc,
-                    query.into_inner(),
-                )
-            }),
+            web::get().to(
+                move |state: Data<AppState>, query: web::Query<IndexQuery>| {
+                    somerville_events::features::view::index_with_now(
+                        state,
+                        fixed_now_utc,
+                        query.into_inner(),
+                    )
+                },
+            ),
         ))
         .await;
 
