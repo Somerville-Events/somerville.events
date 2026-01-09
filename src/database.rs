@@ -836,4 +836,366 @@ mod tests {
 
         Ok(())
     }
+
+    async fn setup_dummy_data(pool: &sqlx::PgPool) -> Result<()> {
+        // Bulk insert 100,000 rows using generate_series
+        // This is much faster than inserting one by one from Rust
+        sqlx::query(
+            r#"
+            INSERT INTO app.events (
+                name, 
+                description, 
+                full_text, 
+                start_date, 
+                end_date, 
+                source, 
+                confidence,
+                price,
+                location_name
+            )
+            SELECT 
+                'Event ' || i,
+                'Description ' || i,
+                'Full text ' || i,
+                NOW() + (i || ' minutes')::interval,
+                NOW() + (i || ' minutes')::interval + '1 hour'::interval,
+                CASE 
+                    WHEN i % 100 = 0 THEN 'ArtsAtTheArmory' 
+                    ELSE 'ImageUpload' 
+                END,
+                1.0,
+                CASE 
+                    WHEN i % 100 = 0 THEN 0.0 
+                    WHEN i % 100 = 1 THEN NULL 
+                    ELSE 10.0 
+                END,
+                CASE 
+                    WHEN i % 100 = 0 THEN 'The Armory'
+                    ELSE NULL
+                END
+            FROM generate_series(1, 100000) AS i
+            "#,
+        )
+        .execute(pool)
+        .await?;
+
+        // Bulk insert event types
+        // Assign 'Art' to every 100th event (High selectivity)
+        sqlx::query(
+            r#"
+            INSERT INTO app.event_event_types (event_id, event_type_name)
+            SELECT id, 'Art'
+            FROM app.events
+            WHERE id % 100 = 0
+            "#,
+        )
+        .execute(pool)
+        .await?;
+
+        // Assign 'Music' to every 100th event (offset)
+        sqlx::query(
+            r#"
+            INSERT INTO app.event_event_types (event_id, event_type_name)
+            SELECT id, 'Music'
+            FROM app.events
+            WHERE id % 100 = 1
+            ON CONFLICT DO NOTHING
+            "#,
+        )
+        .execute(pool)
+        .await?;
+
+        // Assign 'Social' to 90% of events to make the table large
+        // This ensures Seq Scan is expensive compared to Index Scan for 'Art'
+        sqlx::query(
+            r#"
+            INSERT INTO app.event_event_types (event_id, event_type_name)
+            SELECT id, 'Social'
+            FROM app.events
+            WHERE id % 10 != 0
+            ON CONFLICT DO NOTHING
+            "#,
+        )
+        .execute(pool)
+        .await?;
+
+        // Insert specific test case data (rare items)
+        // We'll update a few specific rows to ensure our "search" tests find something unique
+        // Using high IDs to avoid conflict with the first few generated ones if order matters,
+        // but generate_series creates new IDs. We'll just pick a few IDs or Insert new ones.
+
+        // Let's insert a specific "Big Concert Event" that is rare
+        sqlx::query(
+            r#"
+            INSERT INTO app.events (name, description, full_text, start_date, source, confidence)
+            VALUES ('Big Concert Event', 'Rare event', 'Text', NOW(), 'ImageUpload', 1.0)
+            "#,
+        )
+        .execute(pool)
+        .await?;
+
+        // Analyze to update stats so planner knows there are rows
+        sqlx::query("ANALYZE app.events").execute(pool).await?;
+        sqlx::query("ANALYZE app.event_event_types")
+            .execute(pool)
+            .await?;
+
+        Ok(())
+    }
+
+    async fn run_explain(
+        conn: &mut sqlx::PgConnection,
+        event_types: Vec<String>,
+        source: Vec<String>,
+        location: Vec<String>,
+        free: bool,
+        q: Option<String>,
+        since: Option<DateTime<Utc>>,
+        until: Option<DateTime<Utc>>,
+    ) -> Result<String> {
+        let query_str = r#"
+            EXPLAIN
+            WITH filtered_events AS (
+                SELECT DISTINCT e.id
+                FROM app.events e
+                LEFT JOIN app.event_event_types et ON e.id = et.event_id
+                WHERE (cardinality($1::text[]) = 0 OR et.event_type_name = ANY($1::text[]))
+                AND (cardinality($2::text[]) = 0 OR e.source = ANY($2::text[]))
+                AND (cardinality($3::text[]) = 0 OR e.location_name = ANY($3::text[]))
+                AND ($4::boolean = false OR e.price = 0 OR e.price IS NULL)
+                AND ($5::text IS NULL OR e.name ILIKE ('%' || $5::text || '%'))
+                AND ($6::timestamptz IS NULL OR e.start_date >= $6)
+                AND ($7::timestamptz IS NULL OR e.start_date <= $7)
+            )
+            SELECT
+                e.id,
+                e.name,
+                e.start_date,
+                e.end_date,
+                e.original_location,
+                e.location_name,
+                COALESCE(array_agg(et.event_type_name ORDER BY et.event_type_name) FILTER (WHERE et.event_type_name IS NOT NULL), '{}') as "event_types!: Vec<EventType>"
+            FROM app.events e
+            JOIN filtered_events fe ON e.id = fe.id
+            LEFT JOIN app.event_event_types et ON e.id = et.event_id
+            GROUP BY e.id
+            ORDER BY e.start_date ASC NULLS LAST
+        "#;
+
+        let explain_output: Vec<String> = sqlx::query_scalar(query_str)
+            .bind(&event_types)
+            .bind(&source)
+            .bind(&location)
+            .bind(free)
+            .bind(q)
+            .bind(since)
+            .bind(until)
+            .fetch_all(conn)
+            .await?;
+
+        Ok(explain_output.join("\n"))
+    }
+
+    #[sqlx::test]
+    async fn test_index_usage_start_date(pool: sqlx::PgPool) -> Result<()> {
+        setup_dummy_data(&pool).await?;
+        // No forced enable_seqscan = OFF. Trust the planner with 100k rows.
+        let mut conn = pool.acquire().await?;
+
+        let plan = run_explain(
+            &mut *conn,
+            vec![],
+            vec![],
+            vec![],
+            false,
+            None,
+            Some(Utc::now()),
+            Some(Utc::now() + chrono::Duration::days(7)),
+        )
+        .await?;
+
+        println!("Query Plan Date:\n{}", plan);
+        assert!(
+            plan.contains("idx_events_start_date")
+                || plan.contains("idx_events_duplicates")
+                || plan.contains("idx_events_source_start_date"),
+            "Expected index scan on start_date, got:\n{}",
+            plan
+        );
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn test_index_usage_source(pool: sqlx::PgPool) -> Result<()> {
+        setup_dummy_data(&pool).await?;
+        let mut conn = pool.acquire().await?;
+
+        let plan = run_explain(
+            &mut *conn,
+            vec![],
+            vec!["some_source".to_string()],
+            vec![],
+            false,
+            None,
+            None,
+            None,
+        )
+        .await?;
+
+        println!("Query Plan Source:\n{}", plan);
+        assert!(
+            plan.contains("idx_events_source_start_date")
+                || plan.contains("idx_events_source_external_id"),
+            "Expected index scan on source, got:\n{}",
+            plan
+        );
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn test_index_usage_location(pool: sqlx::PgPool) -> Result<()> {
+        setup_dummy_data(&pool).await?;
+        let mut conn = pool.acquire().await?;
+
+        let plan = run_explain(
+            &mut *conn,
+            vec![],
+            vec![],
+            vec!["The Armory".to_string()],
+            false,
+            None,
+            Some(Utc::now()),
+            None,
+        )
+        .await?;
+
+        println!("Query Plan Location:\n{}", plan);
+        // Should use idx_events_location_name
+        assert!(
+            plan.contains("idx_events_location_name"),
+            "Expected index scan on location_name"
+        );
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn test_index_usage_event_type(pool: sqlx::PgPool) -> Result<()> {
+        setup_dummy_data(&pool).await?;
+        let mut conn = pool.acquire().await?;
+
+        let plan = run_explain(
+            &mut *conn,
+            vec![EventType::Art.to_string()],
+            vec![],
+            vec![],
+            false,
+            None,
+            Some(Utc::now()),
+            None,
+        )
+        .await?;
+
+        println!("Query Plan Event Type:\n{}", plan);
+        // Should use idx_event_event_types_type_name_event_id
+        assert!(
+            plan.contains("idx_event_event_types_type_name_event_id"),
+            "Expected index scan on event_event_types"
+        );
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn test_index_usage_price(pool: sqlx::PgPool) -> Result<()> {
+        setup_dummy_data(&pool).await?;
+        let mut conn = pool.acquire().await?;
+
+        let plan = run_explain(
+            &mut *conn,
+            vec![],
+            vec![],
+            vec![],
+            true, // Free only
+            None,
+            Some(Utc::now()),
+            None,
+        )
+        .await?;
+
+        println!("Query Plan Price:\n{}", plan);
+        // Should use idx_events_price or just filter if other indexes are better
+        // The condition is (price = 0 OR price IS NULL).
+        assert!(
+            plan.contains("idx_events_price"),
+            "Expected index scan on price"
+        );
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn test_index_usage_text_search(pool: sqlx::PgPool) -> Result<()> {
+        setup_dummy_data(&pool).await?;
+        let mut conn = pool.acquire().await?;
+        // Disable regular index scan to discourage scanning the primary key index (events_pkey)
+        // and force it to consider the GIN index (Bitmap Index Scan).
+        sqlx::query("SET enable_indexscan = OFF")
+            .execute(&mut *conn)
+            .await?;
+
+        let plan = run_explain(
+            &mut *conn,
+            vec![],
+            vec![],
+            vec![],
+            false,
+            Some("concert".to_string()),
+            None, // Remove start_date filter to force name index usage
+            None,
+        )
+        .await?;
+
+        println!("Query Plan Text:\n{}", plan);
+        // Should use idx_events_name_trgm
+        assert!(
+            plan.contains("idx_events_name_trgm"),
+            "Expected index scan on name (trigram)"
+        );
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn test_index_usage_combinations(pool: sqlx::PgPool) -> Result<()> {
+        setup_dummy_data(&pool).await?;
+        let mut conn = pool.acquire().await?;
+        // Filter by everything at once
+        let plan = run_explain(
+            &mut *conn,
+            vec![EventType::Music.to_string()],
+            vec!["some_source".to_string()],
+            vec!["The Armory".to_string()],
+            true,
+            Some("concert".to_string()),
+            Some(Utc::now()),
+            Some(Utc::now() + chrono::Duration::days(7)),
+        )
+        .await?;
+
+        println!("Query Plan Combination:\n{}", plan);
+
+        // In a complex query, it might not use ALL indexes, but it should use at least some of the most selective ones.
+        // It commonly uses BitmapAnd to combine multiple indexes.
+        // We'll check for at least a few key indexes.
+
+        let has_text_idx = plan.contains("idx_events_name_trgm");
+        let has_loc_idx = plan.contains("idx_events_location_name");
+        let has_type_idx = plan.contains("idx_event_event_types_type_name_event_id");
+        let has_date_idx =
+            plan.contains("idx_events_start_date") || plan.contains("idx_events_duplicates");
+
+        assert!(
+            has_text_idx || has_loc_idx || has_type_idx || has_date_idx,
+            "Expected at least one relevant index to be used in combination query"
+        );
+
+        Ok(())
+    }
 }
