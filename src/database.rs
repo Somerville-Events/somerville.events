@@ -712,25 +712,25 @@ mod tests {
         assert_eq!(res_multi.len(), 3);
 
         // 4. LIST - Date Range
-        // 4.1 Since (After 2023-01-02) - Should get Event 2 (on day) and 3 (after)
+        // 4.1 since (After 2023-01-02) - Should get Event 2 (on day) and 3 (after)
         // Note: The query uses >= for since.
-        let since_date = base_time + chrono::Duration::days(1);
+        let since_dt = base_time + chrono::Duration::days(1);
         let res_since = pool
-            .list(IndexQuery::default(), Some(since_date), None)
+            .list(IndexQuery::default(), Some(since_dt), None)
             .await?;
         assert_eq!(res_since.len(), 2);
 
-        // 4.2 Until (Before 2023-01-02) - Should get Event 1 and 2
+        // 4.2 until (Before 2023-01-02) - Should get Event 1 and 2
         // Note: The query uses <= for until.
-        let until_date = base_time + chrono::Duration::days(1);
+        let until_dt = base_time + chrono::Duration::days(1);
         let res_until = pool
-            .list(IndexQuery::default(), None, Some(until_date))
+            .list(IndexQuery::default(), None, Some(until_dt))
             .await?;
         assert_eq!(res_until.len(), 2);
 
         // 4.3 Window (Only 2023-01-02)
         let res_window = pool
-            .list(IndexQuery::default(), Some(since_date), Some(until_date))
+            .list(IndexQuery::default(), Some(since_dt), Some(until_dt))
             .await?;
         assert_eq!(res_window.len(), 1);
         assert_eq!(res_window[0].id, id2);

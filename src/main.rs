@@ -1246,4 +1246,129 @@ mod tests {
 
         Ok(())
     }
+
+    #[actix_web::test]
+    async fn test_date_range_filtering() -> Result<()> {
+        // 1. Setup events
+        // Helper to create a NY datetime
+        let mk_ny = |d, h, m| New_York.with_ymd_and_hms(2025, 1, d, h, m, 0).unwrap();
+
+        // Past Event: Jan 1st
+        let past_event = Event {
+            id: Some(1),
+            name: "Past Event".to_string(),
+            description: "Past".to_string(),
+            full_text: "Past".to_string(),
+            start_date: mk_ny(1, 10, 0).with_timezone(&Utc),
+            end_date: None,
+            address: Some("Loc".to_string()),
+            original_location: Some("Loc".to_string()),
+            google_place_id: None,
+            location_name: None,
+            event_types: vec![],
+            url: None,
+            confidence: 1.0,
+            age_restrictions: None,
+            price: None,
+            source: EventSource::ImageUpload,
+            external_id: None,
+        };
+
+        // Target Event: Jan 15th
+        let target_event = Event {
+            id: Some(2),
+            name: "Target Event".to_string(),
+            description: "Target".to_string(),
+            full_text: "Target".to_string(),
+            start_date: mk_ny(15, 10, 0).with_timezone(&Utc),
+            end_date: None,
+            address: Some("Loc".to_string()),
+            original_location: Some("Loc".to_string()),
+            google_place_id: None,
+            location_name: None,
+            event_types: vec![],
+            url: None,
+            confidence: 1.0,
+            age_restrictions: None,
+            price: None,
+            source: EventSource::ImageUpload,
+            external_id: None,
+        };
+
+        // Future Event: Jan 30th
+        let future_event = Event {
+            id: Some(3),
+            name: "Future Event".to_string(),
+            description: "Future".to_string(),
+            full_text: "Future".to_string(),
+            start_date: mk_ny(30, 10, 0).with_timezone(&Utc),
+            end_date: None,
+            address: Some("Loc".to_string()),
+            original_location: Some("Loc".to_string()),
+            google_place_id: None,
+            location_name: None,
+            event_types: vec![],
+            url: None,
+            confidence: 1.0,
+            age_restrictions: None,
+            price: None,
+            source: EventSource::ImageUpload,
+            external_id: None,
+        };
+
+        let state = AppState {
+            openai_api_key: "dummy".to_string(),
+            google_maps_api_key: "dummy".to_string(),
+            username: "user".to_string(),
+            password: "pass".to_string(),
+            events_repo: Box::new(MockEventsRepo::new(vec![
+                past_event,
+                target_event,
+                future_event,
+            ])),
+        };
+
+        // We set "now" to Jan 1st for the context of index_with_now,
+        // effectively making all events "upcoming" if no filters were applied.
+        let fixed_now_utc = mk_ny(1, 8, 0).with_timezone(&Utc);
+
+        let app = test::init_service(App::new().app_data(Data::new(state)).route(
+            "/",
+            web::get().to(move |state: Data<AppState>, query: web::Query<IndexQuery>| {
+                somerville_events::features::view::index_with_now(
+                    state,
+                    fixed_now_utc,
+                    query.into_inner(),
+                )
+            }),
+        ))
+        .await;
+
+        // Filter: Jan 10th to Jan 20th
+        // Should include Target Event (Jan 15th)
+        // Should exclude Past Event (Jan 1st) and Future Event (Jan 30th)
+        let req = test::TestRequest::get()
+            .uri("/?since=2025-01-10&until=2025-01-20")
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+        assert_eq!(resp.status(), actix_web::http::StatusCode::OK);
+
+        let body = test::read_body(resp).await;
+        let body_str = std::str::from_utf8(&body)?;
+
+        assert!(
+            body_str.contains("Target Event"),
+            "Should contain Target Event"
+        );
+        assert!(
+            !body_str.contains("Past Event"),
+            "Should NOT contain Past Event"
+        );
+        assert!(
+            !body_str.contains("Future Event"),
+            "Should NOT contain Future Event"
+        );
+
+        Ok(())
+    }
 }

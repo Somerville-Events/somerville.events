@@ -7,7 +7,7 @@ use crate::AppState;
 use actix_web::http::header::ContentType;
 use actix_web::{web, HttpResponse, Responder};
 use askama::Template;
-use chrono::{DateTime, Duration, NaiveDate, Utc};
+use chrono::{DateTime, Duration, NaiveDate, TimeZone, Utc};
 use chrono_tz::America::New_York;
 use icalendar::{Calendar, CalendarDateTime, Component, Event as IcalEvent, EventLike};
 use serde::Deserialize;
@@ -56,6 +56,8 @@ pub struct IndexQuery {
     pub free: Option<bool>,
     pub q: Option<String>,
     pub past: Option<bool>,
+    pub since: Option<NaiveDate>,
+    pub until: Option<NaiveDate>,
 }
 
 impl IndexQuery {
@@ -65,6 +67,8 @@ impl IndexQuery {
             || !self.location.is_empty()
             || self.free.unwrap_or(false)
             || self.q.as_deref().map(|s| !s.is_empty()).unwrap_or(false)
+            || self.since.is_some()
+            || self.until.is_some()
     }
 
     pub fn has_event_type(&self, type_val: &str) -> bool {
@@ -93,8 +97,25 @@ pub async fn index_with_now(
     query: IndexQuery,
 ) -> impl Responder {
     let is_past = query.past.unwrap_or(false);
+    let has_date_filter = query.since.is_some() || query.until.is_some();
 
-    let (since, until) = if is_past {
+    let (since, until) = if has_date_filter {
+        let start = query.since.map(|d| {
+            New_York
+                .from_local_datetime(&d.and_hms_opt(0, 0, 0).unwrap())
+                .single()
+                .unwrap()
+                .with_timezone(&Utc)
+        });
+        let end = query.until.map(|d| {
+            New_York
+                .from_local_datetime(&d.and_hms_opt(23, 59, 59).unwrap())
+                .single()
+                .unwrap()
+                .with_timezone(&Utc)
+        });
+        (start, end)
+    } else if is_past {
         // For past events, we want events that started before now.
         (None, Some(now_utc))
     } else {
@@ -110,7 +131,7 @@ pub async fn index_with_now(
 
     match (events_result, locations_result) {
         (Ok(events), Ok(all_locations)) => {
-            let earliest_day_to_render: NaiveDate = if is_past {
+            let earliest_day_to_render: NaiveDate = if is_past || has_date_filter {
                 NaiveDate::MIN
             } else {
                 (now_utc - Duration::days(1))
@@ -129,15 +150,17 @@ pub async fn index_with_now(
                 };
 
                 // Filter based on visibility relative to now
-                if is_past {
-                    // In past view, show only events that have ended
-                    if visibility_end >= now_utc {
-                        continue;
-                    }
-                } else {
-                    // In upcoming view, show only events that haven't ended yet
-                    if visibility_end < now_utc {
-                        continue;
+                if !has_date_filter {
+                    if is_past {
+                        // In past view, show only events that have ended
+                        if visibility_end >= now_utc {
+                            continue;
+                        }
+                    } else {
+                        // In upcoming view, show only events that haven't ended yet
+                        if visibility_end < now_utc {
+                            continue;
+                        }
                     }
                 }
 
