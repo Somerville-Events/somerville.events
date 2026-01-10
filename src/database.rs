@@ -338,7 +338,7 @@ async fn find_duplicate(
 }
 
 fn is_duplicate(a: &Event, b: &Event) -> bool {
-    // start_date, end_date, and description are equal because of a
+    // start_date, end_date, and address are equal because of a
     // previous database query.
 
     // High threshold for name to avoid false positives (Workshop A vs B)
