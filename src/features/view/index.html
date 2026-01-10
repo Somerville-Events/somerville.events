@@ -116,13 +116,56 @@
     </aside>
 
     <main>
+        {% if !calendar.is_empty() %}
+        <header class="sticky-calendar-header">
+            <details>
+                <summary>
+                    <svg class="icon">
+                        <use href="#icon-calendar"></use>
+                    </svg>
+                    Jump to Date
+                </summary>
+                <div class="calendar-drawer-content">
+                    {% for month in calendar %}
+                    <div class="calendar-month">
+                        <h3 class="calendar-month-title">{{ month.name }}</h3>
+                        <div class="calendar-grid">
+                            <span class="weekday">S</span>
+                            <span class="weekday">M</span>
+                            <span class="weekday">T</span>
+                            <span class="weekday">W</span>
+                            <span class="weekday">T</span>
+                            <span class="weekday">F</span>
+                            <span class="weekday">S</span>
+
+                            {% for week in month.weeks %}
+                            {% for day in week.days %}
+                            {% match day %}
+                            {% when Some with (d) %}
+                            <a href="#day-{{ d.date_iso }}"
+                                class="calendar-day {% if d.has_events %}has-events{% endif %} {% if d.is_today %}today{% endif %}">
+                                {{ d.day_number }}
+                            </a>
+                            {% when None %}
+                            <span class="calendar-day empty"></span>
+                            {% endmatch %}
+                            {% endfor %}
+                            {% endfor %}
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+            </details>
+        </header>
+        {% endif %}
+
         {% if is_past_view %}
         <p><a class="button" href="/">Show upcoming events</a></p>
         {% endif %}
 
         {% for day in days %}
         <section class="events-day" aria-labelledby="{{ day.day_id }}">
-            <h2 id="{{ day.day_id }}">{{ day.date_header }}</h2>
+            <h2 id="{{ day.day_id }}" class="sticky-date-header">{{ day.date_header }}</h2>
             {% for event in day.events %}
             {% include "common/simple_event_body.html" %}
             {% endfor %}

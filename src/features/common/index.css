@@ -34,9 +34,93 @@ body {
     line-height: 1.5;
     background-color: var(--bg-color);
     color: var(--text-color);
-    padding: 1rem;
+    padding: 0;
+    /* Full bleed body */
     box-sizing: border-box;
     max-width: 1200px;
+}
+
+/* Add padding to direct children or specific layout areas to restore spacing */
+body>header {
+    padding: 1rem 1rem 0;
+    /* Top/Side padding for header */
+    margin-bottom: 2rem;
+}
+
+/* Layout container padding */
+.layout {
+    padding: 0 1rem;
+}
+
+/* Remove padding from main so calendar can be full bleed relative to layout? 
+   No, layout has padding. 
+   If layout has padding, main is constrained.
+   We want main to NOT have padding if we want children to touch edges.
+*/
+
+/* Revised approach: 
+   Keep layout padding? 
+   If layout has padding 1rem, main is inside 1rem.
+   Sticky header needs to be -1rem.
+   
+   If we want NO negative margins:
+   Layout should NOT have padding.
+   Aside should have padding.
+   Main should have padding on children EXCEPT calendar.
+*/
+
+.layout {
+    padding: 0;
+    /* Remove padding from layout container */
+    gap: 0;
+    /* Control gap manually or via padding */
+}
+
+/* Restore gap via margins or padding */
+@media (min-width: 45rem) {
+    .layout {
+        gap: 2rem;
+        /* Restore gap on desktop */
+        padding: 0 1rem;
+        /* Add padding back on desktop to constrain width */
+    }
+
+    /* On desktop, we want padding. On mobile, we want 0 padding for full bleed. */
+}
+
+/* Mobile specific overrides */
+@media (max-width: 44.99rem) {
+    body>header {
+        padding: 1rem;
+    }
+
+    aside {
+        padding: 0 1rem;
+    }
+
+    main {
+        /* No padding on main itself to allow full bleed calendar */
+    }
+
+    /* Add padding to main content that isn't the calendar */
+    .events-day,
+    main>p,
+    main>footer {
+        padding-left: 1rem;
+        padding-right: 1rem;
+    }
+
+    /* Sticky header is full width, no padding */
+    .sticky-calendar-header {
+        width: 100%;
+        margin: 0;
+        /* No negative margins! */
+    }
+
+    /* Restore event day margin to 0 since we added padding */
+    .events-day {
+        margin: 0;
+    }
 }
 
 a {

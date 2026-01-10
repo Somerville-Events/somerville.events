@@ -30,8 +30,9 @@
 
 aside {
     flex-grow: 1;
-    flex-shrink: 0;
+    flex-shrink: 1;
     flex-basis: 100%;
+    min-width: 0;
 }
 
 aside:has(> details[open]) {
@@ -40,8 +41,11 @@ aside:has(> details[open]) {
 
 main {
     flex-grow: 1;
-    flex-shrink: 0;
+    flex-shrink: 1;
+    /* Allow shrinking if needed */
     flex-basis: 20rem;
+    min-width: 0;
+    /* Important for flex items to shrink below content size */
 }
 
 /* Main Filters Container */
@@ -282,4 +286,207 @@ details.filter-group fieldset.chips {
     background: var(--event-bg);
     z-index: 10;
     padding-bottom: 0.5rem;
+}
+
+/* Calendar Drawer */
+.sticky-calendar-header {
+    position: sticky;
+    top: 0;
+    z-index: 20;
+    margin-bottom: 1rem;
+    background: var(--bg-color);
+    width: 100%;
+}
+
+@media (max-width: 44.99rem) {
+
+    /* Mobile: Full bleed, no negative margins needed because body/layout/main have no padding */
+    .sticky-calendar-header {
+        margin-left: 0;
+        margin-right: 0;
+        width: 100%;
+    }
+}
+
+/* Reset width/margins on larger screens where we have a sidebar layout */
+@media (min-width: 45rem) {
+    .sticky-calendar-header {
+        margin-left: 0;
+        margin-right: 0;
+        width: 100%;
+        overflow: visible;
+        /* Restore on desktop */
+    }
+}
+
+.sticky-calendar-header>details {
+    background: var(--event-bg);
+    border-bottom: 1px solid var(--button-border);
+    width: 100%;
+    /* Ensure details doesn't exceed header width */
+    max-width: 100%;
+}
+
+.sticky-calendar-header>details[open] {
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.sticky-calendar-header summary {
+    cursor: pointer;
+    list-style: none;
+    padding: 0.75rem 1rem;
+    /* Keep padding for the button itself */
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    background: var(--event-bg);
+    border-bottom: 1px solid transparent;
+}
+
+.sticky-calendar-header>details[open] summary {
+    border-bottom: 1px solid var(--button-border);
+}
+
+@media (max-width: 44.99rem) {
+
+    /* Add padding to summary to align with other content on mobile */
+    .sticky-calendar-header summary {
+        padding-left: 1rem;
+        padding-right: 1rem;
+    }
+}
+
+.sticky-calendar-header summary::-webkit-details-marker {
+    display: none;
+}
+
+.sticky-calendar-header svg.icon {
+    width: 1.2em;
+    height: 1.2em;
+}
+
+.calendar-drawer-content {
+    /* Horizontal scrolling for months */
+    display: flex;
+    overflow-x: auto;
+    scroll-snap-type: x mandatory;
+    gap: 0;
+    /* No gap so snapping is clean */
+    padding: 1rem 0;
+    width: 100%;
+    /* Constraint width */
+    max-width: 100%;
+    /* Ensure it doesn't overflow parent */
+
+    /* Hide scrollbar */
+    scrollbar-width: none;
+    /* Firefox */
+    -ms-overflow-style: none;
+    /* IE 10+ */
+}
+
+.calendar-drawer-content::-webkit-scrollbar {
+    display: none;
+    /* Chrome/Safari */
+}
+
+.calendar-month {
+    /* Show one month at a time */
+    min-width: 100%;
+    flex: 0 0 100%;
+    /* Don't shrink, force 100% width of the scroll container */
+    scroll-snap-align: center;
+    padding: 0 1rem;
+    /* Inner padding for the grid */
+    box-sizing: border-box;
+}
+
+.calendar-month-title {
+    margin: 0 0 1rem;
+    text-align: center;
+    color: var(--text-color);
+    font-size: 1.1rem;
+    font-weight: 700;
+}
+
+.calendar-grid {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 8px;
+    /* Slightly larger gap for better touch separation */
+    text-align: center;
+    max-width: 25rem;
+    /* Prevent it from getting too wide on desktop */
+    margin: 0 auto;
+    width: 100%;
+    /* Ensure grid takes full width up to max-width */
+}
+
+.weekday {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    font-weight: 600;
+    padding-bottom: 0.5rem;
+}
+
+.calendar-day {
+    aspect-ratio: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1rem;
+    /* Larger font for mobile */
+    color: var(--text-muted);
+    border-radius: 50%;
+    text-decoration: none;
+    user-select: none;
+    position: relative;
+}
+
+.calendar-day.empty {
+    pointer-events: none;
+}
+
+.calendar-day.has-events {
+    color: var(--text-color);
+    font-weight: 600;
+    background-color: var(--bg-color);
+    border: 1px solid var(--button-border);
+}
+
+.calendar-day.has-events:hover {
+    background-color: var(--button-bg);
+    text-decoration: none;
+}
+
+.calendar-day.today {
+    background-color: var(--link-color);
+    color: #fff;
+    border-color: var(--link-color);
+}
+
+/* Sticky Date Header for Event List */
+.sticky-date-header {
+    position: sticky;
+    top: 3.5rem;
+    /* Adjusted to be below the closed calendar drawer */
+    background: var(--bg-color);
+    padding: 0.5rem 0;
+    z-index: 15;
+    border-bottom: 1px solid var(--button-border);
+    margin: 0 0 1rem;
+}
+
+@media (max-width: 44.99rem) {
+    .sticky-date-header {
+        margin: 0 0 1rem;
+        padding-left: 1rem;
+        padding-right: 1rem;
+    }
+}
+
+/* Smooth Scrolling for anchor jumps */
+html {
+    scroll-behavior: smooth;
 }

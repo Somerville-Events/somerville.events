@@ -7,7 +7,7 @@ use crate::AppState;
 use actix_web::http::header::ContentType;
 use actix_web::{web, HttpResponse, Responder};
 use askama::Template;
-use chrono::{DateTime, Duration, NaiveDate, TimeZone, Utc};
+use chrono::{Datelike, DateTime, Duration, NaiveDate, TimeZone, Utc};
 use chrono_tz::America::New_York;
 use icalendar::{Calendar, CalendarDateTime, Component, Event as IcalEvent, EventLike};
 use serde::Deserialize;
@@ -24,6 +24,23 @@ pub struct IndexTemplate {
     pub all_sources: Vec<FilterViewModel>,
     pub all_locations: Vec<String>,
     pub query: IndexQuery,
+    pub calendar: Vec<CalendarMonth>,
+}
+
+pub struct CalendarMonth {
+    pub name: String,
+    pub weeks: Vec<CalendarWeek>,
+}
+
+pub struct CalendarWeek {
+    pub days: Vec<Option<CalendarDay>>,
+}
+
+pub struct CalendarDay {
+    pub day_number: u32,
+    pub date_iso: String,
+    pub has_events: bool,
+    pub is_today: bool,
 }
 
 pub struct FilterViewModel {
@@ -91,6 +108,77 @@ pub async fn index(
     index_with_now(state, Utc::now(), query.into_inner()).await
 }
 
+fn build_calendar(
+    start: NaiveDate,
+    end: NaiveDate,
+    events_map: &BTreeMap<NaiveDate, Vec<SimpleEvent>>,
+    today: NaiveDate,
+) -> Vec<CalendarMonth> {
+    let mut months = Vec::new();
+    let mut current_month_start = start.with_day(1).unwrap();
+    // Ensure we go at least until the end month
+    let end_month_start = end.with_day(1).unwrap();
+
+    while current_month_start <= end_month_start {
+        let month_name = current_month_start.format("%B %Y").to_string();
+        let mut weeks = Vec::new();
+
+        // Calculate the first day of the week (Sunday) for the first week of the month
+        // Weekday is Mon=0..Sun=6. We want Sun=0..Sat=6, or just work with what chrono gives.
+        // Chrono Weekday: Mon(0) to Sun(6).
+        // Let's assume weeks start on Sunday.
+        let first_day_of_month = current_month_start;
+        let days_from_sunday = first_day_of_month.weekday().num_days_from_sunday(); // 0 for Sun, 1 for Mon...
+        let start_of_calendar_grid = first_day_of_month - Duration::days(days_from_sunday as i64);
+
+        let mut current_day = start_of_calendar_grid;
+        // We need to fill weeks until we are in the next month
+        loop {
+            let mut week_days = Vec::new();
+            for _ in 0..7 {
+                if current_day.month() == current_month_start.month() {
+                    week_days.push(Some(CalendarDay {
+                        day_number: current_day.day(),
+                        date_iso: current_day.format("%Y-%m-%d").to_string(),
+                        has_events: events_map.contains_key(&current_day),
+                        is_today: current_day == today,
+                    }));
+                } else {
+                    week_days.push(None);
+                }
+                current_day = current_day.succ_opt().unwrap();
+            }
+            weeks.push(CalendarWeek { days: week_days });
+
+            // If the first day of the next week is in the next month, we are done with this month
+            if current_day.month() != current_month_start.month() {
+                break;
+            }
+        }
+
+        months.push(CalendarMonth {
+            name: month_name,
+            weeks,
+        });
+
+        // Move to next month
+        let next_month = if current_month_start.month() == 12 {
+            current_month_start
+                .with_year(current_month_start.year() + 1)
+                .unwrap()
+                .with_month(1)
+                .unwrap()
+        } else {
+            current_month_start
+                .with_month(current_month_start.month() + 1)
+                .unwrap()
+        };
+        current_month_start = next_month;
+    }
+
+    months
+}
+
 pub async fn index_with_now(
     state: web::Data<AppState>,
     now_utc: DateTime<Utc>,
@@ -98,6 +186,7 @@ pub async fn index_with_now(
 ) -> impl Responder {
     let is_past = query.past.unwrap_or(false);
     let has_date_filter = query.since.is_some() || query.until.is_some();
+    let today_ny = now_utc.with_timezone(&New_York).date_naive();
 
     let (since, until) = if has_date_filter {
         let start = query.since.map(|d| {
@@ -185,9 +274,9 @@ pub async fn index_with_now(
             // Process days. If past view, we want descending order.
             // BTreeMap iterates in ascending order.
             let day_iter: Box<dyn Iterator<Item = (NaiveDate, Vec<SimpleEvent>)>> = if is_past {
-                Box::new(events_by_day.into_iter().rev())
+                Box::new(events_by_day.clone().into_iter().rev())
             } else {
-                Box::new(events_by_day.into_iter())
+                Box::new(events_by_day.clone().into_iter())
             };
 
             for (day, mut day_events) in day_iter {
@@ -210,6 +299,25 @@ pub async fn index_with_now(
                     events: vms,
                 });
             }
+
+            // Calendar Generation
+            // Determine start/end for calendar
+            let (cal_start, cal_end) = if events_by_day.is_empty() {
+                (today_ny, today_ny)
+            } else {
+                let min_date = *events_by_day.keys().next().unwrap();
+                let max_date = *events_by_day.keys().last().unwrap();
+                if is_past {
+                    // For past view, we might want to show from the earliest event to today?
+                    // Or just the range of events. Let's stick to range of events.
+                    (min_date, max_date)
+                } else {
+                    // For upcoming, start from today (or min_date if earlier) to max_date
+                    (today_ny.min(min_date), max_date)
+                }
+            };
+
+            let calendar = build_calendar(cal_start, cal_end, &events_by_day, today_ny);
 
             let mut active_filters: Vec<EventTypeLink> = Vec::new();
 
@@ -301,6 +409,7 @@ pub async fn index_with_now(
                     .collect(),
                 all_locations,
                 query,
+                calendar,
             };
 
             HttpResponse::Ok()
@@ -391,3 +500,6 @@ pub async fn ical(state: web::Data<AppState>, path: web::Path<i64>) -> impl Resp
         }
     }
 }
+
+#[cfg(test)]
+mod tests;
