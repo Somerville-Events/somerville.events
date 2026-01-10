@@ -59,9 +59,11 @@
     <a href="/event/{{ event.id }}.ics" class="button">Other Calendar</a>
 </p>
 
+{% if !event.full_text_paragraphs.is_empty() %}
 <details>
     <summary>All details</summary>
     {% for paragraph in event.full_text_paragraphs %}
     <p>{{ paragraph }}</p>
     {% endfor %}
 </details>
+{% endif %}
