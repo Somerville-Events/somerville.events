@@ -89,19 +89,19 @@
                         <summary>Location</summary>
                         <fieldset>
                             {% for l in all_locations %}
-                            {% if query.has_location(l.as_str()) %}
+                            {% if query.has_location(l.value.as_str()) %}
                             <label class="filter-list-item">
-                                <input type="checkbox" name="location" value="{{ l }}" checked>
-                                {{ l }}
+                                <input type="checkbox" name="location" value="{{ l.value }}" checked>
+                                {{ l.label }}
                             </label>
                             {% endif %}
                             {% endfor %}
 
                             {% for l in all_locations %}
-                            {% if !query.has_location(l.as_str()) %}
+                            {% if !query.has_location(l.value.as_str()) %}
                             <label class="filter-list-item">
-                                <input type="checkbox" name="location" value="{{ l }}">
-                                {{ l }}
+                                <input type="checkbox" name="location" value="{{ l.value }}">
+                                {{ l.label }}
                             </label>
                             {% endif %}
                             {% endfor %}

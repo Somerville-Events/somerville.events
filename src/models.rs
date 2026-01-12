@@ -252,3 +252,9 @@ pub struct SimpleEvent {
     pub location_name: Option<String>,
     pub event_types: Vec<EventType>,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LocationOption {
+    pub id: String,
+    pub name: String,
+}

@@ -1,5 +1,5 @@
 use crate::features::view::IndexQuery;
-use crate::models::{Event, EventSource, EventType, SimpleEvent};
+use crate::models::{Event, EventSource, EventType, LocationOption, SimpleEvent};
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
@@ -19,7 +19,7 @@ pub trait EventsRepo: Send + Sync {
         since: Option<DateTime<Utc>>,
         until: Option<DateTime<Utc>>,
     ) -> Result<Vec<Event>>;
-    async fn get_distinct_locations(&self) -> Result<Vec<String>>;
+    async fn get_distinct_locations(&self) -> Result<Vec<LocationOption>>;
     async fn get(&self, id: i64) -> Result<Option<Event>>;
     async fn claim_idempotency_key(&self, idempotency_key: uuid::Uuid) -> Result<bool>;
     async fn insert(&self, event: &Event) -> Result<i64>;
@@ -57,7 +57,7 @@ impl EventsRepo for sqlx::Pool<sqlx::Postgres> {
                 LEFT JOIN app.event_event_types et ON e.id = et.event_id
                 WHERE (cardinality($1::text[]) = 0 OR et.event_type_name = ANY($1::text[]))
                 AND (cardinality($2::text[]) = 0 OR e.source = ANY($2::text[]))
-                AND (cardinality($3::text[]) = 0 OR e.location_name = ANY($3::text[]))
+                AND (cardinality($3::text[]) = 0 OR e.google_place_id = ANY($3::text[]))
                 AND ($4::boolean = false OR e.price = 0 OR e.price IS NULL)
                 AND ($5::text IS NULL OR e.name ILIKE ('%' || $5::text || '%'))
                 AND ($6::timestamptz IS NULL OR e.start_date >= $6)
@@ -120,7 +120,7 @@ impl EventsRepo for sqlx::Pool<sqlx::Postgres> {
                 LEFT JOIN app.event_event_types et ON e.id = et.event_id
                 WHERE (cardinality($1::text[]) = 0 OR et.event_type_name = ANY($1::text[]))
                 AND (cardinality($2::text[]) = 0 OR e.source = ANY($2::text[]))
-                AND (cardinality($3::text[]) = 0 OR e.location_name = ANY($3::text[]))
+                AND (cardinality($3::text[]) = 0 OR e.google_place_id = ANY($3::text[]))
                 AND ($4::boolean = false OR e.price = 0 OR e.price IS NULL)
                 AND ($5::text IS NULL OR e.name ILIKE ('%' || $5::text || '%'))
                 AND ($6::timestamptz IS NULL OR e.start_date >= $6)
@@ -164,22 +164,23 @@ impl EventsRepo for sqlx::Pool<sqlx::Postgres> {
         Ok(events)
     }
 
-    async fn get_distinct_locations(&self) -> Result<Vec<String>> {
-        let locations = sqlx::query!(
+    async fn get_distinct_locations(&self) -> Result<Vec<LocationOption>> {
+        let options = sqlx::query_as!(
+            LocationOption,
             r#"
-            SELECT DISTINCT location_name
+            SELECT
+                google_place_id as "id!",
+                MIN(location_name) as "name!"
             FROM app.events
-            WHERE location_name IS NOT NULL
-            ORDER BY location_name
+            WHERE google_place_id IS NOT NULL AND location_name IS NOT NULL
+            GROUP BY google_place_id
+            ORDER BY "name!"
             "#
         )
         .fetch_all(self)
         .await?;
 
-        Ok(locations
-            .into_iter()
-            .filter_map(|r| r.location_name)
-            .collect())
+        Ok(options)
     }
 
     async fn get(&self, id: i64) -> Result<Option<Event>> {
@@ -806,6 +807,7 @@ mod tests {
             e.price = Some(0.0);
             e.source = EventSource::CityOfCambridge;
             e.location_name = Some("Central Park".to_string());
+            e.google_place_id = Some("place_id_park".to_string());
             e.start_date = base_time;
             e
         };
@@ -816,6 +818,7 @@ mod tests {
             e.price = Some(50.0);
             e.source = EventSource::ImageUpload;
             e.location_name = Some("High School".to_string());
+            e.google_place_id = Some("place_id_school".to_string());
             e.start_date = base_time;
             e
         };
@@ -826,6 +829,7 @@ mod tests {
             e.price = Some(100.0);
             e.source = EventSource::ArtsAtTheArmory;
             e.location_name = Some("The Armory".to_string());
+            e.google_place_id = Some("place_id_armory".to_string());
             e.start_date = base_time;
             e
         };
@@ -844,8 +848,9 @@ mod tests {
         assert_eq!(res_free[0].name, "Free Concert");
 
         // Test 2: Location Filter
+        // Filter by google_place_id
         let query_loc = IndexQuery {
-            location: vec!["The Armory".to_string()],
+            location: vec!["place_id_armory".to_string()],
             ..Default::default()
         };
         let res_loc = pool.list(query_loc, None, None).await?;
@@ -873,9 +878,12 @@ mod tests {
         // Test 5: Distinct Locations
         let locations = pool.get_distinct_locations().await?;
         assert_eq!(locations.len(), 3);
-        assert!(locations.contains(&"Central Park".to_string()));
-        assert!(locations.contains(&"High School".to_string()));
-        assert!(locations.contains(&"The Armory".to_string()));
+        // Note: locations are now objects with id/name.
+        // With current data, location_name is used as ID if google_place_id is null.
+        let loc_names: Vec<String> = locations.iter().map(|l| l.name.clone()).collect();
+        assert!(loc_names.contains(&"Central Park".to_string()));
+        assert!(loc_names.contains(&"High School".to_string()));
+        assert!(loc_names.contains(&"The Armory".to_string()));
 
         Ok(())
     }
@@ -1068,7 +1076,7 @@ mod tests {
                 LEFT JOIN app.event_event_types et ON e.id = et.event_id
                 WHERE (cardinality($1::text[]) = 0 OR et.event_type_name = ANY($1::text[]))
                 AND (cardinality($2::text[]) = 0 OR e.source = ANY($2::text[]))
-                AND (cardinality($3::text[]) = 0 OR e.location_name = ANY($3::text[]))
+                AND (cardinality($3::text[]) = 0 OR e.google_place_id = ANY($3::text[]))
                 AND ($4::boolean = false OR e.price = 0 OR e.price IS NULL)
                 AND ($5::text IS NULL OR e.name ILIKE ('%' || $5::text || '%'))
                 AND ($6::timestamptz IS NULL OR e.start_date >= $6)
@@ -1190,7 +1198,7 @@ mod tests {
         setup_dummy_data(&pool).await?;
         let mut conn = pool.acquire().await?;
 
-        let loc_filter = vec!["The Armory".to_string()];
+        let loc_filter = vec!["place_id_100".to_string()];
         let query = IndexQuery {
             location: loc_filter,
             ..Default::default()
@@ -1199,10 +1207,10 @@ mod tests {
         let plan = run_explain(&mut conn, query.clone(), Some(Utc::now()), None).await?;
 
         println!("Query Plan Location:\n{}", plan);
-        // Should use idx_events_location_name
+        // Should use idx_events_google_place_id
         assert!(
-            plan.contains("idx_events_location_name"),
-            "Expected index scan on location_name"
+            plan.contains("idx_events_google_place_id"),
+            "Expected index scan on google_place_id"
         );
 
         // Performance Check
@@ -1371,7 +1379,7 @@ mod tests {
         let query = IndexQuery {
             event_types: vec![EventType::Music],
             source: vec![EventSource::from("some_source".to_string())],
-            location: vec!["The Armory".to_string()],
+            location: vec!["place_id_100".to_string()],
             free: Some(true),
             q: Some("concert".to_string()),
             ..Default::default()
@@ -1393,7 +1401,7 @@ mod tests {
         // We'll check for at least a few key indexes.
 
         let has_text_idx = plan.contains("idx_events_name_trgm");
-        let has_loc_idx = plan.contains("idx_events_location_name");
+        let has_loc_idx = plan.contains("idx_events_google_place_id");
         let has_type_idx = plan.contains("idx_event_event_types_type_name_event_id");
         let has_date_idx =
             plan.contains("idx_events_start_date") || plan.contains("idx_events_duplicates");

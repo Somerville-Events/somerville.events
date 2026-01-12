@@ -8,7 +8,7 @@ use somerville_events::{
             SimpleEventViewModel,
         },
         upload::{SuccessTemplate, UploadTemplate},
-        view::{DaySection, IndexTemplate, ShowTemplate},
+        view::{DaySection, IndexQuery, IndexTemplate, ShowTemplate},
     },
     models::EventType,
 };
@@ -49,17 +49,22 @@ use std::sync::Mutex;
 struct StorybookIndexTemplate;
 
 fn to_simple(vm: &EventViewModel) -> SimpleEventViewModel {
+    let (accent_color, accent_icon) = if let Some(first) = vm.event_types.first() {
+        (first.color.clone(), first.icon.clone())
+    } else {
+        (
+            get_color_for_type(&EventType::Other).to_string(),
+            get_icon_for_type(&EventType::Other).to_string(),
+        )
+    };
+
     SimpleEventViewModel {
-        id: vm.id,
         name: vm.name.clone(),
-        start_iso: vm.start_iso.clone(),
         start_formatted: vm.start_formatted.clone(),
-        end_iso: vm.end_iso.clone(),
         end_formatted: vm.end_formatted.clone(),
         location: vm.location.clone(),
-        event_types: vm.event_types.clone(),
-        accent_color: vm.accent_color.clone(),
-        accent_icon: vm.accent_icon.clone(),
+        accent_color,
+        accent_icon,
         detail_url: format!("/event/{}", vm.id),
     }
 }
@@ -177,8 +182,6 @@ impl MockEventBuilder {
             })
             .collect();
 
-        let first_type = self.event_types.first().unwrap_or(&EventType::Other);
-
         EventViewModel {
             id,
             name: self.name,
@@ -199,8 +202,6 @@ impl MockEventBuilder {
             google_calendar_url: "#".to_string(),
             age_restrictions: self.age_restrictions,
             price: self.price,
-            accent_color: get_color_for_type(first_type),
-            accent_icon: get_icon_for_type(first_type).to_string(),
         }
     }
 }
@@ -419,7 +420,6 @@ async fn story_view_index(data: web::Data<StorybookState>) -> impl Responder {
     });
 
     let template = IndexTemplate {
-        active_filters: vec![],
         days,
         is_past_view: false,
         all_event_types: vec![],
@@ -482,20 +482,6 @@ async fn story_view_filtered(data: web::Data<StorybookState>) -> impl Responder 
         .collect();
 
     let example_1 = IndexTemplate {
-        active_filters: vec![
-            EventTypeLink {
-                url: "#".to_string(),
-                label: "Music".to_string(),
-                icon: get_icon_for_type(&EventType::Music).to_string(),
-                color: get_color_for_type(&EventType::Music),
-            },
-            EventTypeLink {
-                url: "#".to_string(),
-                label: "Social".to_string(),
-                icon: get_icon_for_type(&EventType::Social).to_string(),
-                color: get_color_for_type(&EventType::Social),
-            },
-        ],
         days: vec![DaySection {
             day_id: "day-1".to_string(),
             date_header: "Filtered Results".to_string(),
@@ -505,7 +491,10 @@ async fn story_view_filtered(data: web::Data<StorybookState>) -> impl Responder 
         all_event_types: vec![],
         all_sources: vec![],
         all_locations: vec![],
-        query: Default::default(),
+        query: IndexQuery {
+            event_types: vec![EventType::Music, EventType::Social],
+            ..Default::default()
+        },
         next_day_link: None,
         prev_day_link: None,
         webcal_url: "#".to_string(),
@@ -517,7 +506,6 @@ async fn story_view_filtered(data: web::Data<StorybookState>) -> impl Responder 
     let past_events: Vec<EventViewModel> =
         all_events.iter().take(3).map(|e| (*e).clone()).collect();
     let example_2 = IndexTemplate {
-        active_filters: vec![],
         days: vec![DaySection {
             day_id: "day-past".to_string(),
             date_header: "Yesterday".to_string(),

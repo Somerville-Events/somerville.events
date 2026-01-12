@@ -27,9 +27,7 @@ pub async fn index(state: web::Data<AppState>) -> impl Responder {
         Ok(events) => {
             let vms: Vec<SimpleEventViewModel> = events
                 .iter()
-                .map(|e| {
-                    SimpleEventViewModel::from_event(e, DateFormat::FullDate, false, "/edit/event")
-                })
+                .map(|e| SimpleEventViewModel::from_event(e, DateFormat::FullDate, "/edit/event"))
                 .collect();
             let template = EditListTemplate { events: vms };
             HttpResponse::Ok()

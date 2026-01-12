@@ -108,7 +108,7 @@ mod tests {
     use scraper::{Html, Selector};
     use somerville_events::database::EventsRepo;
     use somerville_events::features::view::IndexQuery;
-    use somerville_events::models::{Event, EventSource, EventType, SimpleEvent};
+    use somerville_events::models::{Event, EventSource, EventType, LocationOption, SimpleEvent};
     use somerville_events::AppState;
     use std::sync::{Arc, Mutex};
 
@@ -209,14 +209,29 @@ mod tests {
                 .collect())
         }
 
-        async fn get_distinct_locations(&self) -> Result<Vec<String>> {
+        async fn get_distinct_locations(&self) -> Result<Vec<LocationOption>> {
             let events = self.events.lock().unwrap();
-            let mut locs: Vec<String> = events
+            let mut locs: Vec<LocationOption> = events
                 .iter()
-                .filter_map(|e| e.location_name.clone())
+                .filter_map(|e| {
+                    if let (Some(name), Some(id)) = (&e.location_name, &e.google_place_id) {
+                        Some(LocationOption {
+                            id: id.clone(),
+                            name: name.clone(),
+                        })
+                    } else {
+                        None
+                    }
+                })
                 .collect();
-            locs.sort();
-            locs.dedup();
+
+            // Sort by id then name to ensure deterministic deduplication (first one kept)
+            locs.sort_by(|a, b| a.id.cmp(&b.id).then_with(|| a.name.cmp(&b.name)));
+            locs.dedup_by(|a, b| a.id == b.id);
+
+            // Finally sort by name for display
+            locs.sort_by(|a, b| a.name.cmp(&b.name));
+
             Ok(locs)
         }
 

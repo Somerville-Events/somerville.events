@@ -1,7 +1,7 @@
 use crate::config::Config;
 use crate::features::common::{
-    get_color_for_type, get_icon_for_type, DateFormat, EventLocation, EventTypeLink,
-    EventViewModel, SimpleEventViewModel,
+    get_color_for_type, get_icon_for_type, DateFormat, EventLocation, EventViewModel,
+    SimpleEventViewModel,
 };
 use crate::models::{EventSource, EventType, SimpleEvent};
 use crate::AppState;
@@ -18,12 +18,11 @@ use strum::IntoEnumIterator;
 #[derive(Template)]
 #[template(path = "view/index.html")]
 pub struct IndexTemplate {
-    pub active_filters: Vec<EventTypeLink>,
     pub days: Vec<DaySection>,
     pub is_past_view: bool,
-    pub all_event_types: Vec<FilterViewModel>,
-    pub all_sources: Vec<FilterViewModel>,
-    pub all_locations: Vec<String>,
+    pub all_event_types: Vec<EventTypeViewModel>,
+    pub all_sources: Vec<LabeledValue>,
+    pub all_locations: Vec<LabeledValue>,
     pub query: IndexQuery,
     pub prev_day_link: Option<String>,
     pub next_day_link: Option<String>,
@@ -32,11 +31,16 @@ pub struct IndexTemplate {
     pub google_cal_link: String,
 }
 
-pub struct FilterViewModel {
+pub struct EventTypeViewModel {
     pub value: String,
     pub label: String,
     pub icon: String,
     pub color: String,
+}
+
+pub struct LabeledValue {
+    pub value: String,
+    pub label: String,
 }
 
 #[derive(Template)]
@@ -186,7 +190,7 @@ pub async fn index_with_now(
     let locations_result = state.events_repo.get_distinct_locations().await;
 
     match (events_result, locations_result) {
-        (Ok(events), Ok(all_locations)) => {
+        (Ok(events), Ok(locations)) => {
             let earliest_day_to_render: NaiveDate = if is_past || has_date_filter {
                 NaiveDate::MIN
             } else {
@@ -255,9 +259,7 @@ pub async fn index_with_now(
 
                 let vms: Vec<SimpleEventViewModel> = day_events
                     .iter()
-                    .map(|e| {
-                        SimpleEventViewModel::from_event(e, DateFormat::TimeOnly, is_past, "/event")
-                    })
+                    .map(|e| SimpleEventViewModel::from_event(e, DateFormat::TimeOnly, "/event"))
                     .collect();
 
                 days.push(DaySection {
@@ -266,74 +268,6 @@ pub async fn index_with_now(
                     events: vms,
                 });
             }
-
-            let mut active_filters: Vec<EventTypeLink> = Vec::new();
-
-            let mut add_filters = |key: &str, values: Vec<(String, String, String, String)>| {
-                for (val_str, label, icon, color) in values {
-                    let encoded = url::form_urlencoded::byte_serialize(val_str.as_bytes())
-                        .collect::<String>();
-                    let url = if is_past {
-                        format!("/?{}={}&past=true", key, encoded)
-                    } else {
-                        format!("/?{}={}", key, encoded)
-                    };
-                    active_filters.push(EventTypeLink {
-                        url,
-                        label,
-                        icon,
-                        color,
-                    });
-                }
-            };
-
-            add_filters(
-                "type",
-                query
-                    .event_types
-                    .iter()
-                    .map(|t| {
-                        (
-                            t.value(),
-                            t.to_string(),
-                            get_icon_for_type(t).to_string(),
-                            get_color_for_type(t),
-                        )
-                    })
-                    .collect(),
-            );
-
-            add_filters(
-                "source",
-                query
-                    .source
-                    .iter()
-                    .map(|s| {
-                        (
-                            s.value(),
-                            s.to_string(),
-                            "icon-map-pin".to_string(),
-                            "var(--text-color)".to_string(),
-                        )
-                    })
-                    .collect(),
-            );
-
-            add_filters(
-                "location",
-                query
-                    .location
-                    .iter()
-                    .map(|l| {
-                        (
-                            l.clone(),
-                            l.clone(),
-                            "icon-map-pin".to_string(),
-                            "var(--text-color)".to_string(),
-                        )
-                    })
-                    .collect(),
-            );
 
             let (prev_day_link, next_day_link) = if let Some(on_date) = query.on {
                 let prev_date = on_date.pred_opt().unwrap();
@@ -383,11 +317,10 @@ pub async fn index_with_now(
             );
 
             let template = IndexTemplate {
-                active_filters,
                 days,
                 is_past_view: is_past,
                 all_event_types: EventType::iter()
-                    .map(|t| FilterViewModel {
+                    .map(|t| EventTypeViewModel {
                         value: t.value(),
                         label: t.to_string(),
                         icon: get_icon_for_type(&t).to_string(),
@@ -395,14 +328,18 @@ pub async fn index_with_now(
                     })
                     .collect(),
                 all_sources: EventSource::iter()
-                    .map(|s| FilterViewModel {
+                    .map(|s| LabeledValue {
                         value: s.value(),
                         label: s.to_string(),
-                        icon: "icon-map-pin".to_string(),
-                        color: "var(--text-color)".to_string(),
                     })
                     .collect(),
-                all_locations,
+                all_locations: locations
+                    .iter()
+                    .map(|l| LabeledValue {
+                        value: l.id.clone(),
+                        label: l.name.clone(),
+                    })
+                    .collect(),
                 query,
                 prev_day_link,
                 next_day_link,

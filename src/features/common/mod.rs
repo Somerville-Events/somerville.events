@@ -85,20 +85,14 @@ pub struct EventViewModel {
     pub google_calendar_url: String,
     pub age_restrictions: Option<String>,
     pub price: Option<f64>,
-    pub accent_color: String,
-    pub accent_icon: String,
 }
 
 #[derive(Clone)]
 pub struct SimpleEventViewModel {
-    pub id: i64,
     pub name: String,
-    pub start_iso: String,
     pub start_formatted: String,
-    pub end_iso: String,
     pub end_formatted: Option<String>,
     pub location: EventLocation,
-    pub event_types: Vec<EventTypeLink>,
     pub accent_color: String,
     pub accent_icon: String,
     pub detail_url: String,
@@ -192,9 +186,6 @@ impl EventViewModel {
         );
 
         // Use the icon of the first event type, or default to "Other" icon if none
-        let first_type = event.event_types.first().unwrap_or(&EventType::Other);
-        let accent_icon = get_icon_for_type(first_type).to_string();
-        let accent_color = get_color_for_type(first_type);
 
         Self {
             id: event.id.unwrap_or_default(),
@@ -216,48 +207,29 @@ impl EventViewModel {
             google_calendar_url,
             age_restrictions: event.age_restrictions.clone(),
             price: event.price,
-            accent_color,
-            accent_icon,
         }
     }
 }
 
 impl SimpleEventViewModel {
-    pub fn from_event(
-        event: &SimpleEvent,
-        format: DateFormat,
-        is_past_view: bool,
-        detail_url_prefix: &str,
-    ) -> Self {
+    pub fn from_event(event: &SimpleEvent, format: DateFormat, detail_url_prefix: &str) -> Self {
         let start_ny = event.start_date.with_timezone(&New_York);
-        let start_iso = start_ny.to_rfc3339();
 
         let start_formatted = match format {
             DateFormat::TimeOnly => start_ny.format("%-I:%M %p").to_string(),
             DateFormat::FullDate => start_ny.format("%a, %b %-d, %Y • %-I:%M %p").to_string(),
         };
 
-        let (end_iso, end_formatted) = if let Some(end) = event.end_date {
+        let end_formatted = if let Some(end) = event.end_date {
             let end_ny = end.with_timezone(&New_York);
             let end_str = match format {
                 DateFormat::TimeOnly => end_ny.format("%-I:%M %p").to_string(),
                 DateFormat::FullDate => end_ny.format("%a, %b %-d, %Y • %-I:%M %p").to_string(),
             };
-            (end_ny.to_rfc3339(), Some(end_str))
+            Some(end_str)
         } else {
-            (String::new(), None)
+            None
         };
-
-        let event_types = event
-            .event_types
-            .iter()
-            .map(|c| EventTypeLink {
-                url: c.get_url_with_past(is_past_view),
-                label: c.to_string(),
-                icon: get_icon_for_type(c).to_string(),
-                color: get_color_for_type(c).to_string(),
-            })
-            .collect();
 
         // For simple event, we don't have address or google_place_id, so we can't build structured location link
         // We fallback to location_name or original_location
@@ -278,14 +250,10 @@ impl SimpleEventViewModel {
         let detail_url = format!("{}/{}", detail_url_prefix.trim_end_matches('/'), event.id);
 
         Self {
-            id: event.id,
             name: event.name.clone(),
-            start_iso,
             start_formatted,
-            end_iso,
             end_formatted,
             location,
-            event_types,
             accent_color,
             accent_icon,
             detail_url,
