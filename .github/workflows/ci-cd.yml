@@ -72,6 +72,7 @@ jobs:
           BASIC_AUTH_PASS: test
           DB_APP_USER_PASS: test
           DB_NAME: test
+          PUBLIC_URL: "http://localhost:8080"
           DATABASE_URL: postgresql://migrator:${{ secrets.DB_MIGRATOR_PASS }}@localhost/test
         run: cargo test
 
