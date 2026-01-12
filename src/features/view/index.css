@@ -139,14 +139,34 @@ fieldset {
     min-width: 0;
 }
 
-legend {
+legend,
+details.filter-group summary,
+.filter-date-label {
     font-weight: 600;
     font-size: 0.95rem;
     text-transform: uppercase;
     letter-spacing: 0.05em;
+    color: var(--text-muted);
+}
+
+legend {
     margin-bottom: 0.75rem;
     display: block;
-    color: var(--text-muted);
+}
+
+details.filter-group summary {
+    cursor: pointer;
+    list-style: none;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.75rem 0;
+}
+
+.filter-date-label {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
 }
 
 /* Chips Fieldset */
@@ -197,28 +217,21 @@ fieldset.chips svg.icon {
 }
 
 /* Filter Groups (Collapsible Source/Location) */
-details.filter-group {
+.filter-group {
     border-bottom: 1px solid var(--button-border);
+    padding: 0.75rem 0;
+}
+
+details.filter-group {
     padding-bottom: 0.5rem;
+    padding-top: 0;
 }
 
 details.filter-group:last-of-type {
     border-bottom: none;
 }
 
-details.filter-group summary {
-    font-weight: 600;
-    font-size: 0.95rem;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-    color: var(--text-muted);
-    cursor: pointer;
-    list-style: none;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 0.75rem 0;
-}
+
 
 details.filter-group summary::-webkit-details-marker {
     display: none;
@@ -282,4 +295,17 @@ details.filter-group fieldset.chips {
     background: var(--event-bg);
     z-index: 10;
     padding-bottom: 0.5rem;
+}
+
+
+
+.filter-date-label input {
+    box-sizing: border-box;
+    padding: 0.5rem;
+    border: 1px solid var(--button-border);
+    border-radius: 4px;
+    background: var(--bg-color);
+    color: var(--text-color);
+    font-family: inherit;
+    font-size: 1rem;
 }
