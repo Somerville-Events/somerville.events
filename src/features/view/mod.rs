@@ -313,7 +313,7 @@ pub async fn index_with_now(
 
             let google_cal_link = format!(
                 "https://calendar.google.com/calendar/render?cid={}",
-                url::form_urlencoded::byte_serialize(https_url.as_bytes()).collect::<String>()
+                url::form_urlencoded::byte_serialize(webcal_url.as_bytes()).collect::<String>()
             );
 
             let template = IndexTemplate {
