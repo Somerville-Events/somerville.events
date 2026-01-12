@@ -131,11 +131,20 @@
         </section>
         {% endfor %}
 
-        {% if !is_past_view %}
         <footer>
+            {% if let Some(prev) = prev_day_link %}
+            <div class="pagination">
+                <a href="{{ prev }}" class="button secondary">Previous Day</a>
+                {% if let Some(next) = next_day_link %}
+                <a href="{{ next }}" class="button secondary">Next Day</a>
+                {% endif %}
+            </div>
+            {% else %}
+            {% if !is_past_view %}
             <a href="/?past=true" class="button secondary">View past events</a>
+            {% endif %}
+            {% endif %}
         </footer>
-        {% endif %}
     </main>
 </div>
 {% endblock %}

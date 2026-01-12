@@ -426,6 +426,8 @@ async fn story_view_index(data: web::Data<StorybookState>) -> impl Responder {
         all_sources: vec![],
         all_locations: vec![],
         query: Default::default(),
+        next_day_link: None,
+        prev_day_link: None,
     };
     HttpResponse::Ok()
         .content_type("text/html")
@@ -501,6 +503,8 @@ async fn story_view_filtered(data: web::Data<StorybookState>) -> impl Responder 
         all_sources: vec![],
         all_locations: vec![],
         query: Default::default(),
+        next_day_link: None,
+        prev_day_link: None,
     };
 
     // Example 2: Past Events
@@ -518,6 +522,8 @@ async fn story_view_filtered(data: web::Data<StorybookState>) -> impl Responder 
         all_sources: vec![],
         all_locations: vec![],
         query: Default::default(),
+        next_day_link: None,
+        prev_day_link: None,
     };
 
     let html = format!(

@@ -309,3 +309,10 @@ details.filter-group fieldset.chips {
     font-family: inherit;
     font-size: 1rem;
 }
+
+.pagination {
+    display: flex;
+    justify-content: center;
+    gap: 1rem;
+    margin-top: 2rem;
+}

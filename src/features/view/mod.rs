@@ -24,6 +24,8 @@ pub struct IndexTemplate {
     pub all_sources: Vec<FilterViewModel>,
     pub all_locations: Vec<String>,
     pub query: IndexQuery,
+    pub prev_day_link: Option<String>,
+    pub next_day_link: Option<String>,
 }
 
 pub struct FilterViewModel {
@@ -83,6 +85,42 @@ impl IndexQuery {
 
     pub fn has_location(&self, location_val: &str) -> bool {
         self.location.iter().any(|l| l == location_val)
+    }
+
+    pub fn to_query_string(&self) -> String {
+        let mut params = url::form_urlencoded::Serializer::new(String::new());
+
+        for t in &self.event_types {
+            params.append_pair("type", &t.value());
+        }
+        for s in &self.source {
+            params.append_pair("source", &s.value());
+        }
+        for l in &self.location {
+            params.append_pair("location", l);
+        }
+        if let Some(true) = self.free {
+            params.append_pair("free", "true");
+        }
+        if let Some(ref q) = self.q {
+            if !q.is_empty() {
+                params.append_pair("q", q);
+            }
+        }
+        if let Some(true) = self.past {
+            params.append_pair("past", "true");
+        }
+        if let Some(d) = self.since {
+            params.append_pair("since", &d.to_string());
+        }
+        if let Some(d) = self.until {
+            params.append_pair("until", &d.to_string());
+        }
+        if let Some(d) = self.on {
+            params.append_pair("on", &d.to_string());
+        }
+
+        params.finish()
     }
 }
 
@@ -293,6 +331,24 @@ pub async fn index_with_now(
                     .collect(),
             );
 
+            let (prev_day_link, next_day_link) = if let Some(on_date) = query.on {
+                let prev_date = on_date.pred_opt().unwrap();
+                let next_date = on_date.succ_opt().unwrap();
+
+                let mut prev_query = query.clone();
+                prev_query.on = Some(prev_date);
+
+                let mut next_query = query.clone();
+                next_query.on = Some(next_date);
+
+                (
+                    Some(format!("/?{}", prev_query.to_query_string())),
+                    Some(format!("/?{}", next_query.to_query_string())),
+                )
+            } else {
+                (None, None)
+            };
+
             let template = IndexTemplate {
                 active_filters,
                 days,
@@ -315,6 +371,8 @@ pub async fn index_with_now(
                     .collect(),
                 all_locations,
                 query,
+                prev_day_link,
+                next_day_link,
             };
 
             HttpResponse::Ok()
