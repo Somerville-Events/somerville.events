@@ -266,7 +266,7 @@ fn parse_and_validate_response(content: &str) -> Result<Vec<Event>> {
                 .into_iter()
                 .map(EventType::from)
                 .collect(),
-            url: extracted_event.url,
+            url: crate::models::sanitize_url(extracted_event.url),
             confidence: extracted_event.confidence,
             id: None,
             age_restrictions: extracted_event.age_restrictions,

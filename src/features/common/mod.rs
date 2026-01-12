@@ -203,7 +203,7 @@ impl EventViewModel {
                 .filter(|s| !s.is_empty())
                 .collect(),
             event_types,
-            website_link: event.url.clone(),
+            website_link: crate::models::sanitize_url(event.url.clone()),
             google_calendar_url,
             age_restrictions: event.age_restrictions.clone(),
             price: event.price,

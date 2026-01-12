@@ -4,6 +4,33 @@ use serde::{Deserialize, Serialize};
 use std::fmt;
 use std::str::FromStr;
 use strum::{AsRefStr, EnumIter, EnumString};
+use url::Url;
+
+pub fn sanitize_url(url: Option<String>) -> Option<String> {
+    let url_str = url?.trim().to_string();
+    if url_str.is_empty() {
+        return None;
+    }
+
+    // Check if it parses as is
+    if let Ok(u) = Url::parse(&url_str) {
+        if u.scheme() == "http" || u.scheme() == "https" {
+            return Some(u.to_string());
+        }
+    }
+
+    // Try adding https://
+    if let Ok(u) = Url::parse(&format!("https://{}", url_str)) {
+        // Ensure that the host is valid (e.g., contains a dot)
+        if let Some(host) = u.host_str() {
+            if host.contains('.') {
+                return Some(u.to_string());
+            }
+        }
+    }
+
+    None
+}
 
 #[derive(
     Debug,
@@ -257,4 +284,36 @@ pub struct SimpleEvent {
 pub struct LocationOption {
     pub id: String,
     pub name: String,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_sanitize_url() {
+        assert_eq!(sanitize_url(None), None);
+        assert_eq!(sanitize_url(Some("".to_string())), None);
+        assert_eq!(sanitize_url(Some("   ".to_string())), None);
+
+        // Valid URLs
+        let url = "https://example.com";
+        assert!(sanitize_url(Some(url.to_string()))
+            .unwrap()
+            .starts_with("https://example.com"));
+
+        // Missing scheme
+        let url = "example.com";
+        assert!(sanitize_url(Some(url.to_string()))
+            .unwrap()
+            .starts_with("https://example.com"));
+
+        let url = "bla.com";
+        assert!(sanitize_url(Some(url.to_string()))
+            .unwrap()
+            .starts_with("https://bla.com"));
+
+        // Invalid URLs
+        assert_eq!(sanitize_url(Some("not a url".to_string())), None);
+    }
 }
