@@ -3,7 +3,7 @@ use crate::features::common::{
     get_color_for_type, get_icon_for_type, DateFormat, EventLocation, EventViewModel,
     SimpleEventViewModel,
 };
-use crate::models::{EventSource, EventType, SimpleEvent};
+use crate::models::{Event, EventSource, EventType, SimpleEvent};
 use crate::AppState;
 use actix_web::http::header::ContentType;
 use actix_web::{web, HttpResponse, Responder};
@@ -438,49 +438,7 @@ pub async fn ical_feed(
             calendar.description("Events from Somerville Events");
 
             for event in events {
-                let mut ical_event = IcalEvent::new();
-                ical_event
-                    .summary(&event.name)
-                    .description(&event.full_text);
-
-                if let Some(url) = &event.url {
-                    ical_event.url(url);
-                }
-
-                let location =
-                    if let (Some(name), Some(addr)) = (&event.location_name, &event.address) {
-                        format!("{}, {}", name, addr)
-                    } else {
-                        event
-                            .address
-                            .clone()
-                            .or(event.original_location)
-                            .unwrap_or_default()
-                    };
-
-                if !location.is_empty() {
-                    ical_event.location(&location);
-                }
-
-                let start = event.start_date;
-                let start_et = start.with_timezone(&New_York);
-                ical_event.starts(CalendarDateTime::from_date_time(start_et));
-                if let Some(end) = event.end_date {
-                    ical_event.ends(CalendarDateTime::from_date_time(
-                        end.with_timezone(&New_York),
-                    ));
-                } else {
-                    ical_event.ends(CalendarDateTime::from_date_time(
-                        start_et + chrono::Duration::hours(1),
-                    ));
-                }
-
-                // Use event ID for UID to ensure updates are tracked correctly
-                if let Some(id) = event.id {
-                    ical_event.uid(&format!("somerville-events-{}", id));
-                }
-
-                calendar.push(ical_event);
+                calendar.push(IcalEvent::from(&event));
             }
 
             HttpResponse::Ok()
@@ -499,43 +457,7 @@ pub async fn ical(state: web::Data<AppState>, path: web::Path<i64>) -> impl Resp
     let id = path.into_inner();
     match state.events_repo.get(id).await {
         Ok(Some(event)) => {
-            let mut ical_event = IcalEvent::new();
-            ical_event
-                .summary(&event.name)
-                .description(&event.full_text);
-
-            if let Some(url) = &event.url {
-                ical_event.url(url);
-            }
-
-            let location = if let (Some(name), Some(addr)) = (&event.location_name, &event.address)
-            {
-                format!("{}, {}", name, addr)
-            } else {
-                event
-                    .address
-                    .clone()
-                    .or(event.original_location)
-                    .unwrap_or_default()
-            };
-
-            if !location.is_empty() {
-                ical_event.location(&location);
-            }
-
-            let start = event.start_date;
-            let start_et = start.with_timezone(&New_York);
-            ical_event.starts(CalendarDateTime::from_date_time(start_et));
-            if let Some(end) = event.end_date {
-                ical_event.ends(CalendarDateTime::from_date_time(
-                    end.with_timezone(&New_York),
-                ));
-            } else {
-                ical_event.ends(CalendarDateTime::from_date_time(
-                    start_et + chrono::Duration::hours(1),
-                ));
-            }
-
+            let ical_event = IcalEvent::from(&event);
             let calendar = Calendar::new().push(ical_event).done();
 
             HttpResponse::Ok()
@@ -551,5 +473,52 @@ pub async fn ical(state: web::Data<AppState>, path: web::Path<i64>) -> impl Resp
             log::error!("Failed to fetch event: {e}");
             HttpResponse::InternalServerError().body("Failed to fetch event")
         }
+    }
+}
+
+impl From<&Event> for IcalEvent {
+    fn from(event: &Event) -> Self {
+        let mut ical_event = IcalEvent::new();
+        ical_event
+            .summary(&event.name)
+            .description(&event.full_text);
+
+        if let Some(url) = &event.url {
+            ical_event.url(url);
+        }
+
+        let location = if let (Some(name), Some(addr)) = (&event.location_name, &event.address) {
+            format!("{}, {}", name, addr)
+        } else {
+            event
+                .address
+                .clone()
+                .or(event.original_location.clone())
+                .unwrap_or_default()
+        };
+
+        if !location.is_empty() {
+            ical_event.location(&location);
+        }
+
+        let start = event.start_date;
+        let start_et = start.with_timezone(&New_York);
+        ical_event.starts(CalendarDateTime::from_date_time(start_et));
+        if let Some(end) = event.end_date {
+            ical_event.ends(CalendarDateTime::from_date_time(
+                end.with_timezone(&New_York),
+            ));
+        } else {
+            ical_event.ends(CalendarDateTime::from_date_time(
+                start_et + chrono::Duration::hours(1),
+            ));
+        }
+
+        // Use event ID for UID to ensure updates are tracked correctly
+        if let Some(id) = event.id {
+            ical_event.uid(&format!("somerville-events-{}", id));
+        }
+
+        ical_event
     }
 }
