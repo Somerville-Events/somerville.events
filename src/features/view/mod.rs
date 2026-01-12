@@ -378,6 +378,64 @@ pub async fn show(state: web::Data<AppState>, path: web::Path<i64>) -> impl Resp
     }
 }
 
+fn generate_calendar_metadata(
+    index_query: &IndexQuery,
+    location_map: &BTreeMap<String, String>,
+    public_url: &str,
+) -> (String, String) {
+    // Name Construction
+    let mut name_parts = Vec::new();
+    if let Some(q) = &index_query.q {
+        if !q.is_empty() {
+            name_parts.push(format!("\"{}\"", q));
+        }
+    }
+
+    if !index_query.event_types.is_empty() {
+        let types: Vec<String> = index_query
+            .event_types
+            .iter()
+            .map(|t| t.to_string())
+            .collect();
+        name_parts.push(types.join(", "));
+    }
+
+    name_parts.push("Somerville Events".to_string());
+
+    if !index_query.location.is_empty() {
+        let loc_names: Vec<String> = index_query
+            .location
+            .iter()
+            .map(|id| {
+                location_map
+                    .get(id)
+                    .cloned()
+                    .unwrap_or_else(|| "Unknown Location".to_string())
+            })
+            .collect();
+        name_parts.push(format!("at {}", loc_names.join(", ")));
+    }
+
+    if !index_query.source.is_empty() {
+        let sources: Vec<String> = index_query.source.iter().map(|s| s.to_string()).collect();
+        name_parts.push(format!("from {}", sources.join(", ")));
+    }
+
+    let name = name_parts.join(" ");
+
+    // Description Construction
+    let query_str = index_query.to_query_string();
+    let url = if query_str.is_empty() {
+        public_url.to_string()
+    } else {
+        format!("{}/?{}", public_url.trim_end_matches('/'), query_str)
+    };
+
+    let description = format!("Events from Somerville Events.\nView on Web: {}", url);
+
+    (name, description)
+}
+
 pub async fn ical_feed(
     state: web::Data<AppState>,
     query: actix_web_lab::extract::Query<IndexQuery>,
@@ -431,11 +489,36 @@ pub async fn ical_feed(
         (Some(now_utc - Duration::days(2)), None)
     };
 
-    match state.events_repo.list_full(index_query, since, until).await {
+    // Fetch location names if we have location filters
+    let location_map = if !index_query.location.is_empty() {
+        state
+            .events_repo
+            .get_distinct_locations()
+            .await
+            .map(|locs| {
+                locs.into_iter()
+                    .map(|l| (l.id, l.name))
+                    .collect::<BTreeMap<_, _>>()
+            })
+            .unwrap_or_default()
+    } else {
+        BTreeMap::new()
+    };
+
+    match state
+        .events_repo
+        .list_full(index_query.clone(), since, until)
+        .await
+    {
         Ok(events) => {
             let mut calendar = Calendar::new();
-            calendar.name("Somerville Events");
-            calendar.description("Events from Somerville Events");
+
+            let config = Config::from_env();
+            let (name, description) =
+                generate_calendar_metadata(&index_query, &location_map, &config.public_url);
+
+            calendar.name(&name);
+            calendar.description(&description);
 
             for event in events {
                 calendar.push(IcalEvent::from(&event));
@@ -520,5 +603,116 @@ impl From<&Event> for IcalEvent {
         }
 
         ical_event
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_generate_calendar_metadata_default() {
+        let query = IndexQuery::default();
+        let location_map = BTreeMap::new();
+        let public_url = "https://example.com";
+
+        let (name, description) = generate_calendar_metadata(&query, &location_map, public_url);
+
+        assert_eq!(name, "Somerville Events");
+        assert!(description.contains("Events from Somerville Events"));
+        assert!(description.contains(public_url));
+    }
+
+    #[test]
+    fn test_generate_calendar_metadata_with_search() {
+        let query = IndexQuery {
+            q: Some("music".to_string()),
+            ..Default::default()
+        };
+        let location_map = BTreeMap::new();
+        let public_url = "https://example.com";
+
+        let (name, description) = generate_calendar_metadata(&query, &location_map, public_url);
+
+        assert_eq!(name, "\"music\" Somerville Events");
+        assert!(description.contains(public_url));
+    }
+
+    #[test]
+    fn test_generate_calendar_metadata_with_type() {
+        let query = IndexQuery {
+            event_types: vec![EventType::Art],
+            ..Default::default()
+        };
+        let location_map = BTreeMap::new();
+        let public_url = "https://example.com";
+
+        let (name, description) = generate_calendar_metadata(&query, &location_map, public_url);
+
+        assert_eq!(name, "Art Somerville Events");
+        assert!(description.contains(public_url));
+    }
+
+    #[test]
+    fn test_generate_calendar_metadata_with_location() {
+        let query = IndexQuery {
+            location: vec!["loc1".to_string()],
+            ..Default::default()
+        };
+        let mut location_map = BTreeMap::new();
+        location_map.insert("loc1".to_string(), "The Library".to_string());
+        let public_url = "https://example.com";
+
+        let (name, description) = generate_calendar_metadata(&query, &location_map, public_url);
+
+        assert_eq!(name, "Somerville Events at The Library");
+        assert!(description.contains(public_url));
+    }
+
+    #[test]
+    fn test_generate_calendar_metadata_with_source() {
+        let query = IndexQuery {
+            source: vec![EventSource::CityOfCambridge],
+            ..Default::default()
+        };
+        let location_map = BTreeMap::new();
+        let public_url = "https://example.com";
+
+        let (name, description) = generate_calendar_metadata(&query, &location_map, public_url);
+
+        assert_eq!(name, "Somerville Events from City of Cambridge");
+        assert!(description.contains(public_url));
+    }
+
+    #[test]
+    fn test_generate_calendar_metadata_complex() {
+        let query = IndexQuery {
+            q: Some("concert".to_string()),
+            event_types: vec![EventType::Music, EventType::Art],
+            location: vec!["loc1".to_string()],
+            source: vec![EventSource::ArtsAtTheArmory],
+            ..Default::default()
+        };
+
+        let mut location_map = BTreeMap::new();
+        location_map.insert("loc1".to_string(), "The Armory".to_string());
+        let public_url = "https://example.com";
+
+        let (name, description) = generate_calendar_metadata(&query, &location_map, public_url);
+
+        // "concert" Music, Art Somerville Events at The Armory from Arts at the Armory
+        assert!(name.contains("\"concert\""));
+        assert!(name.contains("Music, Art"));
+        assert!(name.contains("Somerville Events"));
+        assert!(name.contains("at The Armory"));
+        assert!(name.contains("from Arts at the Armory"));
+
+        // Exact match check
+        assert_eq!(
+            name,
+            "\"concert\" Music, Art Somerville Events at The Armory from Arts at the Armory"
+        );
+
+        assert!(description.contains(public_url));
     }
 }
