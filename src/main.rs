@@ -69,6 +69,7 @@ async fn main() -> Result<()> {
             .wrap(middleware::Logger::default())
             .service(actix_files::Files::new("/static", &static_file_dir).show_files_listing())
             .route("/", web::get().to(features::view::index))
+            .route("/events.ics", web::get().to(features::view::ical_feed))
             .route("/event/{id}.ics", web::get().to(features::view::ical))
             .route("/event/{id}", web::get().to(features::view::show))
             .service(
@@ -169,6 +170,41 @@ mod tests {
                     original_location: e.original_location,
                     location_name: e.location_name,
                     event_types: e.event_types,
+                })
+                .collect())
+        }
+
+        async fn list_full(
+            &self,
+            query: IndexQuery,
+            since: Option<DateTime<Utc>>,
+            until: Option<DateTime<Utc>>,
+        ) -> Result<Vec<Event>> {
+            let events = self.events.lock().unwrap().clone();
+            Ok(events
+                .into_iter()
+                .filter(|e| {
+                    let type_match = if !query.event_types.is_empty() {
+                        e.event_types.iter().any(|c| query.event_types.contains(c))
+                    } else {
+                        true
+                    };
+                    let source_match = if !query.source.is_empty() {
+                        query.source.contains(&e.source)
+                    } else {
+                        true
+                    };
+                    let since_match = if let Some(since_dt) = since {
+                        e.start_date >= since_dt
+                    } else {
+                        true
+                    };
+                    let until_match = if let Some(until_dt) = until {
+                        e.start_date <= until_dt
+                    } else {
+                        true
+                    };
+                    type_match && source_match && since_match && until_match
                 })
                 .collect())
         }

@@ -14,7 +14,7 @@
         <button type="submit" form="filter-form" aria-label="Search">
             <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none"
                 stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
-                style="width: 1.2em; height: 1.2em;">
+                class="icon-search">
                 <circle cx="11" cy="11" r="8"></circle>
                 <path d="m21 21-4.3-4.3"></path>
             </svg>
@@ -106,6 +106,41 @@
                             {% endif %}
                             {% endfor %}
                         </fieldset>
+                    </details>
+
+                    <details class="filter-group">
+                        <summary>Subscribe to Calendar</summary>
+                        <div class="filters-body">
+                            <p class="help-text no-margin-top">
+                                Get these events on your phone or computer. Updates automatically.
+                            </p>
+
+                            <div class="actions vertical">
+                                <a href="{{ webcal_url }}" class="button secondary">
+                                    <svg class="icon">
+                                        <use href="#icon-calendar"></use>
+                                    </svg>
+                                    Apple
+                                </a>
+
+                                <a href="{{ google_cal_link }}" class="button secondary" target="_blank"
+                                    rel="noopener noreferrer">
+                                    <svg class="icon">
+                                        <use href="#icon-calendar"></use>
+                                    </svg>
+                                    Google
+                                </a>
+                            </div>
+
+                            <label class="filter-date-label margin-top">
+                                Or copy this URL:
+                                <input type="text" readonly value="{{ https_url }}" onclick="this.select()">
+                            </label>
+                            <p class="help-text">
+                                Paste it into <a href="https://calendar.google.com/calendar/u/0/r/settings/addbyurl"
+                                    target="_blank">Google Calendar Settings</a> or your calendar app.
+                            </p>
+                        </div>
                     </details>
                 </div>
 

@@ -13,6 +13,12 @@ pub trait EventsRepo: Send + Sync {
         since: Option<DateTime<Utc>>,
         until: Option<DateTime<Utc>>,
     ) -> Result<Vec<SimpleEvent>>;
+    async fn list_full(
+        &self,
+        query: IndexQuery,
+        since: Option<DateTime<Utc>>,
+        until: Option<DateTime<Utc>>,
+    ) -> Result<Vec<Event>>;
     async fn get_distinct_locations(&self) -> Result<Vec<String>>;
     async fn get(&self, id: i64) -> Result<Option<Event>>;
     async fn claim_idempotency_key(&self, idempotency_key: uuid::Uuid) -> Result<bool>;
@@ -65,6 +71,79 @@ impl EventsRepo for sqlx::Pool<sqlx::Postgres> {
                 e.original_location,
                 e.location_name,
                 COALESCE(array_agg(et.event_type_name ORDER BY et.event_type_name) FILTER (WHERE et.event_type_name IS NOT NULL), '{}') as "event_types!: Vec<EventType>"
+            FROM app.events e
+            JOIN filtered_events fe ON e.id = fe.id
+            LEFT JOIN app.event_event_types et ON e.id = et.event_id
+            GROUP BY e.id
+            ORDER BY e.start_date ASC NULLS LAST
+            "#,
+            &categories,
+            &sources,
+            &locations,
+            free_only,
+            name_query,
+            since,
+            until
+        )
+        .fetch_all(self)
+        .await?;
+
+        Ok(events)
+    }
+
+    async fn list_full(
+        &self,
+        query: IndexQuery,
+        since: Option<DateTime<Utc>>,
+        until: Option<DateTime<Utc>>,
+    ) -> Result<Vec<Event>> {
+        let categories: Vec<String> = query
+            .event_types
+            .iter()
+            .map(|c| c.as_ref().to_string())
+            .collect();
+        let sources: Vec<String> = query
+            .source
+            .iter()
+            .map(|s| s.as_ref().to_string())
+            .collect();
+        let locations = query.location;
+        let free_only = query.free.unwrap_or(false);
+        let name_query = query.q;
+
+        let events = sqlx::query_as!(
+            Event,
+            r#"
+            WITH filtered_events AS (
+                SELECT DISTINCT e.id
+                FROM app.events e
+                LEFT JOIN app.event_event_types et ON e.id = et.event_id
+                WHERE (cardinality($1::text[]) = 0 OR et.event_type_name = ANY($1::text[]))
+                AND (cardinality($2::text[]) = 0 OR e.source = ANY($2::text[]))
+                AND (cardinality($3::text[]) = 0 OR e.location_name = ANY($3::text[]))
+                AND ($4::boolean = false OR e.price = 0 OR e.price IS NULL)
+                AND ($5::text IS NULL OR e.name ILIKE ('%' || $5::text || '%'))
+                AND ($6::timestamptz IS NULL OR e.start_date >= $6)
+                AND ($7::timestamptz IS NULL OR e.start_date <= $7)
+            )
+            SELECT
+                e.name,
+                e.description,
+                e.full_text,
+                e.start_date,
+                e.end_date,
+                e.address,
+                e.original_location,
+                e.google_place_id,
+                e.location_name,
+                COALESCE(array_agg(et.event_type_name ORDER BY et.event_type_name) FILTER (WHERE et.event_type_name IS NOT NULL), '{}') as "event_types!: Vec<EventType>",
+                e.url,
+                e.confidence,
+                e.id as "id?", -- Map to Option<i64>
+                e.age_restrictions,
+                e.price,
+                e.source as "source: EventSource",
+                e.external_id
             FROM app.events e
             JOIN filtered_events fe ON e.id = fe.id
             LEFT JOIN app.event_event_types et ON e.id = et.event_id

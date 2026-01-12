@@ -428,6 +428,9 @@ async fn story_view_index(data: web::Data<StorybookState>) -> impl Responder {
         query: Default::default(),
         next_day_link: None,
         prev_day_link: None,
+        webcal_url: "#".to_string(),
+        https_url: "#".to_string(),
+        google_cal_link: "#".to_string(),
     };
     HttpResponse::Ok()
         .content_type("text/html")
@@ -505,6 +508,9 @@ async fn story_view_filtered(data: web::Data<StorybookState>) -> impl Responder 
         query: Default::default(),
         next_day_link: None,
         prev_day_link: None,
+        webcal_url: "#".to_string(),
+        https_url: "#".to_string(),
+        google_cal_link: "#".to_string(),
     };
 
     // Example 2: Past Events
@@ -524,6 +530,9 @@ async fn story_view_filtered(data: web::Data<StorybookState>) -> impl Responder 
         query: Default::default(),
         next_day_link: None,
         prev_day_link: None,
+        webcal_url: "#".to_string(),
+        https_url: "#".to_string(),
+        google_cal_link: "#".to_string(),
     };
 
     let html = format!(

@@ -1,3 +1,4 @@
+use crate::config::Config;
 use crate::features::common::{
     get_color_for_type, get_icon_for_type, DateFormat, EventLocation, EventTypeLink,
     EventViewModel, SimpleEventViewModel,
@@ -26,6 +27,9 @@ pub struct IndexTemplate {
     pub query: IndexQuery,
     pub prev_day_link: Option<String>,
     pub next_day_link: Option<String>,
+    pub webcal_url: String,
+    pub https_url: String,
+    pub google_cal_link: String,
 }
 
 pub struct FilterViewModel {
@@ -349,6 +353,35 @@ pub async fn index_with_now(
                 (None, None)
             };
 
+            let config = Config::from_env();
+            // Construct subscription URLs
+            let query_str = query.to_query_string();
+            let https_url = if query_str.is_empty() {
+                format!("{}/events.ics", config.public_url.trim_end_matches('/'))
+            } else {
+                format!(
+                    "{}/events.ics?{}",
+                    config.public_url.trim_end_matches('/'),
+                    query_str
+                )
+            };
+
+            // For webcal, we replace http/https with webcal.
+            // If the public_url is just "somerville-events.com", we assume https (webcal).
+            // But config.public_url usually includes scheme.
+            let webcal_url = if https_url.starts_with("https://") {
+                https_url.replace("https://", "webcal://")
+            } else if https_url.starts_with("http://") {
+                https_url.replace("http://", "webcal://")
+            } else {
+                format!("webcal://{}", https_url)
+            };
+
+            let google_cal_link = format!(
+                "https://calendar.google.com/calendar/render?cid={}",
+                url::form_urlencoded::byte_serialize(https_url.as_bytes()).collect::<String>()
+            );
+
             let template = IndexTemplate {
                 active_filters,
                 days,
@@ -373,6 +406,9 @@ pub async fn index_with_now(
                 query,
                 prev_day_link,
                 next_day_link,
+                webcal_url,
+                https_url,
+                google_cal_link,
             };
 
             HttpResponse::Ok()
@@ -401,6 +437,123 @@ pub async fn show(state: web::Data<AppState>, path: web::Path<i64>) -> impl Resp
         Err(e) => {
             log::error!("Failed to fetch event: {e}");
             HttpResponse::InternalServerError().body("Failed to fetch event")
+        }
+    }
+}
+
+pub async fn ical_feed(
+    state: web::Data<AppState>,
+    query: actix_web_lab::extract::Query<IndexQuery>,
+) -> impl Responder {
+    let index_query = query.into_inner();
+    // Use similar logic to index_with_now for date filtering if needed,
+    // but typically a subscription feed should include "future" events.
+    // However, if the user filters by a specific date, they might expect only that date.
+    // The previous implementation of index_with_now handles "since/until/on" or defaults to "now - 2 days".
+
+    // We'll reuse the logic from index_with_now to determine the time range,
+    // but we need to compute it here.
+    let now_utc = Utc::now();
+    let is_past = index_query.past.unwrap_or(false);
+    let has_date_filter =
+        index_query.since.is_some() || index_query.until.is_some() || index_query.on.is_some();
+
+    let (since, until) = if let Some(on_date) = index_query.on {
+        let start = New_York
+            .from_local_datetime(&on_date.and_hms_opt(0, 0, 0).unwrap())
+            .single()
+            .unwrap()
+            .with_timezone(&Utc);
+        let end = New_York
+            .from_local_datetime(&on_date.and_hms_opt(23, 59, 59).unwrap())
+            .single()
+            .unwrap()
+            .with_timezone(&Utc);
+        (Some(start), Some(end))
+    } else if has_date_filter {
+        let start = index_query.since.map(|d| {
+            New_York
+                .from_local_datetime(&d.and_hms_opt(0, 0, 0).unwrap())
+                .single()
+                .unwrap()
+                .with_timezone(&Utc)
+        });
+        let end = index_query.until.map(|d| {
+            New_York
+                .from_local_datetime(&d.and_hms_opt(23, 59, 59).unwrap())
+                .single()
+                .unwrap()
+                .with_timezone(&Utc)
+        });
+        (start, end)
+    } else if is_past {
+        // Past events
+        (None, Some(now_utc))
+    } else {
+        // Upcoming events (default)
+        (Some(now_utc - Duration::days(2)), None)
+    };
+
+    match state.events_repo.list_full(index_query, since, until).await {
+        Ok(events) => {
+            let mut calendar = Calendar::new();
+            calendar.name("Somerville Events");
+            calendar.description("Events from Somerville Events");
+
+            for event in events {
+                let mut ical_event = IcalEvent::new();
+                ical_event
+                    .summary(&event.name)
+                    .description(&event.full_text);
+
+                if let Some(url) = &event.url {
+                    ical_event.url(url);
+                }
+
+                let location =
+                    if let (Some(name), Some(addr)) = (&event.location_name, &event.address) {
+                        format!("{}, {}", name, addr)
+                    } else {
+                        event
+                            .address
+                            .clone()
+                            .or(event.original_location)
+                            .unwrap_or_default()
+                    };
+
+                if !location.is_empty() {
+                    ical_event.location(&location);
+                }
+
+                let start = event.start_date;
+                let start_et = start.with_timezone(&New_York);
+                ical_event.starts(CalendarDateTime::from_date_time(start_et));
+                if let Some(end) = event.end_date {
+                    ical_event.ends(CalendarDateTime::from_date_time(
+                        end.with_timezone(&New_York),
+                    ));
+                } else {
+                    ical_event.ends(CalendarDateTime::from_date_time(
+                        start_et + chrono::Duration::hours(1),
+                    ));
+                }
+
+                // Use event ID for UID to ensure updates are tracked correctly
+                if let Some(id) = event.id {
+                    ical_event.uid(&format!("somerville-events-{}", id));
+                }
+
+                calendar.push(ical_event);
+            }
+
+            HttpResponse::Ok()
+                .content_type("text/calendar")
+                .insert_header(("Content-Disposition", "inline; filename=\"events.ics\""))
+                .body(calendar.to_string())
+        }
+        Err(e) => {
+            log::error!("Failed to fetch events for ical feed: {e}");
+            HttpResponse::InternalServerError().body("Failed to fetch events")
         }
     }
 }

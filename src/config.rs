@@ -13,6 +13,7 @@ pub struct Config {
     pub db_pass: String,
     pub db_name: String,
     pub static_file_dir: String,
+    pub public_url: String,
 }
 
 impl Config {
@@ -30,6 +31,7 @@ impl Config {
             let db_name = env::var("DB_NAME").expect("DB_NAME must be set");
             let static_file_dir =
                 env::var("STATIC_FILE_DIR").unwrap_or_else(|_| "static".to_string());
+            let public_url = env::var("PUBLIC_URL").expect("PUBLIC_URL must be set");
 
             Self {
                 host,
@@ -40,6 +42,7 @@ impl Config {
                 db_pass,
                 db_name,
                 static_file_dir,
+                public_url,
             }
         })
     }

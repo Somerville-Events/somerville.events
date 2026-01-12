@@ -21,6 +21,11 @@
     padding: 0.75rem;
 }
 
+.icon-search {
+    width: 1.2em;
+    height: 1.2em;
+}
+
 /* Layout for the filters and events list */
 .layout {
     display: flex;
@@ -169,6 +174,22 @@ details.filter-group summary {
     gap: 0.25rem;
 }
 
+.filter-date-label.margin-top {
+    margin-top: 1rem;
+}
+
+.help-text {
+    /* Styles for help text if needed, inherited from common or browser default usually */
+    font-size: 0.9em;
+    color: var(--text-muted);
+    margin-top: 0.5rem;
+    margin-bottom: 0.5rem;
+}
+
+.help-text.no-margin-top {
+    margin-top: 0;
+}
+
 /* Chips Fieldset */
 fieldset.chips {
     display: flex;
@@ -211,6 +232,7 @@ fieldset.chips label:has(input:checked) {
 }
 
 fieldset.chips svg.icon {
+    /* Use specific size for chips */
     width: 1em;
     height: 1em;
     fill: var(--chip-color);
