@@ -44,6 +44,13 @@
                         Free events only
                     </label>
 
+                    <div class="filter-group">
+                        <label class="filter-date-label">
+                            Day
+                            <input type="date" name="on" {% if let Some(d)=query.on %}value="{{d}}" {% endif %}>
+                        </label>
+                    </div>
+
                     <details class="filter-group" {% if !query.event_types.is_empty() %}open{% endif %}>
                         <summary>Event Type</summary>
                         <fieldset class="chips">

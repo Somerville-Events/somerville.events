@@ -58,6 +58,7 @@ pub struct IndexQuery {
     pub past: Option<bool>,
     pub since: Option<NaiveDate>,
     pub until: Option<NaiveDate>,
+    pub on: Option<NaiveDate>,
 }
 
 impl IndexQuery {
@@ -69,6 +70,7 @@ impl IndexQuery {
             || self.q.as_deref().map(|s| !s.is_empty()).unwrap_or(false)
             || self.since.is_some()
             || self.until.is_some()
+            || self.on.is_some()
     }
 
     pub fn has_event_type(&self, type_val: &str) -> bool {
@@ -97,9 +99,21 @@ pub async fn index_with_now(
     query: IndexQuery,
 ) -> impl Responder {
     let is_past = query.past.unwrap_or(false);
-    let has_date_filter = query.since.is_some() || query.until.is_some();
+    let has_date_filter = query.since.is_some() || query.until.is_some() || query.on.is_some();
 
-    let (since, until) = if has_date_filter {
+    let (since, until) = if let Some(on_date) = query.on {
+        let start = New_York
+            .from_local_datetime(&on_date.and_hms_opt(0, 0, 0).unwrap())
+            .single()
+            .unwrap()
+            .with_timezone(&Utc);
+        let end = New_York
+            .from_local_datetime(&on_date.and_hms_opt(23, 59, 59).unwrap())
+            .single()
+            .unwrap()
+            .with_timezone(&Utc);
+        (Some(start), Some(end))
+    } else if has_date_filter {
         let start = query.since.map(|d| {
             New_York
                 .from_local_datetime(&d.and_hms_opt(0, 0, 0).unwrap())
