@@ -38,7 +38,8 @@ pub fn get_icon_for_type(t: &EventType) -> &'static str {
         EventType::Government => "icon-landmark",
         EventType::Fundraiser => "icon-hand-coins",
         EventType::Film => "icon-film",
-        EventType::Theater | EventType::Comedy | EventType::Performance => "icon-drama",
+        EventType::Theater => "icon-drama",
+        EventType::Comedy | EventType::Performance => "icon-drama-purple",
         EventType::Literature => "icon-book-open",
         EventType::Workshop => "icon-education",
         EventType::Fitness | EventType::Sports => "icon-trophy",
@@ -93,8 +94,7 @@ pub struct SimpleEventViewModel {
     pub start_formatted: String,
     pub end_formatted: Option<String>,
     pub location: EventLocation,
-    pub accent_color: String,
-    pub accent_icon: String,
+    pub icon: String,
     pub detail_url: String,
 }
 
@@ -244,9 +244,7 @@ impl SimpleEventViewModel {
 
         // Use the icon of the first event type, or default to "Other" icon if none
         let first_type = event.event_types.first().unwrap_or(&EventType::Other);
-        let accent_icon = get_icon_for_type(first_type).to_string();
-        let accent_color = get_color_for_type(first_type);
-
+        let icon = get_icon_for_type(first_type).to_string();
         let detail_url = format!("{}/{}", detail_url_prefix.trim_end_matches('/'), event.id);
 
         Self {
@@ -254,8 +252,7 @@ impl SimpleEventViewModel {
             start_formatted,
             end_formatted,
             location,
-            accent_color,
-            accent_icon,
+            icon,
             detail_url,
         }
     }

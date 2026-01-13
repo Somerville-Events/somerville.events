@@ -49,13 +49,10 @@ use std::sync::Mutex;
 struct StorybookIndexTemplate;
 
 fn to_simple(vm: &EventViewModel) -> SimpleEventViewModel {
-    let (accent_color, accent_icon) = if let Some(first) = vm.event_types.first() {
-        (first.color.clone(), first.icon.clone())
+    let icon = if let Some(first) = vm.event_types.first() {
+        first.icon.clone()
     } else {
-        (
-            get_color_for_type(&EventType::Other).to_string(),
-            get_icon_for_type(&EventType::Other).to_string(),
-        )
+        get_icon_for_type(&EventType::Other).to_string()
     };
 
     SimpleEventViewModel {
@@ -63,8 +60,7 @@ fn to_simple(vm: &EventViewModel) -> SimpleEventViewModel {
         start_formatted: vm.start_formatted.clone(),
         end_formatted: vm.end_formatted.clone(),
         location: vm.location.clone(),
-        accent_color,
-        accent_icon,
+        icon,
         detail_url: format!("/event/{}", vm.id),
     }
 }

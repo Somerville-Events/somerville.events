@@ -1,5 +1,5 @@
 <a href="{{ event.detail_url }}">
-<svg style="color:{{ event.accent_color }}"><use href="#{{ event.accent_icon }}"/></svg>
+<svg><use href="#{{ event.icon }}"/></svg>
 <h3>{{ event.name }}</h3>
 <time>{{ event.start_formatted }}</time>
 {% if let Some(end) = event.end_formatted %}

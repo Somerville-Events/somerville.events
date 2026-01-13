@@ -26,6 +26,63 @@
     /* Tag Colors */
     --tag-bg: light-dark(#f0f0f0, #2a2a2a);
     --tag-hover-bg: light-dark(#d9d9d9, #3a3a3a);
+
+    /* Event Type Colors */
+    --color-orange: light-dark(#e65100, #ffcc80);
+    --color-pink: light-dark(#c2185b, #f48fb1);
+    --color-purple: light-dark(#7b1fa2, #ce93d8);
+    --color-blue-grey: light-dark(#455a64, #b0bec5);
+    --color-green: light-dark(#2e7d32, #a5d6a7);
+    --color-red: light-dark(#d32f2f, #ef9a9a);
+    --color-blue: light-dark(#1976d2, #90caf9);
+    --color-brown: light-dark(#5d4037, #bcaaa4);
+    --color-grey: light-dark(#616161, #eeeeee);
+}
+
+#icon-tag,
+#icon-utensils,
+#icon-store {
+    stroke: var(--color-orange);
+}
+
+#icon-palette,
+#icon-film,
+#icon-drama,
+#icon-book-open {
+    stroke: var(--color-pink);
+}
+
+#icon-music,
+#icon-drama-purple {
+    stroke: var(--color-purple);
+}
+
+#icon-heart-handshake,
+#icon-users,
+#icon-landmark,
+#icon-hand-coins,
+#icon-education {
+    stroke: var(--color-blue-grey);
+}
+
+#icon-baby {
+    stroke: var(--color-green);
+}
+
+#icon-party-popper {
+    stroke: var(--color-red);
+}
+
+#icon-trophy {
+    stroke: var(--color-blue);
+}
+
+#icon-church {
+    stroke: var(--color-brown);
+}
+
+#icon-circle-help {
+    stroke: var(--color-grey);
 }
 
 body {
