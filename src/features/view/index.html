@@ -157,14 +157,16 @@
         <p><a class="button" href="/">Show upcoming events</a></p>
         {% endif %}
 
-        {% for day in days %}
-        <section class="events-day" aria-labelledby="{{ day.day_id }}">
-            <h2 id="{{ day.day_id }}">{{ day.date_header }}</h2>
-            {% for event in day.events %}
-            {% include "common/simple_event_body.html" %}
+        <div class="days-container">
+            {% for day in days %}
+            <section class="events-day" aria-labelledby="{{ day.day_id }}">
+                <h2 id="{{ day.day_id }}">{{ day.date_header }}</h2>
+                {% for event in day.events %}
+                {% include "common/simple_event_body.html" %}
+                {% endfor %}
+            </section>
             {% endfor %}
-        </section>
-        {% endfor %}
+        </div>
 
         <footer>
             {% if let Some(prev) = prev_day_link %}
