@@ -190,7 +190,16 @@ async fn main() -> Result<()> {
             .as_ref()
             .and_then(|a| address_cache.get(a).cloned().flatten());
 
-        match map_and_save_event(&pool, ext_event, geocoded).await {
+        let event = match map_event(ext_event, geocoded) {
+            Ok(event) => event,
+            Err(e) => {
+                log::error!("Failed to parse event: {}", e);
+                db_error_count += 1;
+                continue;
+            }
+        };
+
+        match save_event_to_db(&pool, &event).await {
             Ok(_) => success_count += 1,
             Err(e) => {
                 log::error!("Failed to save event: {}", e);
@@ -236,12 +245,12 @@ fn build_raw_address(ext: &ExternalEvent) -> Option<String> {
     }
 }
 
-async fn map_and_save_event(
-    pool: &sqlx::Pool<sqlx::Postgres>,
+fn map_event(
     ext: ExternalEvent,
     geocoded: Option<GeocodedLocation>,
-) -> Result<()> {
-    // Parse timestamps
+) -> Result<Event> {
+    // Parse starting timestamp. The one failure case in this function is if we can't
+    // parse the start date, as there's no ability to show it in a calendar otherwise.
     let start_date = DateTime::parse_from_rfc3339(&ext.start_datetime)
         .map(|dt| dt.with_timezone(&Utc))
         .or_else(|_| {
@@ -262,7 +271,6 @@ async fn map_and_save_event(
         .map_err(|e| anyhow!("Date parsing error: {}", e))?;
 
     let end_date = if let Some(ref end_str) = ext.end_datetime {
-        Some(
             DateTime::parse_from_rfc3339(end_str)
                 .map(|dt| dt.with_timezone(&Utc))
                 .or_else(|_| {
@@ -279,8 +287,7 @@ async fn map_and_save_event(
                                 .with_timezone(&Utc)
                         })
                         .map_err(|e| anyhow!("Failed to parse end date '{}': {}", end_str, e))
-                })?,
-        )
+                }).ok()
     } else {
         None
     };
@@ -319,7 +326,7 @@ async fn map_and_save_event(
         cleaned.parse::<f64>().ok()
     });
 
-    let event = Event {
+    Ok(Event {
         id: None, // Let DB assign ID
         name: ext.title,
         description: ext.description.clone(),
@@ -337,11 +344,7 @@ async fn map_and_save_event(
         price,
         source,
         external_id: Some(ext.id),
-    };
-
-    save_event_to_db(pool, &event).await?;
-
-    Ok(())
+    })
 }
 
 fn map_source(source_name: &str) -> EventSource {
