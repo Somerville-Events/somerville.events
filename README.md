@@ -8,7 +8,7 @@ An event website for Somerville, MA.
 
 https://rust-lang.org/tools/install/
 
-### Install `actix-cli`
+### Install `sqlx-cli`
 
 We use it to run database migrations.
 

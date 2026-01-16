@@ -52,6 +52,7 @@ chaser-oxide = { git = "https://github.com/ccheshirecat/chaser-oxide" }
 tokio = { version = "1", features = ["full"] }
 futures = "0.3"
 reqwest = "0.13.1"
+regex = "1.12.2"
 
 [dev-dependencies]
 scraper = "0.25.0"

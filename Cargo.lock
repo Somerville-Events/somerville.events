@@ -4151,6 +4151,7 @@ dependencies = [
  "image",
  "log",
  "mime_guess",
+ "regex",
  "reqwest 0.13.1",
  "rqrr",
  "rustls",
