@@ -1,0 +1,64 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            WITH filtered_events AS (\n                SELECT DISTINCT e.id\n                FROM app.events e\n                LEFT JOIN app.event_event_types et ON e.id = et.event_id\n                WHERE (cardinality($1::text[]) = 0 OR et.event_type_name = ANY($1::text[]))\n                AND (cardinality($2::text[]) = 0 OR e.source = ANY($2::text[]))\n                AND (cardinality($3::text[]) = 0 OR e.location_name = ANY($3::text[]))\n                AND ($4::boolean = false OR e.price = 0 OR e.price IS NULL)\n                AND ($5::text IS NULL OR e.name ILIKE ('%' || $5::text || '%'))\n                AND ($6::timestamptz IS NULL OR e.start_date >= $6)\n                AND ($7::timestamptz IS NULL OR e.start_date <= $7)\n            )\n            SELECT\n                e.id,\n                e.name,\n                e.start_date,\n                e.end_date,\n                e.original_location,\n                e.location_name,\n                COALESCE(array_agg(et.event_type_name ORDER BY et.event_type_name) FILTER (WHERE et.event_type_name IS NOT NULL), '{}') as \"event_types!: Vec<EventType>\"\n            FROM app.events e\n            JOIN filtered_events fe ON e.id = fe.id\n            LEFT JOIN app.event_event_types et ON e.id = et.event_id\n            GROUP BY e.id\n            ORDER BY e.start_date ASC NULLS LAST\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 1,
+        "name": "name",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 2,
+        "name": "start_date",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 3,
+        "name": "end_date",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 4,
+        "name": "original_location",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 5,
+        "name": "location_name",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 6,
+        "name": "event_types!: Vec<EventType>",
+        "type_info": "TextArray"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "TextArray",
+        "TextArray",
+        "TextArray",
+        "Bool",
+        "Text",
+        "Timestamptz",
+        "Timestamptz"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      true,
+      true,
+      true,
+      null
+    ]
+  },
+  "hash": "731189fc2d59797beb279eca116f3ad5eed338c35a56a392ec8f50652ec36cc4"
+}
