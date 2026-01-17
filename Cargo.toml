@@ -7,6 +7,8 @@ edition = "2021"
 env_logger = "0.11.8"
 log = "0.4.27"
 awc = { version = "3.7.0", features = ["rustls-0_23-webpki-roots"] }
+rustls = "0.23.31"
+rustls-platform-verifier = "0.6.1"
 actix-rt = "2" # async runtime for Actix
 actix-web = "4"
 actix-multipart = "0.7.2"
@@ -45,3 +47,7 @@ strum = { version = "0.27.2", features = ["derive"] }
 actix-web-lab = "0.24.3"
 [dev-dependencies]
 scraper = "0.25.0"
+
+
+[package.metadata.cargo-machete]
+ignored = ["rustls", "rustls-platform-verifier"]
