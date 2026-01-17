@@ -1,0 +1,20 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT DISTINCT location_name\n            FROM app.events\n            WHERE location_name IS NOT NULL\n            ORDER BY location_name\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "location_name",
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": [
+      true
+    ]
+  },
+  "hash": "dc4bf1279bcc110441d97e906f978a012125c91beeb7bdc54f98d315f9ce4a13"
+}

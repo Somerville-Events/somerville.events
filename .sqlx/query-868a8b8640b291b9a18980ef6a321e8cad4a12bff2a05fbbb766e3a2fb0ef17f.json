@@ -1,0 +1,36 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            INSERT INTO app.events (\n                name,\n                description,\n                full_text,\n                start_date,\n                end_date,\n                address,\n                original_location,\n                google_place_id,\n                location_name,\n                url,\n                confidence,\n                age_restrictions,\n                price,\n                source,\n                external_id\n            )\n            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)\n            RETURNING id\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Int8"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Text",
+        "Text",
+        "Timestamptz",
+        "Timestamptz",
+        "Text",
+        "Text",
+        "Text",
+        "Text",
+        "Text",
+        "Float8",
+        "Text",
+        "Float8",
+        "Text",
+        "Text"
+      ]
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "868a8b8640b291b9a18980ef6a321e8cad4a12bff2a05fbbb766e3a2fb0ef17f"
+}
