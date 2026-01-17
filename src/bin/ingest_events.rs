@@ -1,13 +1,13 @@
 use anyhow::{anyhow, Result};
 use chrono::{DateTime, Utc};
 use serde::Deserialize;
+use somerville_events::scraper::Scraper;
 use somerville_events::{
     config::Config,
     database::save_event_to_db,
     geocoding::{canonicalize_address, GeocodedLocation},
     models::{Event, EventSource, EventType},
 };
-use sqlx::postgres::PgPoolOptions;
 use std::collections::{HashMap, HashSet};
 use std::env;
 
@@ -59,16 +59,7 @@ async fn main() -> Result<()> {
 
     // Load config
     let config = Config::from_env();
-    let db_url = config.get_db_url();
-
-    // Connect to database
-    let pool = PgPoolOptions::new()
-        .max_connections(5)
-        .connect(&db_url)
-        .await
-        .map_err(|e| anyhow!("Failed to connect to database: {}", e))?;
-
-    log::info!("Connected to database");
+    let scraper = Scraper::new(&config.get_db_url()).await?;
 
     // Fetch existing external IDs to avoid re-processing and paying for geocoding
     // We fetch all external_ids that are not null.
@@ -76,7 +67,7 @@ async fn main() -> Result<()> {
     // all sources from the feed.
     let existing_ids: HashSet<String> =
         sqlx::query!("SELECT external_id FROM app.events WHERE external_id IS NOT NULL")
-            .fetch_all(&pool)
+            .fetch_all(&scraper.pool)
             .await?
             .into_iter()
             .filter_map(|r| r.external_id)
@@ -88,8 +79,8 @@ async fn main() -> Result<()> {
     let url = "https://web-production-00281.up.railway.app/events?upcoming_only=true&limit=5000";
     log::info!("Fetching events from {}", url);
 
-    let client = awc::Client::default();
-    let mut response = client
+    let mut response = scraper
+        .http_client
         .get(url)
         .send()
         .await
@@ -166,7 +157,9 @@ async fn main() -> Result<()> {
 
     // Geocode addresses
     for raw_addr in unique_addresses_to_geocode {
-        match canonicalize_address(&client, &raw_addr, &config.google_maps_api_key).await {
+        match canonicalize_address(&scraper.http_client, &raw_addr, &config.google_maps_api_key)
+            .await
+        {
             Ok(loc) => {
                 if loc.is_none() {
                     log::warn!("Could not geocode address: {}", raw_addr);
@@ -199,7 +192,7 @@ async fn main() -> Result<()> {
             }
         };
 
-        match save_event_to_db(&pool, &event).await {
+        match save_event_to_db(&scraper.pool, &event).await {
             Ok(_) => success_count += 1,
             Err(e) => {
                 log::error!("Failed to save event: {}", e);
@@ -245,10 +238,7 @@ fn build_raw_address(ext: &ExternalEvent) -> Option<String> {
     }
 }
 
-fn map_event(
-    ext: ExternalEvent,
-    geocoded: Option<GeocodedLocation>,
-) -> Result<Event> {
+fn map_event(ext: ExternalEvent, geocoded: Option<GeocodedLocation>) -> Result<Event> {
     // Parse starting timestamp. The one failure case in this function is if we can't
     // parse the start date, as there's no ability to show it in a calendar otherwise.
     let start_date = DateTime::parse_from_rfc3339(&ext.start_datetime)
@@ -271,29 +261,37 @@ fn map_event(
         .map_err(|e| anyhow!("Date parsing error: {}", e))?;
 
     let end_date = if let Some(ref end_str) = ext.end_datetime {
-            DateTime::parse_from_rfc3339(end_str)
-                .map(|dt| dt.with_timezone(&Utc))
-                .or_else(|_| {
-                    use chrono::NaiveDateTime;
-                    use chrono::TimeZone;
-                    use chrono_tz::America::New_York;
+        DateTime::parse_from_rfc3339(end_str)
+            .map(|dt| dt.with_timezone(&Utc))
+            .or_else(|_| {
+                use chrono::NaiveDateTime;
+                use chrono::TimeZone;
+                use chrono_tz::America::New_York;
 
-                    NaiveDateTime::parse_from_str(end_str, "%Y-%m-%dT%H:%M:%S")
-                        .map(|ndt| {
-                            New_York
-                                .from_local_datetime(&ndt)
-                                .single()
-                                .unwrap()
-                                .with_timezone(&Utc)
-                        })
-                        .map_err(|e| anyhow!("Failed to parse end date '{}': {}", end_str, e))
-                }).ok()
+                NaiveDateTime::parse_from_str(end_str, "%Y-%m-%dT%H:%M:%S")
+                    .map(|ndt| {
+                        New_York
+                            .from_local_datetime(&ndt)
+                            .single()
+                            .unwrap()
+                            .with_timezone(&Utc)
+                    })
+                    .map_err(|e| anyhow!("Failed to parse end date '{}': {}", end_str, e))
+            })
+            .ok()
     } else {
         None
     };
 
     // Map source
     let source = map_source(&ext.source_name);
+    // Omit sources we have dedicated scrapers for.
+    match source {
+        EventSource::AeronautBrewing => {
+            return Err(anyhow!("Skipping {:?}-sourced events", source));
+        }
+        _ => {}
+    }
 
     // Map category to event types
     let mut event_types = Vec::new();

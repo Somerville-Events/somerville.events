@@ -1,3 +1,5 @@
+use chrono::{DateTime, Utc};
+use regex::Regex;
 /**
  * Aeronaut Brewing events scraper
  *
@@ -13,15 +15,14 @@
  *
  * Aeronaut uses Cloudflare, so we use chaser_oxide to bypass its checks.
  */
-
-use chaser_oxide::{Browser, BrowserConfig, ChaserPage, ChaserProfile};
-use futures::StreamExt;
 use serde::{Deserialize, Serialize};
-use actix_rt::System;
-use chrono::{DateTime, Utc};
-use somerville_events::models::{Event, EventType, EventSource};
-use regex::Regex;
-use awc;
+use sha2::{Digest, Sha256};
+use somerville_events::scraper::Scraper;
+use somerville_events::{
+    config::Config,
+    database::save_event_to_db,
+    models::{Event, EventSource, EventType},
+};
 
 // Aeronaut's JSON structure for events
 #[derive(Debug, Serialize, Deserialize)]
@@ -39,23 +40,23 @@ pub struct AeronautEvent {
     pub venue_slug: String,
 }
 
-pub struct Scraper {
-    http_client: awc::Client,
-    chaser: ChaserPage,
+trait AeronautScraper {
+    async fn scrape_events(&mut self) -> anyhow::Result<Vec<Event>>;
 }
 
-impl Scraper {
-    pub fn new(http_client: awc::Client, chaser: ChaserPage) -> Self {
-        Scraper { http_client, chaser }
-    }
-
-    pub async fn scrape_events(&self) -> anyhow::Result<Vec<Event>> {
+impl AeronautScraper for Scraper {
+    async fn scrape_events(&mut self) -> anyhow::Result<Vec<Event>> {
         // Navigate to the page
-        self.chaser.goto("https://www.aeronautbrewing.com/visit/somerville/").await?;
+        let browser = self.browser().await?;
+        browser
+            .goto("https://www.aeronautbrewing.com/visit/somerville/")
+            .await?;
         actix_rt::time::sleep(std::time::Duration::from_millis(1000)).await;
 
         // Extract script contents
-        let elements = self.chaser.evaluate("[].slice.apply(document.querySelectorAll('script')).map((s) => s.innerText)").await?;
+        let elements = browser
+            .evaluate("[].slice.apply(document.querySelectorAll('script')).map((s) => s.innerText)")
+            .await?;
 
         let mut urls = Vec::new();
         if let Some(elements) = elements {
@@ -63,10 +64,7 @@ impl Scraper {
                 for element in elements {
                     let content = element.to_string();
 
-                    let patterns = vec![
-                        r#"getJSON\("([^"]+)"#,
-                        r#"getJSON\('([^']+)"#,
-                    ];
+                    let patterns = vec![r#"getJSON\("([^"]+)"#, r#"getJSON\('([^']+)"#];
 
                     for pattern in &patterns {
                         let regex = Regex::new(pattern)?;
@@ -127,40 +125,37 @@ impl Scraper {
     }
 }
 
-fn main() -> anyhow::Result<()> {
-    // Use Actix runtime
-    System::new().block_on(async {
-        // Create HTTP client
-        let http_client = awc::Client::default();
+#[actix_web::main]
+async fn main() -> anyhow::Result<()> {
+    // Initialize logger
+    env_logger::init_from_env(env_logger::Env::new().default_filter_or("info"));
 
-        // Launch browser
-        let (browser, mut handler) = Browser::launch(
-            BrowserConfig::builder().new_headless_mode().build()
-                .map_err(|e| anyhow::anyhow!("{}", e))?,
-        ).await?;
+    // Load config
+    let config = Config::from_env();
+    let mut scraper = Scraper::new(&config.get_db_url()).await?;
 
-        actix_rt::spawn(async move {
-            while let Some(_) = handler.next().await {}
-        });
+    let events = scraper.scrape_events().await?;
 
-        // Create page and wrap in ChaserPage
-        let page = browser.new_page("about:blank").await?;
-        let chaser = ChaserPage::new(page);
+    let mut success_count = 0;
+    let mut db_error_count = 0;
 
-        // Apply the fingerprint profile.
-        let profile = ChaserProfile::macos_arm().build();
-        chaser.apply_profile(&profile).await?;
+    for event in events {
+        match save_event_to_db(&scraper.pool, &event).await {
+            Ok(_) => success_count += 1,
+            Err(e) => {
+                log::error!("Failed to save event: {}", e);
+                db_error_count += 1;
+            }
+        }
+    }
 
-        // Create scraper and scrape events
-        let scraper = Scraper::new(http_client, chaser);
-        let events = scraper.scrape_events().await?;
+    log::info!(
+        "Ingestion complete. Success: {}, DB Errors: {}",
+        success_count,
+        db_error_count,
+    );
 
-        println!("{:?}", events);
-
-        // TODO ingest into SQLite
-
-        Ok(())
-    })
+    Ok(())
 }
 
 // All events are at their building, so hardcoding this:
@@ -181,10 +176,18 @@ fn convert_to_external_event(event: &AeronautEvent) -> Event {
     // Determine event types from category
     let event_types = guess_event_types(&event.category);
 
+    // Create a fixed hash of start_date and event.name for the ID
+    let mut hasher = Sha256::new();
+    hasher.update(start_date.to_rfc3339());
+    hasher.update(&event.name);
+    let hash_result = hasher.finalize();
+    let id = i64::from_le_bytes(hash_result[..8].try_into().unwrap_or([0; 8]));
+
     Event {
+        id: Some(id),
         name: event.name.clone(),
         description: event.description.clone(),
-        full_text: event.description.clone(),
+        full_text: "".to_string(),
         start_date,
         end_date: Some(end_date),
         address: Some(AERONAUT_STREET_ADDRESS.to_string()),
@@ -193,12 +196,14 @@ fn convert_to_external_event(event: &AeronautEvent) -> Event {
         location_name: Some("Aeronaut Brewing".to_string()),
         event_types,
         url: Some(event.extlink.clone()),
-        confidence: 0.95, // High confidence for direct scraping
-        id: None,
-        age_restrictions: None,
+        confidence: 1.0,
+        age_restrictions: Some("21+".to_string()),
         price: None,
         source: EventSource::AeronautBrewing,
-        external_id: Some(format!("aeronaut-{}", event.name.replace(" ", "-").to_lowercase())),
+        external_id: Some(format!(
+            "aeronaut-{}",
+            event.name.replace(" ", "-").to_lowercase()
+        )),
     }
 }
 
@@ -215,7 +220,9 @@ fn guess_event_types(category: &str) -> Vec<EventType> {
         s if Regex::new(r"(market|farmers)").unwrap().is_match(s) => vec![EventType::Market],
         s if Regex::new(r"(workshop|class)").unwrap().is_match(s) => vec![EventType::Workshop],
         s if Regex::new(r"(film|movie)").unwrap().is_match(s) => vec![EventType::Film],
-        s if Regex::new(r"(fundraiser|charity)").unwrap().is_match(s) => vec![EventType::Fundraiser],
+        s if Regex::new(r"(fundraiser|charity)").unwrap().is_match(s) => {
+            vec![EventType::Fundraiser]
+        }
         s if Regex::new(r"(holiday|seasonal)").unwrap().is_match(s) => vec![EventType::Holiday],
         s if Regex::new(r"(family|kids)").unwrap().is_match(s) => vec![EventType::ChildFriendly],
         _ => vec![EventType::Other],

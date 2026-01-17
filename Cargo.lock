@@ -4161,6 +4161,7 @@ dependencies = [
  "scraper",
  "serde",
  "serde_json",
+ "sha2",
  "sqlx",
  "strsim",
  "strum",

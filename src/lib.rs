@@ -4,6 +4,7 @@ pub mod features;
 pub mod geocoding;
 pub mod image_processing;
 pub mod models;
+pub mod scraper;
 
 use database::EventsRepo;
 
