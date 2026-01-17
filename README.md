@@ -33,7 +33,7 @@ cp .env.sample .env
 ### Initialize the database
 
 ```bash
-./reset_database.sh
+./reset_database.sh .env
 sqlx migrate run
 ```
 
@@ -51,12 +51,18 @@ cp pre-commit .git/hooks/pre-commit
 
 We use `cargo-audit` to check for vulnerabilities in dependencies.
 
-1. **Install:** `cargo install cargo-audit --features=fix`
-2. **Run:** `cargo audit`
-3. **Fix:**
-   - **Autofix:** Run `cargo audit fix` to automatically upgrade vulnerable dependencies to safe versions.
-   - **Manual Update:** Run `cargo update` to pull in patched versions if autofix doesn't work.
-   - **Ignore:** If a vulnerability is a false positive (e.g. unused feature), add the ID to `.cargo/audit.toml` under `ignore` with a comment explaining why.
+```bash
+# Install
+cargo install cargo-audit --features=fix
+# Run
+cargo audit
+# Run and automatically upgrade vulnerable dependencies to safe versions
+cargo audit fix
+# Run if autofix doesn't work
+cargo update
+```
+
+If a vulnerability is a false positive (e.g. unused feature), add the ID to `.cargo/audit.toml` under `ignore` with a comment explaining why.
 
 ## Running
 
