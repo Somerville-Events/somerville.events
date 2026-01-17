@@ -23,7 +23,7 @@ impl Scraper {
         // Connect to database
         let pool = PgPoolOptions::new()
             .max_connections(5)
-            .connect(&db_url)
+            .connect(db_url)
             .await
             .map_err(|e| anyhow!("Failed to connect to database: {}", e))?;
 
@@ -40,7 +40,7 @@ impl Scraper {
     /// Initializes it if this is called for the first time
     pub async fn browser(&mut self) -> Result<&ChaserPage> {
         if let Some(ref chaser) = self.chaser {
-            return Ok(&chaser.0);
+            Ok(&chaser.0)
         } else {
             // Launch browser
             let (browser, mut handler) = Browser::launch(
@@ -51,7 +51,7 @@ impl Scraper {
             )
             .await?;
 
-            actix_rt::spawn(async move { while let Some(_) = handler.next().await {} });
+            actix_rt::spawn(async move { while (handler.next().await).is_some() {} });
 
             // Create page and wrap in ChaserPage
             let page = browser.new_page("about:blank").await?;

@@ -286,11 +286,8 @@ fn map_event(ext: ExternalEvent, geocoded: Option<GeocodedLocation>) -> Result<E
     // Map source
     let source = map_source(&ext.source_name);
     // Omit sources we have dedicated scrapers for.
-    match source {
-        EventSource::AeronautBrewing => {
-            return Err(anyhow!("Skipping {:?}-sourced events", source));
-        }
-        _ => {}
+    if source == EventSource::AeronautBrewing {
+        return Err(anyhow!("Skipping {:?}-sourced events", source));
     }
 
     // Map category to event types
