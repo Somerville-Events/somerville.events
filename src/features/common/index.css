@@ -69,11 +69,12 @@
     stroke: var(--color-green);
 }
 
-#icon-party-popper {
+#icon-party-popper,
+#icon-dice-5 {
     stroke: var(--color-red);
 }
 
-#icon-trophy {
+#icon-trophy, #icon-bicycle {
     stroke: var(--color-blue);
 }
 
