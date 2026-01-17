@@ -64,6 +64,17 @@ cargo update
 
 If a vulnerability is a false positive (e.g. unused feature), add the ID to `.cargo/audit.toml` under `ignore` with a comment explaining why.
 
+### Dependency Hygiene
+
+We use `cargo-machete` to detect unused dependencies.
+
+```bash
+# Install
+cargo install cargo-machete
+# Run
+cargo machete
+```
+
 ## Running
 
 ```bash

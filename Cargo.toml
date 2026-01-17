@@ -7,8 +7,6 @@ edition = "2021"
 env_logger = "0.11.8"
 log = "0.4.27"
 awc = { version = "3.7.0", features = ["rustls-0_23-webpki-roots"] }
-rustls = "0.23.31"
-rustls-platform-verifier = "0.6.1"
 actix-rt = "2" # async runtime for Actix
 actix-web = "4"
 actix-multipart = "0.7.2"
@@ -29,11 +27,9 @@ chrono = { version = "0.4", features = [
     "serde",
 ] } # DateTime handling with serde support
 base64 = "0.22"
-mime_guess = "2"
 anyhow = "1"
 futures-util = "0.3"
 dotenvy = "0.15.7" # Environment variable loading
-html-escape = "0.2.13"
 icalendar = { version = "0.17.6", features = ["chrono-tz"] }
 uuid = { version = "1.19.0", features = ["v4", "serde"] }
 chrono-tz = "0.10.4"
@@ -42,7 +38,6 @@ actix-files = "0.6.9"
 actix-web-query-method-middleware = "1.0.1"
 strsim = "0.11"
 image = "0.25.5"
-rqrr = "0.7.1"
 url = "2.5.4"
 askama = "0.15.0"
 rxing = "0.8.3"

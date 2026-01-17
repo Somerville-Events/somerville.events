@@ -39,6 +39,9 @@ jobs:
       - name: Cache dependencies
         uses: Swatinem/rust-cache@v2
 
+      - name: Install cargo-machete
+        run: cargo install cargo-machete
+
       - name: Install sqlx-cli
         run: cargo install sqlx-cli --no-default-features --features postgres
 
@@ -58,6 +61,9 @@ jobs:
 
       - name: Check Formatting
         run: cargo fmt -- --check
+
+      - name: Check Unused Dependencies
+        run: cargo machete --with-metadata
 
       - name: Lint with Clippy
         env:

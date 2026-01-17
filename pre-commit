@@ -9,4 +9,5 @@ if [ "$current_branch" != "main" ]; then
 fi
 
 cargo fmt -- --check
+cargo machete --with-metadata
 cargo clippy --all-targets -- -D warnings
