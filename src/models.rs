@@ -246,6 +246,9 @@ impl From<String> for EventSource {
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema, PartialEq, Clone, sqlx::FromRow)]
 pub struct Event {
+    pub id: i64,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
     pub name: String,
     pub description: String,
     pub full_text: String,
@@ -260,10 +263,33 @@ pub struct Event {
     pub url: Option<String>,
     /// Confidence level of the extraction (0.0 to 1.0)
     pub confidence: f64,
-    /// Database ID (optional)
+    pub age_restrictions: Option<String>,
+    pub price: Option<f64>,
+    /// Must match a value in the `app.source_names` table.
+    /// If you introduce a new source, you must add it to that table first.
+    pub source: EventSource,
+    /// External ID for idempotency/updates
     #[serde(skip, default)]
     #[schemars(skip)]
-    pub id: Option<i64>,
+    pub external_id: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize, JsonSchema, PartialEq, Clone)]
+pub struct NewEvent {
+    pub name: String,
+    pub description: String,
+    pub full_text: String,
+    pub start_date: DateTime<Utc>,
+    pub end_date: Option<DateTime<Utc>>,
+    pub address: Option<String>,
+    #[serde(skip_deserializing)]
+    pub original_location: Option<String>,
+    pub google_place_id: Option<String>,
+    pub location_name: Option<String>,
+    pub event_types: Vec<EventType>,
+    pub url: Option<String>,
+    /// Confidence level of the extraction (0.0 to 1.0)
+    pub confidence: f64,
     pub age_restrictions: Option<String>,
     pub price: Option<f64>,
     /// Must match a value in the `app.source_names` table.

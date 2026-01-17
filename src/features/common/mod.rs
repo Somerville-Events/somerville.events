@@ -192,7 +192,7 @@ impl EventViewModel {
         // Use the icon of the first event type, or default to "Other" icon if none
 
         Self {
-            id: event.id.unwrap_or_default(),
+            id: event.id,
             name: event.name.clone(),
             start_iso,
             start_formatted,

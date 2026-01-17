@@ -49,6 +49,32 @@ pub struct ShowTemplate {
     pub event: EventViewModel,
 }
 
+#[derive(Template)]
+#[template(path = "view/atom_entry.html", escape = "none")]
+struct AtomEntryTemplate {
+    event: EventViewModel,
+}
+
+struct AtomEntry {
+    id: String,
+    title: String,
+    link: String,
+    updated: String,
+    content: String,
+}
+
+#[derive(Template)]
+#[template(path = "view/events.atom.xml")]
+struct AtomFeedTemplate {
+    title: String,
+    subtitle: String,
+    feed_id: String,
+    feed_url: String,
+    site_url: String,
+    updated: String,
+    entries: Vec<AtomEntry>,
+}
+
 pub struct DaySection {
     pub day_id: String,
     pub date_header: String,
@@ -536,6 +562,145 @@ pub async fn ical_feed(
     }
 }
 
+pub async fn atom_feed(
+    state: web::Data<AppState>,
+    query: actix_web_lab::extract::Query<IndexQuery>,
+) -> impl Responder {
+    let index_query = query.into_inner();
+    let now_utc = Utc::now();
+    let is_past = index_query.past.unwrap_or(false);
+    let has_date_filter =
+        index_query.since.is_some() || index_query.until.is_some() || index_query.on.is_some();
+
+    let (since, until) = if let Some(on_date) = index_query.on {
+        let start = New_York
+            .from_local_datetime(&on_date.and_hms_opt(0, 0, 0).unwrap())
+            .single()
+            .unwrap()
+            .with_timezone(&Utc);
+        let end = New_York
+            .from_local_datetime(&on_date.and_hms_opt(23, 59, 59).unwrap())
+            .single()
+            .unwrap()
+            .with_timezone(&Utc);
+        (Some(start), Some(end))
+    } else if has_date_filter {
+        let start = index_query.since.map(|d| {
+            New_York
+                .from_local_datetime(&d.and_hms_opt(0, 0, 0).unwrap())
+                .single()
+                .unwrap()
+                .with_timezone(&Utc)
+        });
+        let end = index_query.until.map(|d| {
+            New_York
+                .from_local_datetime(&d.and_hms_opt(23, 59, 59).unwrap())
+                .single()
+                .unwrap()
+                .with_timezone(&Utc)
+        });
+        (start, end)
+    } else if is_past {
+        (None, Some(now_utc))
+    } else {
+        (Some(now_utc - Duration::days(2)), None)
+    };
+
+    let location_map = if !index_query.location.is_empty() {
+        state
+            .events_repo
+            .get_distinct_locations()
+            .await
+            .map(|locs| {
+                locs.into_iter()
+                    .map(|l| (l.id, l.name))
+                    .collect::<BTreeMap<_, _>>()
+            })
+            .unwrap_or_default()
+    } else {
+        BTreeMap::new()
+    };
+
+    match state
+        .events_repo
+        .list_full(index_query.clone(), since, until)
+        .await
+    {
+        Ok(events) => {
+            let config = Config::from_env();
+            let base_url = config.public_url.trim_end_matches('/');
+            let query_str = index_query.to_query_string();
+            let feed_url = if query_str.is_empty() {
+                format!("{}/events.atom", base_url)
+            } else {
+                format!("{}/events.atom?{}", base_url, query_str)
+            };
+            let site_url = if query_str.is_empty() {
+                base_url.to_string()
+            } else {
+                format!("{}/?{}", base_url, query_str)
+            };
+
+            let (title, subtitle) =
+                generate_calendar_metadata(&index_query, &location_map, &config.public_url);
+
+            let entries_result: Result<Vec<AtomEntry>, askama::Error> = events
+                .iter()
+                .map(|event| {
+                    let id = event.id;
+                    let link = format!("{}/event/{}", base_url, id);
+                    let updated = event.updated_at.to_rfc3339();
+                    let content = AtomEntryTemplate {
+                        event: EventViewModel::from_event(event, DateFormat::FullDate, is_past),
+                    }
+                    .render()?;
+
+                    Ok(AtomEntry {
+                        id: link.clone(),
+                        title: event.name.clone(),
+                        link,
+                        updated,
+                        content,
+                    })
+                })
+                .collect();
+
+            match entries_result {
+                Ok(entries) => {
+                    let updated = events
+                        .iter()
+                        .map(|event| event.updated_at)
+                        .max()
+                        .map(|dt| dt.to_rfc3339())
+                        .unwrap_or_else(|| now_utc.to_rfc3339());
+
+                    let template = AtomFeedTemplate {
+                        title,
+                        subtitle,
+                        feed_id: feed_url.clone(),
+                        feed_url,
+                        site_url,
+                        updated,
+                        entries,
+                    };
+
+                    HttpResponse::Ok()
+                        .content_type("application/atom+xml; charset=utf-8")
+                        .body(template.render().unwrap())
+                }
+                Err(e) => {
+                    log::error!("Failed to render Atom feed entries: {e}");
+                    HttpResponse::InternalServerError().body("Failed to render Atom feed")
+                }
+            }
+        }
+        Err(e) => {
+            log::error!("Failed to fetch events for Atom feed: {e}");
+            HttpResponse::InternalServerError().body("Failed to fetch events")
+        }
+    }
+}
+
 pub async fn ical(state: web::Data<AppState>, path: web::Path<i64>) -> impl Responder {
     let id = path.into_inner();
     match state.events_repo.get(id).await {
@@ -598,9 +763,7 @@ impl From<&Event> for IcalEvent {
         }
 
         // Use event ID for UID to ensure updates are tracked correctly
-        if let Some(id) = event.id {
-            ical_event.uid(&format!("somerville-events-{}", id));
-        }
+        ical_event.uid(&format!("somerville-events-{}", event.id));
 
         ical_event
     }

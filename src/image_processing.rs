@@ -1,4 +1,4 @@
-use crate::models::{Event, EventSource, EventType};
+use crate::models::{EventSource, EventType, NewEvent};
 use actix_web::web;
 use anyhow::{anyhow, Result};
 use awc::Client;
@@ -52,7 +52,11 @@ pub struct ImageEventExtraction {
     pub events: Vec<SingleEventExtraction>,
 }
 
-pub async fn parse_image(image_path: &Path, client: &Client, api_key: &str) -> Result<Vec<Event>> {
+pub async fn parse_image(
+    image_path: &Path,
+    client: &Client,
+    api_key: &str,
+) -> Result<Vec<NewEvent>> {
     parse_image_with_now(image_path, Utc::now(), client, api_key).await
 }
 
@@ -61,7 +65,7 @@ async fn parse_image_with_now(
     now: DateTime<Utc>,
     client: &Client,
     api_key: &str,
-) -> Result<Vec<Event>> {
+) -> Result<Vec<NewEvent>> {
     let path = image_path.to_path_buf();
 
     // Offload blocking I/O (file read) to thread pool
@@ -206,7 +210,7 @@ fn datetime_from_naive(naive_local: NaiveDateTime) -> Option<DateTime<Utc>> {
     }
 }
 
-fn parse_and_validate_response(content: &str) -> Result<Vec<Event>> {
+fn parse_and_validate_response(content: &str) -> Result<Vec<NewEvent>> {
     // Strip markdown code blocks if present.
     // LLMs like to surround code in them.
     let clean_content = if content.trim().starts_with("```") {
@@ -250,7 +254,7 @@ fn parse_and_validate_response(content: &str) -> Result<Vec<Event>> {
             dt
         });
 
-        valid_events.push(Event {
+        valid_events.push(NewEvent {
             name,
             start_date,
             description: extracted_event.description.unwrap_or_default(),
@@ -268,7 +272,6 @@ fn parse_and_validate_response(content: &str) -> Result<Vec<Event>> {
                 .collect(),
             url: crate::models::sanitize_url(extracted_event.url),
             confidence: extracted_event.confidence,
-            id: None,
             age_restrictions: extracted_event.age_restrictions,
             price: extracted_event.price,
             source: EventSource::ImageUpload,

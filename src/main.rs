@@ -69,6 +69,7 @@ async fn main() -> Result<()> {
             .wrap(middleware::Logger::default())
             .service(actix_files::Files::new("/static", &static_file_dir).show_files_listing())
             .route("/", web::get().to(features::view::index))
+            .route("/events.atom", web::get().to(features::view::atom_feed))
             .route("/events.ics", web::get().to(features::view::ical_feed))
             .route("/event/{id}.ics", web::get().to(features::view::ical))
             .route("/event/{id}", web::get().to(features::view::show))
@@ -108,7 +109,9 @@ mod tests {
     use scraper::{Html, Selector};
     use somerville_events::database::EventsRepo;
     use somerville_events::features::view::IndexQuery;
-    use somerville_events::models::{Event, EventSource, EventType, LocationOption, SimpleEvent};
+    use somerville_events::models::{
+        Event, EventSource, EventType, LocationOption, NewEvent, SimpleEvent,
+    };
     use somerville_events::AppState;
     use std::sync::{Arc, Mutex};
 
@@ -120,7 +123,7 @@ mod tests {
 
     impl MockEventsRepo {
         pub fn new(events: Vec<Event>) -> Self {
-            let max_id = events.iter().filter_map(|e| e.id).max().unwrap_or(0);
+            let max_id = events.iter().map(|e| e.id).max().unwrap_or(0);
             Self {
                 events: Arc::new(Mutex::new(events)),
                 next_id: Arc::new(Mutex::new(max_id)),
@@ -163,7 +166,7 @@ mod tests {
                     type_match && source_match && since_match && until_match
                 })
                 .map(|e| SimpleEvent {
-                    id: e.id.unwrap_or_default(),
+                    id: e.id,
                     name: e.name,
                     start_date: e.start_date,
                     end_date: e.end_date,
@@ -241,7 +244,7 @@ mod tests {
                 .lock()
                 .unwrap()
                 .iter()
-                .find(|e| e.id == Some(id))
+                .find(|e| e.id == id)
                 .cloned())
         }
 
@@ -249,13 +252,33 @@ mod tests {
             Ok(true)
         }
 
-        async fn insert(&self, event: &Event) -> Result<i64> {
+        async fn insert(&self, event: &NewEvent) -> Result<i64> {
             let mut id_guard = self.next_id.lock().unwrap();
             *id_guard += 1;
             let id = *id_guard;
 
-            let mut stored = event.clone();
-            stored.id = Some(id);
+            let now = Utc::now();
+            let stored = Event {
+                id,
+                created_at: now,
+                updated_at: now,
+                name: event.name.clone(),
+                description: event.description.clone(),
+                full_text: event.full_text.clone(),
+                start_date: event.start_date,
+                end_date: event.end_date,
+                address: event.address.clone(),
+                original_location: event.original_location.clone(),
+                google_place_id: event.google_place_id.clone(),
+                location_name: event.location_name.clone(),
+                event_types: event.event_types.clone(),
+                url: event.url.clone(),
+                confidence: event.confidence,
+                age_restrictions: event.age_restrictions.clone(),
+                price: event.price,
+                source: event.source.clone(),
+                external_id: event.external_id.clone(),
+            };
             self.events.lock().unwrap().push(stored);
             Ok(id)
         }
@@ -263,7 +286,7 @@ mod tests {
         async fn delete(&self, id: i64) -> Result<()> {
             let mut events = self.events.lock().unwrap();
             let len_before = events.len();
-            events.retain(|e| e.id != Some(id));
+            events.retain(|e| e.id != id);
             if events.len() == len_before {
                 return Err(anyhow::anyhow!("Event not found"));
             }
@@ -280,7 +303,9 @@ mod tests {
         let mk_ny = |d, h, m| New_York.with_ymd_and_hms(2025, 1, d, h, m, 0).unwrap();
 
         let art_event = Event {
-            id: Some(1),
+            id: 1,
+            created_at: now_utc,
+            updated_at: now_utc,
             name: "Art Show".to_string(),
             description: "Paintings galore".to_string(),
             full_text: "Paintings galore".to_string(),
@@ -300,7 +325,9 @@ mod tests {
         };
 
         let music_event = Event {
-            id: Some(2),
+            id: 2,
+            created_at: now_utc,
+            updated_at: now_utc,
             name: "Music Night".to_string(),
             description: "Jazz and blues".to_string(),
             full_text: "Jazz and blues".to_string(),
@@ -375,7 +402,9 @@ mod tests {
             |date, h, m| NaiveDateTime::new(date, NaiveTime::from_hms_opt(h, m, 0).unwrap());
 
         let past_event = Event {
-            id: Some(1),
+            id: 1,
+            created_at: now_utc,
+            updated_at: now_utc,
             name: "Past Event".to_string(),
             description: "Should not render".to_string(),
             full_text: "Should not render".to_string(),
@@ -396,7 +425,9 @@ mod tests {
 
         // No end_date: should render only on its start day.
         let ongoing_no_end = Event {
-            id: Some(2),
+            id: 2,
+            created_at: now_utc,
+            updated_at: now_utc,
             name: "Ongoing No End".to_string(),
             description: "Should render once".to_string(),
             full_text: "Should render once".to_string(),
@@ -418,7 +449,9 @@ mod tests {
         // No end_date from yesterday (within the last 24h) should still render, and should
         // cause a "yesterday" heading to appear.
         let yesterday_no_end = Event {
-            id: Some(7),
+            id: 7,
+            created_at: now_utc,
+            updated_at: now_utc,
             name: "Yesterday No End".to_string(),
             description: "Should render under yesterday".to_string(),
             full_text: "Should render under yesterday".to_string(),
@@ -439,7 +472,9 @@ mod tests {
 
         // Two distinct events on the same local day should both render under the same day section.
         let same_day_1 = Event {
-            id: Some(5),
+            id: 5,
+            created_at: now_utc,
+            updated_at: now_utc,
             name: "Same Day 1".to_string(),
             description: "First event on the same day".to_string(),
             full_text: "First event on the same day".to_string(),
@@ -460,7 +495,9 @@ mod tests {
         };
 
         let same_day_2 = Event {
-            id: Some(6),
+            id: 6,
+            created_at: now_utc,
+            updated_at: now_utc,
             name: "Same Day 2".to_string(),
             description: "Second event on the same day".to_string(),
             full_text: "Second event on the same day".to_string(),
@@ -482,7 +519,9 @@ mod tests {
 
         // Explicit multi-day: should appear under each day.
         let multi_day = Event {
-            id: Some(3),
+            id: 3,
+            created_at: now_utc,
+            updated_at: now_utc,
             name: "Multi Day".to_string(),
             description: "Spans multiple days".to_string(),
             full_text: "Spans multiple days".to_string(),
@@ -633,7 +672,9 @@ mod tests {
         let today_start = New_York.with_ymd_and_hms(2025, 1, 15, 0, 0, 0).unwrap();
 
         let event = Event {
-            id: Some(1),
+            id: 1,
+            created_at: today_start.with_timezone(&Utc),
+            updated_at: today_start.with_timezone(&Utc),
             name: "ICal Event".to_string(),
             description: "Description for ICal".to_string(),
             full_text: "Description for ICal".to_string(),
@@ -722,7 +763,9 @@ mod tests {
     #[actix_web::test]
     async fn test_event_time_display_timezone() -> Result<()> {
         let event = Event {
-            id: Some(1),
+            id: 1,
+            created_at: Utc.with_ymd_and_hms(2025, 11, 8, 15, 30, 0).unwrap(),
+            updated_at: Utc.with_ymd_and_hms(2025, 11, 8, 15, 30, 0).unwrap(),
             name: "Pumpkin Smash".to_string(),
             description: "Smash pumpkins".to_string(),
             full_text: "Smash pumpkins".to_string(),
@@ -793,7 +836,9 @@ mod tests {
         let mk_ny = |d, h, m| New_York.with_ymd_and_hms(2025, 1, d, h, m, 0).unwrap();
 
         let aeronaut_event = Event {
-            id: Some(1),
+            id: 1,
+            created_at: now_utc,
+            updated_at: now_utc,
             name: "Beer Night".to_string(),
             description: "Drink beer".to_string(),
             full_text: "Drink beer".to_string(),
@@ -813,7 +858,9 @@ mod tests {
         };
 
         let library_event = Event {
-            id: Some(2),
+            id: 2,
+            created_at: now_utc,
+            updated_at: now_utc,
             name: "Reading".to_string(),
             description: "Read books".to_string(),
             full_text: "Read books".to_string(),
@@ -939,7 +986,9 @@ mod tests {
         let mk_ny = |d, h, m| New_York.with_ymd_and_hms(2025, 1, d, h, m, 0).unwrap();
 
         let art_event = Event {
-            id: Some(1),
+            id: 1,
+            created_at: now_utc,
+            updated_at: now_utc,
             name: "Art Show".to_string(),
             description: "Paintings".to_string(),
             full_text: "Paintings".to_string(),
@@ -959,7 +1008,9 @@ mod tests {
         };
 
         let music_event = Event {
-            id: Some(2),
+            id: 2,
+            created_at: now_utc,
+            updated_at: now_utc,
             name: "Music Night".to_string(),
             description: "Music".to_string(),
             full_text: "Music".to_string(),
@@ -979,7 +1030,9 @@ mod tests {
         };
 
         let food_event = Event {
-            id: Some(3),
+            id: 3,
+            created_at: now_utc,
+            updated_at: now_utc,
             name: "Food Fest".to_string(),
             description: "Food".to_string(),
             full_text: "Food".to_string(),
@@ -1212,8 +1265,7 @@ mod tests {
         let base_time = Utc.with_ymd_and_hms(2025, 1, 15, 17, 0, 0).unwrap();
 
         // Event with price 0 (explicitly free)
-        let free_event = Event {
-            id: None,
+        let free_event = NewEvent {
             name: "Free Event".to_string(),
             description: "Free".to_string(),
             full_text: "Free".to_string(),
@@ -1306,7 +1358,9 @@ mod tests {
 
         // Past Event: Jan 1st
         let past_event = Event {
-            id: Some(1),
+            id: 1,
+            created_at: mk_ny(1, 10, 0).with_timezone(&Utc),
+            updated_at: mk_ny(1, 10, 0).with_timezone(&Utc),
             name: "Past Event".to_string(),
             description: "Past".to_string(),
             full_text: "Past".to_string(),
@@ -1327,7 +1381,9 @@ mod tests {
 
         // Target Event: Jan 15th
         let target_event = Event {
-            id: Some(2),
+            id: 2,
+            created_at: mk_ny(15, 10, 0).with_timezone(&Utc),
+            updated_at: mk_ny(15, 10, 0).with_timezone(&Utc),
             name: "Target Event".to_string(),
             description: "Target".to_string(),
             full_text: "Target".to_string(),
@@ -1348,7 +1404,9 @@ mod tests {
 
         // Future Event: Jan 30th
         let future_event = Event {
-            id: Some(3),
+            id: 3,
+            created_at: mk_ny(30, 10, 0).with_timezone(&Utc),
+            updated_at: mk_ny(30, 10, 0).with_timezone(&Utc),
             name: "Future Event".to_string(),
             description: "Future".to_string(),
             full_text: "Future".to_string(),

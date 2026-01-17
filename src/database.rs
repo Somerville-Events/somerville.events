@@ -1,5 +1,5 @@
 use crate::features::view::IndexQuery;
-use crate::models::{Event, EventSource, EventType, LocationOption, SimpleEvent};
+use crate::models::{Event, EventSource, EventType, LocationOption, NewEvent, SimpleEvent};
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
@@ -22,7 +22,7 @@ pub trait EventsRepo: Send + Sync {
     async fn get_distinct_locations(&self) -> Result<Vec<LocationOption>>;
     async fn get(&self, id: i64) -> Result<Option<Event>>;
     async fn claim_idempotency_key(&self, idempotency_key: uuid::Uuid) -> Result<bool>;
-    async fn insert(&self, event: &Event) -> Result<i64>;
+    async fn insert(&self, event: &NewEvent) -> Result<i64>;
     async fn delete(&self, id: i64) -> Result<()>;
 }
 
@@ -127,6 +127,9 @@ impl EventsRepo for sqlx::Pool<sqlx::Postgres> {
                 AND ($7::timestamptz IS NULL OR e.start_date <= $7)
             )
             SELECT
+                e.id as "id!",
+                e.created_at,
+                e.updated_at,
                 e.name,
                 e.description,
                 e.full_text,
@@ -139,7 +142,6 @@ impl EventsRepo for sqlx::Pool<sqlx::Postgres> {
                 COALESCE(array_agg(et.event_type_name ORDER BY et.event_type_name) FILTER (WHERE et.event_type_name IS NOT NULL), '{}') as "event_types!: Vec<EventType>",
                 e.url,
                 e.confidence,
-                e.id as "id?", -- Map to Option<i64>
                 e.age_restrictions,
                 e.price,
                 e.source as "source: EventSource",
@@ -188,6 +190,9 @@ impl EventsRepo for sqlx::Pool<sqlx::Postgres> {
             Event,
             r#"
             SELECT
+                e.id as "id!",
+                e.created_at,
+                e.updated_at,
                 e.name,
                 e.description,
                 e.full_text,
@@ -200,7 +205,6 @@ impl EventsRepo for sqlx::Pool<sqlx::Postgres> {
                 COALESCE(array_agg(et.event_type_name ORDER BY et.event_type_name) FILTER (WHERE et.event_type_name IS NOT NULL), '{}') as "event_types!: Vec<EventType>",
                 e.url,
                 e.confidence,
-                e.id as "id?", -- Map to Option<i64>
                 e.age_restrictions,
                 e.price,
                 e.source as "source: EventSource",
@@ -234,7 +238,7 @@ impl EventsRepo for sqlx::Pool<sqlx::Postgres> {
         Ok(insert_result.is_some())
     }
 
-    async fn insert(&self, event: &Event) -> Result<i64> {
+    async fn insert(&self, event: &NewEvent) -> Result<i64> {
         save_event_to_db(self, event).await
     }
 
@@ -257,7 +261,10 @@ impl EventsRepo for sqlx::Pool<sqlx::Postgres> {
     }
 }
 
-pub async fn save_event_to_db(executor: &sqlx::Pool<sqlx::Postgres>, event: &Event) -> Result<i64> {
+pub async fn save_event_to_db(
+    executor: &sqlx::Pool<sqlx::Postgres>,
+    event: &NewEvent,
+) -> Result<i64> {
     // If the event already exists, instead of saving a new one just
     // return the ID for the existing one.
     if let Some(duplicate_id) = find_duplicate(executor, event)
@@ -333,13 +340,16 @@ pub async fn save_event_to_db(executor: &sqlx::Pool<sqlx::Postgres>, event: &Eve
 
 async fn find_duplicate(
     executor: &sqlx::Pool<sqlx::Postgres>,
-    event: &Event,
+    event: &NewEvent,
 ) -> Result<Option<i64>> {
     // We map directly to Event struct for cleaner code
     let potential_duplicates = sqlx::query_as!(
             Event,
             r#"
             SELECT 
+                e.id as "id!",
+                e.created_at,
+                e.updated_at,
                 e.name,
                 e.description,
                 e.full_text,
@@ -352,7 +362,6 @@ async fn find_duplicate(
                 COALESCE(array_agg(et.event_type_name ORDER BY et.event_type_name) FILTER (WHERE et.event_type_name IS NOT NULL), '{}') as "event_types!: Vec<EventType>",
                 e.url,
                 e.confidence,
-                e.id as "id?", -- Map to Option<i64>
                 e.age_restrictions,
                 e.price,
                 e.source as "source: EventSource",
@@ -374,14 +383,14 @@ async fn find_duplicate(
     for row in potential_duplicates {
         if is_duplicate(&row, event) {
             log::info!("Found duplicate {row:?}. Using it instead of {event:?}");
-            return Ok(row.id);
+            return Ok(Some(row.id));
         }
     }
 
     Ok(None)
 }
 
-fn is_duplicate(a: &Event, b: &Event) -> bool {
+fn is_duplicate(a: &Event, b: &NewEvent) -> bool {
     // start_date, end_date, and address are equal because of a
     // previous database query.
 
@@ -397,9 +406,8 @@ mod tests {
     use super::*;
     use chrono::{TimeZone, Utc};
 
-    fn create_event(name: &str, description: &str, address: Option<&str>) -> Event {
-        Event {
-            id: None,
+    fn create_event(name: &str, description: &str, address: Option<&str>) -> NewEvent {
+        NewEvent {
             name: name.to_string(),
             description: description.to_string(),
             full_text: description.to_string(),
@@ -419,6 +427,30 @@ mod tests {
         }
     }
 
+    fn create_event_row(event: &NewEvent) -> Event {
+        Event {
+            id: 1,
+            created_at: Utc.timestamp_opt(1672531200, 0).unwrap(),
+            updated_at: Utc.timestamp_opt(1672531200, 0).unwrap(),
+            name: event.name.clone(),
+            description: event.description.clone(),
+            full_text: event.full_text.clone(),
+            start_date: event.start_date,
+            end_date: event.end_date,
+            address: event.address.clone(),
+            original_location: event.original_location.clone(),
+            google_place_id: event.google_place_id.clone(),
+            location_name: event.location_name.clone(),
+            event_types: event.event_types.clone(),
+            url: event.url.clone(),
+            confidence: event.confidence,
+            age_restrictions: event.age_restrictions.clone(),
+            price: event.price,
+            source: event.source.clone(),
+            external_id: event.external_id.clone(),
+        }
+    }
+
     #[test]
     fn test_duplicate_detection_boundaries() {
         // Case 1: Name typo/extraction noise. "Somerville City Council" vs "Somerville City Councl"
@@ -433,7 +465,10 @@ mod tests {
             "Regular meeting of the council.",
             Some("City Hall"),
         );
-        assert!(is_duplicate(&e1, &e2), "Typo in name should match");
+        assert!(
+            is_duplicate(&create_event_row(&e1), &e2),
+            "Typo in name should match"
+        );
 
         // Case 2: Series events. "Workshop A" vs "Workshop B"
         // Should NOT be duplicate
@@ -447,7 +482,10 @@ mod tests {
             "Discussion on topic B.",
             Some("Community Center"),
         );
-        assert!(!is_duplicate(&e5, &e6), "Workshop A vs B should NOT match");
+        assert!(
+            !is_duplicate(&create_event_row(&e5), &e6),
+            "Workshop A vs B should NOT match"
+        );
     }
 
     #[test]
@@ -456,7 +494,7 @@ mod tests {
         let e1 = create_event("Salsa Level 1", "Learn the basics.", Some("Dance Studio"));
         let e2 = create_event("Salsa Level 2", "Intermediate moves.", Some("Dance Studio"));
         assert!(
-            !is_duplicate(&e1, &e2),
+            !is_duplicate(&create_event_row(&e1), &e2),
             "Level 1 vs Level 2 should NOT match"
         );
 
@@ -472,7 +510,7 @@ mod tests {
             Some("City Hall"),
         );
         assert!(
-            !is_duplicate(&e3, &e4),
+            !is_duplicate(&create_event_row(&e3), &e4),
             "Different committees should NOT match"
         );
 
@@ -480,7 +518,7 @@ mod tests {
         let e5 = create_event("Youth Soccer (U8)", "Saturday game.", Some("Trum Field"));
         let e6 = create_event("Youth Soccer (U10)", "Saturday game.", Some("Trum Field"));
         assert!(
-            !is_duplicate(&e5, &e6),
+            !is_duplicate(&create_event_row(&e5), &e6),
             "Different age groups should NOT match"
         );
 
@@ -488,7 +526,7 @@ mod tests {
         let e7 = create_event("Porchfest: Band A", "Live music.", Some("123 Summer St"));
         let e8 = create_event("Porchfest: Band B", "Live music.", Some("123 Summer St"));
         assert!(
-            !is_duplicate(&e7, &e8),
+            !is_duplicate(&create_event_row(&e7), &e8),
             "Different bands at same festival venue should NOT match"
         );
 
@@ -496,7 +534,7 @@ mod tests {
         let e9 = create_event("Storytime (English)", "Read aloud.", Some("Library"));
         let e10 = create_event("Storytime (Spanish)", "Read aloud.", Some("Library"));
         assert!(
-            !is_duplicate(&e9, &e10),
+            !is_duplicate(&create_event_row(&e9), &e10),
             "Different languages should NOT match"
         );
 
@@ -512,7 +550,7 @@ mod tests {
             Some("Dilboy Stadium"),
         );
         assert!(
-            !is_duplicate(&e11, &e12),
+            !is_duplicate(&create_event_row(&e11), &e12),
             "Different opponents should NOT match"
         );
 
@@ -520,7 +558,7 @@ mod tests {
         let e13 = create_event("Ward 1 Meeting", "Community update", Some("Zoom"));
         let e14 = create_event("Ward 2 Meeting", "Community update", Some("Zoom"));
         assert!(
-            !is_duplicate(&e13, &e14),
+            !is_duplicate(&create_event_row(&e13), &e14),
             "Different wards should NOT match"
         );
     }
@@ -540,7 +578,7 @@ mod tests {
         );
         // Same name/location, but descriptions are totally different topics
         assert!(
-            !is_duplicate(&e3, &e4),
+            !is_duplicate(&create_event_row(&e3), &e4),
             "Same title but different topics (descriptions) should NOT match"
         );
 
@@ -548,7 +586,7 @@ mod tests {
         let e5 = create_event("Ward Meeting", "Community update.", Some("Library"));
         let e6 = create_event("Ward 2 Meeting", "Community update.", Some("Library"));
         assert!(
-            !is_duplicate(&e5, &e6),
+            !is_duplicate(&create_event_row(&e5), &e6),
             "Generic/Cut-off name should NOT match specific name"
         );
 
@@ -556,7 +594,7 @@ mod tests {
         let e7 = create_event("Somerville Art", "Local event.", Some("Armory"));
         let e8 = create_event("Somerville Art Class", "Local event.", Some("Armory"));
         assert!(
-            !is_duplicate(&e7, &e8),
+            !is_duplicate(&create_event_row(&e7), &e8),
             "Prefix match on different event types should NOT match"
         );
 
@@ -572,7 +610,7 @@ mod tests {
             Some("The Club"),
         );
         assert!(
-            !is_duplicate(&e9, &e10),
+            !is_duplicate(&create_event_row(&e9), &e10),
             "Descriptions with key activity differences should NOT match"
         );
     }
