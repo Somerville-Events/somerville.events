@@ -240,6 +240,33 @@ mod tests {
             self.list_full(IndexQuery::default(), since, until).await
         }
 
+        async fn list_full_unfiltered_paged(
+            &self,
+            limit: i64,
+            offset: i64,
+        ) -> Result<Vec<Event>> {
+            let mut events = self.events.lock().unwrap().clone();
+            events.sort_by(|a, b| {
+                b.created_at
+                    .cmp(&a.created_at)
+                    .then_with(|| b.id.cmp(&a.id))
+            });
+
+            let start = offset.max(0) as usize;
+            let end = (start as i64 + limit.max(0)) as usize;
+            let slice_end = end.min(events.len());
+            if start >= events.len() {
+                return Ok(Vec::new());
+            }
+
+            Ok(events[start..slice_end].to_vec())
+        }
+
+        async fn count_unfiltered(&self) -> Result<i64> {
+            let events = self.events.lock().unwrap();
+            Ok(events.len() as i64)
+        }
+
         async fn get_distinct_locations(&self) -> Result<Vec<LocationOption>> {
             let events = self.events.lock().unwrap();
             let mut locs: Vec<LocationOption> = events

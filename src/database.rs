@@ -24,6 +24,12 @@ pub trait EventsRepo: Send + Sync {
         since: Option<DateTime<Utc>>,
         until: Option<DateTime<Utc>>,
     ) -> Result<Vec<Event>>;
+    async fn list_full_unfiltered_paged(
+        &self,
+        limit: i64,
+        offset: i64,
+    ) -> Result<Vec<Event>>;
+    async fn count_unfiltered(&self) -> Result<i64>;
     async fn get_distinct_locations(&self) -> Result<Vec<LocationOption>>;
     async fn get(&self, id: i64) -> Result<Option<Event>>;
     async fn claim_idempotency_key(&self, idempotency_key: uuid::Uuid) -> Result<bool>;
@@ -218,6 +224,63 @@ impl EventsRepo for sqlx::Pool<sqlx::Postgres> {
         .await?;
 
         Ok(events)
+    }
+
+    async fn list_full_unfiltered_paged(
+        &self,
+        limit: i64,
+        offset: i64,
+    ) -> Result<Vec<Event>> {
+        let events = sqlx::query_as!(
+            Event,
+            r#"
+            SELECT
+                e.id,
+                e.created_at,
+                e.updated_at,
+                e.name,
+                e.description,
+                e.full_text,
+                e.start_date,
+                e.end_date,
+                e.address,
+                e.original_location,
+                e.google_place_id,
+                e.location_name,
+                COALESCE(array_agg(et.event_type_name ORDER BY et.event_type_name) FILTER (WHERE et.event_type_name IS NOT NULL), '{}') as "event_types!: Vec<EventType>",
+                e.url,
+                e.confidence,
+                e.age_restrictions,
+                e.price,
+                e.source as "source: EventSource",
+                e.external_id
+            FROM app.events e
+            LEFT JOIN app.event_event_types et ON e.id = et.event_id
+            GROUP BY e.id
+            ORDER BY e.created_at DESC, e.id DESC
+            LIMIT $1
+            OFFSET $2
+            "#,
+            limit,
+            offset
+        )
+        .fetch_all(self)
+        .await?;
+
+        Ok(events)
+    }
+
+    async fn count_unfiltered(&self) -> Result<i64> {
+        let count = sqlx::query_scalar!(
+            r#"
+            SELECT COUNT(*) as "count!"
+            FROM app.events
+            "#
+        )
+        .fetch_one(self)
+        .await?;
+
+        Ok(count)
     }
 
     async fn get_distinct_locations(&self) -> Result<Vec<LocationOption>> {

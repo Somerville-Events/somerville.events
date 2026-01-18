@@ -2,7 +2,6 @@ use crate::config::Config;
 use crate::models::Event;
 use crate::AppState;
 use actix_web::{web, HttpResponse, Responder};
-use chrono::{Duration, Utc};
 use serde::{Deserialize, Serialize};
 use url::Url;
 
@@ -13,6 +12,13 @@ const ACTIVITYPUB_PUBLIC: &str = "https://www.w3.org/ns/activitystreams#Public";
 pub struct WebfingerQuery {
     resource: String,
 }
+
+#[derive(Deserialize)]
+pub struct OutboxQuery {
+    page: Option<String>,
+}
+
+const OUTBOX_PAGE_SIZE: i64 = 100;
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -40,6 +46,10 @@ struct OrderedCollection<T> {
     kind: &'static str,
     total_items: usize,
     ordered_items: Vec<T>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    first: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    last: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -51,6 +61,22 @@ struct Activity<T> {
     published: String,
     to: Vec<&'static str>,
     object: T,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct OrderedCollectionPage<T> {
+    #[serde(rename = "@context")]
+    context: Vec<&'static str>,
+    id: String,
+    #[serde(rename = "type")]
+    kind: &'static str,
+    part_of: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    next: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    prev: Option<String>,
+    ordered_items: Vec<T>,
 }
 
 #[derive(Serialize)]
@@ -124,6 +150,14 @@ fn actor_url(base_url: &str) -> String {
 
 fn outbox_url(base_url: &str) -> String {
     format!("{}/activitypub/outbox", base_url)
+}
+
+fn outbox_page_url(base_url: &str, page: i64) -> String {
+    if page <= 1 {
+        format!("{}/activitypub/outbox?page=true", base_url)
+    } else {
+        format!("{}/activitypub/outbox?page={}", base_url, page)
+    }
 }
 
 fn inbox_url(base_url: &str) -> String {
@@ -229,6 +263,18 @@ fn activitypub_response<T: Serialize>(payload: &T) -> HttpResponse {
     }
 }
 
+fn parse_outbox_page(query: &OutboxQuery) -> Result<Option<i64>, HttpResponse> {
+    match query.page.as_deref() {
+        None => Ok(None),
+        Some("true") => Ok(Some(1)),
+        Some("false") => Ok(None),
+        Some(raw) => match raw.parse::<i64>() {
+            Ok(page) if page >= 1 => Ok(Some(page)),
+            _ => Err(HttpResponse::BadRequest().body("Invalid page value")),
+        },
+    }
+}
+
 pub async fn actor() -> impl Responder {
     let base_url = base_url();
     let actor = ActivityPubActor {
@@ -247,40 +293,93 @@ pub async fn actor() -> impl Responder {
     activitypub_response(&actor)
 }
 
-pub async fn outbox(state: web::Data<AppState>) -> impl Responder {
-    let since = Some(Utc::now() - Duration::days(2));
-    let until = None;
+pub async fn outbox(
+    state: web::Data<AppState>,
+    query: actix_web_lab::extract::Query<OutboxQuery>,
+) -> impl Responder {
     let base_url = base_url();
     let actor_id = actor_url(&base_url);
 
-    match state.events_repo.list_full_unfiltered(since, until).await {
-        Ok(events) => {
-            let ordered_items: Vec<Activity<ActivityPubEvent>> = events
-                .iter()
-                .map(|event| Activity {
-                    id: activity_url(&base_url, event.id),
-                    kind: "Create",
-                    actor: actor_id.clone(),
-                    published: event.created_at.to_rfc3339(),
-                    to: vec![ACTIVITYPUB_PUBLIC],
-                    object: activitypub_event(event, &base_url),
-                })
-                .collect();
+    let page = match parse_outbox_page(&query) {
+        Ok(page) => page,
+        Err(response) => return response,
+    };
 
-            let collection = OrderedCollection {
-                context: activitypub_context(),
-                id: outbox_url(&base_url),
-                kind: "OrderedCollection",
-                total_items: ordered_items.len(),
-                ordered_items,
-            };
-
-            activitypub_response(&collection)
-        }
+    let total_items = match state.events_repo.count_unfiltered().await {
+        Ok(count) => count,
         Err(e) => {
-            log::error!("Failed to fetch events for ActivityPub outbox: {e}");
-            HttpResponse::InternalServerError().body("Failed to fetch events")
+            log::error!("Failed to count events for ActivityPub outbox: {e}");
+            return HttpResponse::InternalServerError().body("Failed to fetch events");
         }
+    };
+
+    let total_items_usize = total_items.max(0) as usize;
+    let last_page = if total_items_usize == 0 {
+        1
+    } else {
+        ((total_items_usize - 1) / OUTBOX_PAGE_SIZE as usize) + 1
+    };
+
+    if let Some(page_number) = page {
+        let offset = (page_number - 1) * OUTBOX_PAGE_SIZE;
+        match state
+            .events_repo
+            .list_full_unfiltered_paged(OUTBOX_PAGE_SIZE, offset)
+            .await
+        {
+            Ok(events) => {
+                let ordered_items: Vec<Activity<ActivityPubEvent>> = events
+                    .iter()
+                    .map(|event| Activity {
+                        id: activity_url(&base_url, event.id),
+                        kind: "Create",
+                        actor: actor_id.clone(),
+                        published: event.created_at.to_rfc3339(),
+                        to: vec![ACTIVITYPUB_PUBLIC],
+                        object: activitypub_event(event, &base_url),
+                    })
+                    .collect();
+
+                let next = if (page_number as usize) < last_page {
+                    Some(outbox_page_url(&base_url, page_number + 1))
+                } else {
+                    None
+                };
+                let prev = if page_number > 1 {
+                    Some(outbox_page_url(&base_url, page_number - 1))
+                } else {
+                    None
+                };
+
+                let page_response = OrderedCollectionPage {
+                    context: activitypub_context(),
+                    id: outbox_page_url(&base_url, page_number),
+                    kind: "OrderedCollectionPage",
+                    part_of: outbox_url(&base_url),
+                    next,
+                    prev,
+                    ordered_items,
+                };
+
+                activitypub_response(&page_response)
+            }
+            Err(e) => {
+                log::error!("Failed to fetch events for ActivityPub outbox: {e}");
+                HttpResponse::InternalServerError().body("Failed to fetch events")
+            }
+        }
+    } else {
+        let collection = OrderedCollection::<Activity<ActivityPubEvent>> {
+            context: activitypub_context(),
+            id: outbox_url(&base_url),
+            kind: "OrderedCollection",
+            total_items: total_items_usize,
+            ordered_items: Vec::new(),
+            first: Some(outbox_page_url(&base_url, 1)),
+            last: Some(outbox_page_url(&base_url, last_page as i64)),
+        };
+
+        activitypub_response(&collection)
     }
 }
 
