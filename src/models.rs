@@ -318,6 +318,48 @@ pub struct LocationOption {
     pub name: String,
 }
 
+#[derive(Debug, Clone, sqlx::FromRow)]
+pub struct ActivityPubFollower {
+    pub actor_id: String,
+    pub actor_url: String,
+    pub inbox_url: String,
+    pub shared_inbox_url: Option<String>,
+    pub public_key_pem: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+pub struct ActivityPubComment {
+    pub actor_id: String,
+    pub content: String,
+    pub published_at: Option<DateTime<Utc>>,
+    pub object_url: Option<String>,
+}
+
+#[derive(Debug, Clone, sqlx::FromRow)]
+pub struct ActivityPubSummary {
+    pub likes: i64,
+    pub boosts: i64,
+    pub replies: i64,
+    pub rsvp_yes: i64,
+    pub rsvp_maybe: i64,
+    pub rsvp_no: i64,
+}
+
+#[derive(Debug, Clone)]
+pub struct ActivityPubInboxActivityInsert {
+    pub activity_id: String,
+    pub activity_type: String,
+    pub actor_id: String,
+    pub object_id: Option<String>,
+    pub object_type: Option<String>,
+    pub object_url: Option<String>,
+    pub object_content: Option<String>,
+    pub object_published: Option<DateTime<Utc>>,
+    pub in_reply_to: Option<String>,
+    pub event_id: Option<i64>,
+    pub payload: serde_json::Value,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -19,5 +19,45 @@
 <article>
     <h1>{{ event.name }}</h1>
     {% include "common/detailed_event_body.html" %}
+
+    <section>
+        <h2>ActivityPub</h2>
+        <dl>
+            <dt>Likes</dt>
+            <dd>{{ activitypub_summary.likes }}</dd>
+            <dt>Boosts</dt>
+            <dd>{{ activitypub_summary.boosts }}</dd>
+            <dt>Replies</dt>
+            <dd>{{ activitypub_summary.replies }}</dd>
+            <dt>RSVP Yes</dt>
+            <dd>{{ activitypub_summary.rsvp_yes }}</dd>
+            <dt>RSVP Maybe</dt>
+            <dd>{{ activitypub_summary.rsvp_maybe }}</dd>
+            <dt>RSVP No</dt>
+            <dd>{{ activitypub_summary.rsvp_no }}</dd>
+        </dl>
+
+        {% if !activitypub_comments.is_empty() %}
+        <h3>Comments</h3>
+        <ol>
+            {% for comment in activitypub_comments %}
+            <li>
+                <p>{{ comment.content }}</p>
+                <p>
+                    <small>
+                        {{ comment.actor_id }}
+                        {% if let Some(published) = comment.published_at %}
+                        • {{ published }}
+                        {% endif %}
+                        {% if let Some(url) = comment.object_url %}
+                        • <a href="{{ url }}">View</a>
+                        {% endif %}
+                    </small>
+                </p>
+            </li>
+            {% endfor %}
+        </ol>
+        {% endif %}
+    </section>
 </article>
 {% endblock %}

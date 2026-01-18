@@ -109,6 +109,17 @@ pub async fn save(
                                     event.name,
                                     id
                                 );
+                                if let Err(e) =
+                                    crate::features::activitypub::deliver_event_to_followers(
+                                        &state, &client, id,
+                                    )
+                                    .await
+                                {
+                                    log::warn!(
+                                        "Failed to deliver ActivityPub event: {}",
+                                        e.status()
+                                    );
+                                }
                             }
                             Err(e) => {
                                 log::error!(

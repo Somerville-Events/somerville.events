@@ -444,6 +444,15 @@ async fn story_view_show(data: web::Data<StorybookState>, path: web::Path<i64>) 
     if let Some(event) = events_map.get(&path.into_inner()) {
         let template = ShowTemplate {
             event: event.clone(),
+            activitypub_summary: somerville_events::models::ActivityPubSummary {
+                likes: 0,
+                boosts: 0,
+                replies: 0,
+                rsvp_yes: 0,
+                rsvp_maybe: 0,
+                rsvp_no: 0,
+            },
+            activitypub_comments: Vec::new(),
         };
         HttpResponse::Ok()
             .content_type("text/html")
@@ -459,6 +468,15 @@ async fn story_view_show_default() -> impl Responder {
             .with_full_text("This is the full text view.\n\nIt supports multiple paragraphs.\n\nAnd lists all details.")
             .with_types(vec![EventType::Art, EventType::Food])
             .build(999),
+        activitypub_summary: somerville_events::models::ActivityPubSummary {
+            likes: 0,
+            boosts: 0,
+            replies: 0,
+            rsvp_yes: 0,
+            rsvp_maybe: 0,
+            rsvp_no: 0,
+        },
+        activitypub_comments: Vec::new(),
     };
     HttpResponse::Ok()
         .content_type("text/html")
@@ -568,6 +586,15 @@ async fn story_view_details_gallery(data: web::Data<StorybookState>) -> impl Res
         if let Some(event) = events_map.get(&id) {
             let template = ShowTemplate {
                 event: event.clone(),
+                activitypub_summary: somerville_events::models::ActivityPubSummary {
+                    likes: 0,
+                    boosts: 0,
+                    replies: 0,
+                    rsvp_yes: 0,
+                    rsvp_maybe: 0,
+                    rsvp_no: 0,
+                },
+                activitypub_comments: Vec::new(),
             };
             html.push_str(&format!("<hr><h2>Event ID {}: {}</h2>", id, event.name));
             html.push_str(&template.render().unwrap());

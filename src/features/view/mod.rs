@@ -48,6 +48,8 @@ pub struct LabeledValue {
 #[template(path = "view/show.html")]
 pub struct ShowTemplate {
     pub event: EventViewModel,
+    pub activitypub_summary: crate::models::ActivityPubSummary,
+    pub activitypub_comments: Vec<crate::models::ActivityPubComment>,
 }
 
 #[derive(Template)]
@@ -405,8 +407,32 @@ pub async fn show(state: web::Data<AppState>, path: web::Path<i64>) -> impl Resp
     let id = path.into_inner();
     match state.events_repo.get(id).await {
         Ok(Some(event)) => {
+            let activitypub_summary = match state.events_repo.get_activitypub_summary(id).await {
+                Ok(summary) => summary,
+                Err(e) => {
+                    log::error!("Failed to fetch ActivityPub summary: {e}");
+                    crate::models::ActivityPubSummary {
+                        likes: 0,
+                        boosts: 0,
+                        replies: 0,
+                        rsvp_yes: 0,
+                        rsvp_maybe: 0,
+                        rsvp_no: 0,
+                    }
+                }
+            };
+            let activitypub_comments = match state.events_repo.list_activitypub_comments(id, 20).await
+            {
+                Ok(comments) => comments,
+                Err(e) => {
+                    log::error!("Failed to fetch ActivityPub comments: {e}");
+                    Vec::new()
+                }
+            };
             let template = ShowTemplate {
                 event: EventViewModel::from_event(&event, DateFormat::FullDate, false),
+                activitypub_summary,
+                activitypub_comments,
             };
             HttpResponse::Ok()
                 .content_type(ContentType::html())

@@ -14,6 +14,8 @@ pub struct Config {
     pub db_name: String,
     pub static_file_dir: String,
     pub public_url: String,
+    pub activitypub_private_key_pem: String,
+    pub activitypub_public_key_pem: String,
 }
 
 impl Config {
@@ -32,6 +34,10 @@ impl Config {
             let static_file_dir =
                 env::var("STATIC_FILE_DIR").unwrap_or_else(|_| "static".to_string());
             let public_url = env::var("PUBLIC_URL").expect("PUBLIC_URL must be set");
+            let activitypub_private_key_pem = env::var("ACTIVITYPUB_PRIVATE_KEY_PEM")
+                .expect("ACTIVITYPUB_PRIVATE_KEY_PEM must be set");
+            let activitypub_public_key_pem = env::var("ACTIVITYPUB_PUBLIC_KEY_PEM")
+                .expect("ACTIVITYPUB_PUBLIC_KEY_PEM must be set");
 
             Self {
                 host,
@@ -43,6 +49,8 @@ impl Config {
                 db_name,
                 static_file_dir,
                 public_url,
+                activitypub_private_key_pem,
+                activitypub_public_key_pem,
             }
         })
     }

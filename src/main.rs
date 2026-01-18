@@ -130,7 +130,8 @@ mod tests {
     use somerville_events::database::EventsRepo;
     use somerville_events::features::view::IndexQuery;
     use somerville_events::models::{
-        Event, EventSource, EventType, LocationOption, NewEvent, SimpleEvent,
+        ActivityPubComment, ActivityPubFollower, ActivityPubInboxActivityInsert,
+        ActivityPubSummary, Event, EventSource, EventType, LocationOption, NewEvent, SimpleEvent,
     };
     use somerville_events::AppState;
     use std::sync::{Arc, Mutex};
@@ -139,6 +140,9 @@ mod tests {
     pub struct MockEventsRepo {
         pub events: Arc<Mutex<Vec<Event>>>,
         pub next_id: Arc<Mutex<i64>>,
+        pub followers: Arc<Mutex<Vec<ActivityPubFollower>>>,
+        pub inbox_activities: Arc<Mutex<Vec<serde_json::Value>>>,
+        pub rsvps: Arc<Mutex<Vec<serde_json::Value>>>,
     }
 
     impl MockEventsRepo {
@@ -147,6 +151,9 @@ mod tests {
             Self {
                 events: Arc::new(Mutex::new(events)),
                 next_id: Arc::new(Mutex::new(max_id)),
+                followers: Arc::new(Mutex::new(Vec::new())),
+                inbox_activities: Arc::new(Mutex::new(Vec::new())),
+                rsvps: Arc::new(Mutex::new(Vec::new())),
             }
         }
     }
@@ -265,6 +272,170 @@ mod tests {
         async fn count_unfiltered(&self) -> Result<i64> {
             let events = self.events.lock().unwrap();
             Ok(events.len() as i64)
+        }
+
+        async fn upsert_activitypub_follower(
+            &self,
+            actor_id: &str,
+            actor_url: &str,
+            inbox_url: &str,
+            shared_inbox_url: Option<&str>,
+            public_key_pem: Option<&str>,
+        ) -> Result<()> {
+            let mut followers = self.followers.lock().unwrap();
+            if let Some(existing) = followers.iter_mut().find(|f| f.actor_id == actor_id) {
+                existing.actor_url = actor_url.to_string();
+                existing.inbox_url = inbox_url.to_string();
+                existing.shared_inbox_url = shared_inbox_url.map(|v| v.to_string());
+                existing.public_key_pem = public_key_pem.map(|v| v.to_string());
+            } else {
+                followers.push(ActivityPubFollower {
+                    actor_id: actor_id.to_string(),
+                    actor_url: actor_url.to_string(),
+                    inbox_url: inbox_url.to_string(),
+                    shared_inbox_url: shared_inbox_url.map(|v| v.to_string()),
+                    public_key_pem: public_key_pem.map(|v| v.to_string()),
+                });
+            }
+            Ok(())
+        }
+
+        async fn remove_activitypub_follower(&self, actor_id: &str) -> Result<()> {
+            let mut followers = self.followers.lock().unwrap();
+            followers.retain(|f| f.actor_id != actor_id);
+            Ok(())
+        }
+
+        async fn list_activitypub_followers(&self) -> Result<Vec<ActivityPubFollower>> {
+            let followers = self.followers.lock().unwrap();
+            Ok(followers.clone())
+        }
+
+        async fn insert_activitypub_inbox_activity(
+            &self,
+            activity: &ActivityPubInboxActivityInsert,
+        ) -> Result<()> {
+            let mut activities = self.inbox_activities.lock().unwrap();
+            if activities
+                .iter()
+                .any(|v| v.get("activity_id").and_then(|v| v.as_str()) == Some(&activity.activity_id))
+            {
+                return Ok(());
+            }
+
+            let mut stored = activity.payload.clone();
+            if let serde_json::Value::Object(map) = &mut stored {
+                map.insert(
+                    "activity_id".to_string(),
+                    serde_json::Value::String(activity.activity_id.clone()),
+                );
+                map.insert(
+                    "activity_type".to_string(),
+                    serde_json::Value::String(activity.activity_type.clone()),
+                );
+                map.insert(
+                    "actor_id".to_string(),
+                    serde_json::Value::String(activity.actor_id.clone()),
+                );
+                map.insert(
+                    "object_id".to_string(),
+                    serde_json::Value::String(activity.object_id.clone().unwrap_or_default()),
+                );
+                map.insert(
+                    "object_type".to_string(),
+                    serde_json::Value::String(activity.object_type.clone().unwrap_or_default()),
+                );
+                map.insert(
+                    "object_url".to_string(),
+                    serde_json::Value::String(activity.object_url.clone().unwrap_or_default()),
+                );
+                map.insert(
+                    "object_content".to_string(),
+                    serde_json::Value::String(activity.object_content.clone().unwrap_or_default()),
+                );
+                map.insert(
+                    "object_published".to_string(),
+                    serde_json::Value::String(
+                        activity
+                            .object_published
+                            .map(|dt| dt.to_rfc3339())
+                            .unwrap_or_default(),
+                    ),
+                );
+                map.insert(
+                    "in_reply_to".to_string(),
+                    serde_json::Value::String(activity.in_reply_to.clone().unwrap_or_default()),
+                );
+                map.insert(
+                    "event_id".to_string(),
+                    serde_json::Value::String(
+                        activity.event_id.map(|id| id.to_string()).unwrap_or_default(),
+                    ),
+                );
+            }
+
+            activities.push(stored);
+            Ok(())
+        }
+
+        async fn upsert_activitypub_rsvp(
+            &self,
+            event_id: i64,
+            actor_id: &str,
+            rsvp_type: &str,
+            activity_id: &str,
+            object_id: Option<&str>,
+            payload: serde_json::Value,
+        ) -> Result<()> {
+            let mut rsvps = self.rsvps.lock().unwrap();
+            rsvps.retain(|v| {
+                !(v.get("event_id").and_then(|v| v.as_i64()) == Some(event_id)
+                    && v.get("actor_id").and_then(|v| v.as_str()) == Some(actor_id))
+            });
+            let mut stored = payload;
+            if let serde_json::Value::Object(map) = &mut stored {
+                map.insert(
+                    "event_id".to_string(),
+                    serde_json::Value::Number(event_id.into()),
+                );
+                map.insert(
+                    "actor_id".to_string(),
+                    serde_json::Value::String(actor_id.to_string()),
+                );
+                map.insert(
+                    "rsvp_type".to_string(),
+                    serde_json::Value::String(rsvp_type.to_string()),
+                );
+                map.insert(
+                    "activity_id".to_string(),
+                    serde_json::Value::String(activity_id.to_string()),
+                );
+                map.insert(
+                    "object_id".to_string(),
+                    serde_json::Value::String(object_id.unwrap_or("").to_string()),
+                );
+            }
+            rsvps.push(stored);
+            Ok(())
+        }
+
+        async fn get_activitypub_summary(&self, _event_id: i64) -> Result<ActivityPubSummary> {
+            Ok(ActivityPubSummary {
+                likes: 0,
+                boosts: 0,
+                replies: 0,
+                rsvp_yes: 0,
+                rsvp_maybe: 0,
+                rsvp_no: 0,
+            })
+        }
+
+        async fn list_activitypub_comments(
+            &self,
+            _event_id: i64,
+            _limit: i64,
+        ) -> Result<Vec<ActivityPubComment>> {
+            Ok(Vec::new())
         }
 
         async fn get_distinct_locations(&self) -> Result<Vec<LocationOption>> {

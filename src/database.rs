@@ -1,9 +1,20 @@
 use crate::features::view::IndexQuery;
-use crate::models::{Event, EventSource, EventType, LocationOption, NewEvent, SimpleEvent};
+use crate::models::{
+    ActivityPubComment, ActivityPubFollower, ActivityPubInboxActivityInsert, ActivityPubSummary,
+    Event, EventSource, EventType, LocationOption, NewEvent, SimpleEvent,
+};
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use strsim::jaro_winkler;
+
+#[derive(Debug, sqlx::FromRow)]
+struct ActivityPubCommentRow {
+    actor_id: String,
+    object_content: Option<String>,
+    object_published: Option<DateTime<Utc>>,
+    object_url: Option<String>,
+}
 
 #[async_trait]
 pub trait EventsRepo: Send + Sync {
@@ -30,6 +41,35 @@ pub trait EventsRepo: Send + Sync {
         offset: i64,
     ) -> Result<Vec<Event>>;
     async fn count_unfiltered(&self) -> Result<i64>;
+    async fn upsert_activitypub_follower(
+        &self,
+        actor_id: &str,
+        actor_url: &str,
+        inbox_url: &str,
+        shared_inbox_url: Option<&str>,
+        public_key_pem: Option<&str>,
+    ) -> Result<()>;
+    async fn remove_activitypub_follower(&self, actor_id: &str) -> Result<()>;
+    async fn list_activitypub_followers(&self) -> Result<Vec<ActivityPubFollower>>;
+    async fn insert_activitypub_inbox_activity(
+        &self,
+        activity: &ActivityPubInboxActivityInsert,
+    ) -> Result<()>;
+    async fn upsert_activitypub_rsvp(
+        &self,
+        event_id: i64,
+        actor_id: &str,
+        rsvp_type: &str,
+        activity_id: &str,
+        object_id: Option<&str>,
+        payload: serde_json::Value,
+    ) -> Result<()>;
+    async fn get_activitypub_summary(&self, event_id: i64) -> Result<ActivityPubSummary>;
+    async fn list_activitypub_comments(
+        &self,
+        event_id: i64,
+        limit: i64,
+    ) -> Result<Vec<ActivityPubComment>>;
     async fn get_distinct_locations(&self) -> Result<Vec<LocationOption>>;
     async fn get(&self, id: i64) -> Result<Option<Event>>;
     async fn claim_idempotency_key(&self, idempotency_key: uuid::Uuid) -> Result<bool>;
@@ -281,6 +321,240 @@ impl EventsRepo for sqlx::Pool<sqlx::Postgres> {
         .await?;
 
         Ok(count)
+    }
+
+    async fn upsert_activitypub_follower(
+        &self,
+        actor_id: &str,
+        actor_url: &str,
+        inbox_url: &str,
+        shared_inbox_url: Option<&str>,
+        public_key_pem: Option<&str>,
+    ) -> Result<()> {
+        sqlx::query!(
+            r#"
+            INSERT INTO app.activitypub_followers (
+                actor_id,
+                actor_url,
+                inbox_url,
+                shared_inbox_url,
+                public_key_pem,
+                created_at,
+                updated_at
+            )
+            VALUES ($1, $2, $3, $4, $5, now(), now())
+            ON CONFLICT (actor_id) DO UPDATE
+            SET actor_url = EXCLUDED.actor_url,
+                inbox_url = EXCLUDED.inbox_url,
+                shared_inbox_url = EXCLUDED.shared_inbox_url,
+                public_key_pem = EXCLUDED.public_key_pem,
+                updated_at = now()
+            "#,
+            actor_id,
+            actor_url,
+            inbox_url,
+            shared_inbox_url,
+            public_key_pem
+        )
+        .execute(self)
+        .await?;
+
+        Ok(())
+    }
+
+    async fn remove_activitypub_follower(&self, actor_id: &str) -> Result<()> {
+        sqlx::query!(
+            r#"
+            DELETE FROM app.activitypub_followers
+            WHERE actor_id = $1
+            "#,
+            actor_id
+        )
+        .execute(self)
+        .await?;
+
+        Ok(())
+    }
+
+    async fn list_activitypub_followers(&self) -> Result<Vec<ActivityPubFollower>> {
+        let followers = sqlx::query_as!(
+            ActivityPubFollower,
+            r#"
+            SELECT
+                actor_id,
+                actor_url,
+                inbox_url,
+                shared_inbox_url,
+                public_key_pem
+            FROM app.activitypub_followers
+            ORDER BY created_at ASC
+            "#
+        )
+        .fetch_all(self)
+        .await?;
+
+        Ok(followers)
+    }
+
+    async fn insert_activitypub_inbox_activity(
+        &self,
+        activity: &ActivityPubInboxActivityInsert,
+    ) -> Result<()> {
+        sqlx::query!(
+            r#"
+            INSERT INTO app.activitypub_inbox_activities (
+                activity_id,
+                activity_type,
+                actor_id,
+                object_id,
+                object_type,
+                object_url,
+                object_content,
+                object_published,
+                in_reply_to,
+                event_id,
+                payload,
+                received_at
+            )
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, now())
+            ON CONFLICT (activity_id) DO NOTHING
+            "#,
+            activity.activity_id,
+            activity.activity_type,
+            activity.actor_id,
+            activity.object_id,
+            activity.object_type,
+            activity.object_url,
+            activity.object_content,
+            activity.object_published,
+            activity.in_reply_to,
+            activity.event_id,
+            activity.payload
+        )
+        .execute(self)
+        .await?;
+
+        Ok(())
+    }
+
+    async fn upsert_activitypub_rsvp(
+        &self,
+        event_id: i64,
+        actor_id: &str,
+        rsvp_type: &str,
+        activity_id: &str,
+        object_id: Option<&str>,
+        payload: serde_json::Value,
+    ) -> Result<()> {
+        sqlx::query!(
+            r#"
+            INSERT INTO app.activitypub_event_rsvps (
+                activity_id,
+                event_id,
+                actor_id,
+                rsvp_type,
+                object_id,
+                payload,
+                received_at,
+                updated_at
+            )
+            VALUES ($1, $2, $3, $4, $5, $6, now(), now())
+            ON CONFLICT (event_id, actor_id) DO UPDATE
+            SET activity_id = EXCLUDED.activity_id,
+                rsvp_type = EXCLUDED.rsvp_type,
+                object_id = EXCLUDED.object_id,
+                payload = EXCLUDED.payload,
+                updated_at = now()
+            "#,
+            activity_id,
+            event_id,
+            actor_id,
+            rsvp_type,
+            object_id,
+            payload
+        )
+        .execute(self)
+        .await?;
+
+        Ok(())
+    }
+
+    async fn get_activitypub_summary(&self, event_id: i64) -> Result<ActivityPubSummary> {
+        let summary = sqlx::query_as!(
+            ActivityPubSummary,
+            r#"
+            WITH activity_counts AS (
+                SELECT
+                    SUM(CASE WHEN activity_type = 'Like' THEN 1 ELSE 0 END) as likes,
+                    SUM(CASE WHEN activity_type = 'Announce' THEN 1 ELSE 0 END) as boosts,
+                    SUM(CASE WHEN activity_type = 'Create' THEN 1 ELSE 0 END) as replies
+                FROM app.activitypub_inbox_activities
+                WHERE event_id = $1
+            ),
+            rsvp_counts AS (
+                SELECT
+                    SUM(CASE WHEN rsvp_type = 'Accept' THEN 1 ELSE 0 END) as rsvp_yes,
+                    SUM(CASE WHEN rsvp_type = 'TentativeAccept' THEN 1 ELSE 0 END) as rsvp_maybe,
+                    SUM(CASE WHEN rsvp_type = 'Reject' THEN 1 ELSE 0 END) as rsvp_no
+                FROM app.activitypub_event_rsvps
+                WHERE event_id = $1
+            )
+            SELECT
+                COALESCE(activity_counts.likes, 0) as "likes!",
+                COALESCE(activity_counts.boosts, 0) as "boosts!",
+                COALESCE(activity_counts.replies, 0) as "replies!",
+                COALESCE(rsvp_counts.rsvp_yes, 0) as "rsvp_yes!",
+                COALESCE(rsvp_counts.rsvp_maybe, 0) as "rsvp_maybe!",
+                COALESCE(rsvp_counts.rsvp_no, 0) as "rsvp_no!"
+            FROM activity_counts, rsvp_counts
+            "#,
+            event_id
+        )
+        .fetch_one(self)
+        .await?;
+
+        Ok(summary)
+    }
+
+    async fn list_activitypub_comments(
+        &self,
+        event_id: i64,
+        limit: i64,
+    ) -> Result<Vec<ActivityPubComment>> {
+        let rows = sqlx::query_as!(
+            ActivityPubCommentRow,
+            r#"
+            SELECT
+                actor_id,
+                object_content,
+                object_published,
+                object_url
+            FROM app.activitypub_inbox_activities
+            WHERE event_id = $1
+            AND activity_type = 'Create'
+            AND object_content IS NOT NULL
+            ORDER BY object_published DESC NULLS LAST, received_at DESC
+            LIMIT $2
+            "#,
+            event_id,
+            limit
+        )
+        .fetch_all(self)
+        .await?;
+
+        let comments = rows
+            .into_iter()
+            .filter_map(|row| {
+                row.object_content.map(|content| ActivityPubComment {
+                    actor_id: row.actor_id,
+                    content,
+                    published_at: row.object_published,
+                    object_url: row.object_url,
+                })
+            })
+            .collect();
+
+        Ok(comments)
     }
 
     async fn get_distinct_locations(&self) -> Result<Vec<LocationOption>> {
