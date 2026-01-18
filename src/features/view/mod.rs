@@ -198,7 +198,9 @@ fn compute_time_range(
         // Past events
         (None, Some(now_utc))
     } else {
-        // Upcoming events (default)
+        // For upcoming events, we want events that started recently or are in the future.
+        // We have a buffer of 2 days ago because sometimes there are multi-day events
+        // with no specified end date.
         (Some(now_utc - Duration::days(2)), None)
     };
 
@@ -495,13 +497,6 @@ pub async fn ical_feed(
     query: actix_web_lab::extract::Query<IndexQuery>,
 ) -> impl Responder {
     let index_query = query.into_inner();
-    // Use similar logic to index_with_now for date filtering if needed,
-    // but typically a subscription feed should include "future" events.
-    // However, if the user filters by a specific date, they might expect only that date.
-    // The previous implementation of index_with_now handles "since/until/on" or defaults to "now - 2 days".
-
-    // We'll reuse the logic from index_with_now to determine the time range,
-    // but we need to compute it here.
     let now_utc = Utc::now();
     let (_is_past, _has_date_filter, since, until) = compute_time_range(now_utc, &index_query);
 
