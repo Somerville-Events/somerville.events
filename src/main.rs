@@ -68,6 +68,14 @@ async fn main() -> Result<()> {
             .wrap(QueryMethod::default())
             .wrap(middleware::Logger::default())
             .service(actix_files::Files::new("/static", &static_file_dir).show_files_listing())
+            .route(
+                "/.well-known/webfinger",
+                web::get().to(features::activitypub::webfinger),
+            )
+            .route("/activitypub/actor", web::get().to(features::activitypub::actor))
+            .route("/activitypub/outbox", web::get().to(features::activitypub::outbox))
+            .route("/activitypub/event/{id}", web::get().to(features::activitypub::event))
+            .route("/activitypub/inbox", web::post().to(features::activitypub::inbox))
             .route("/", web::get().to(features::view::index))
             .route("/events.atom", web::get().to(features::view::atom_feed))
             .route("/events.ics", web::get().to(features::view::ical_feed))

@@ -331,6 +331,7 @@ pub async fn index_with_now(
             } else {
                 format!("/events.atom?{}", query_str)
             };
+            let activitypub_url = "/activitypub/outbox".to_string();
             let https_url = if query_str.is_empty() {
                 format!("{}/events.ics", config.public_url.trim_end_matches('/'))
             } else {
@@ -385,6 +386,7 @@ pub async fn index_with_now(
                 prev_day_link,
                 next_day_link,
                 atom_url,
+                activitypub_url,
                 webcal_url,
                 https_url,
                 google_cal_link,

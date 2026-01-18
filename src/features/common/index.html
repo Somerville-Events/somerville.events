@@ -11,6 +11,8 @@
     <title>{% block title %}Somerville Events{% endblock %}</title>
     {% block feed_link %}
     <link rel="alternate" type="application/atom+xml" title="Somerville Events" href="/events.atom">
+    <link rel="alternate" type="application/activity+json" title="Somerville Events ActivityPub"
+        href="/activitypub/outbox">
     {% endblock %}
     <style>
         {% include "common/index.css" %}

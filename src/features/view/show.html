@@ -10,6 +10,11 @@
 {% include "common/detailed_event_body.css" %}
 {% endblock %}
 
+{% block feed_link %}
+<link rel="alternate" type="application/activity+json" title="Somerville Events ActivityPub"
+    href="/activitypub/event/{{ event.id }}">
+{% endblock %}
+
 {% block content %}
 <article>
     <h1>{{ event.name }}</h1>

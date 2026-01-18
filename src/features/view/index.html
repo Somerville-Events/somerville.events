@@ -7,6 +7,7 @@
 
 {% block feed_link %}
 <link rel="alternate" type="application/atom+xml" title="Somerville Events" href="{{ atom_url }}">
+<link rel="alternate" type="application/activity+json" title="Somerville Events ActivityPub" href="/activitypub/outbox">
 {% endblock %}
 
 {% block content %}
