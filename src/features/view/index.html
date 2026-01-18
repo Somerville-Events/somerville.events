@@ -5,6 +5,10 @@
 {% include "view/index.css" %}
 {% endblock %}
 
+{% block feed_link %}
+<link rel="alternate" type="application/atom+xml" title="Somerville Events" href="{{ atom_url }}">
+{% endblock %}
+
 {% block content %}
 <header>
     <h1>Somerville Events</h1>
@@ -109,7 +113,7 @@
                     </details>
 
                     <details class="filter-group">
-                        <summary>Subscribe to Calendar</summary>
+                        <summary>Subscribe</summary>
                         <div class="filters-body">
                             <p class="help-text no-margin-top">
                                 Get these events on your phone or computer. Updates automatically.
@@ -139,6 +143,9 @@
                             <p class="help-text">
                                 Paste it into <a href="https://calendar.google.com/calendar/u/0/r/settings/addbyurl"
                                     target="_blank">Google Calendar Settings</a> or your calendar app.
+                            </p>
+                            <p class="help-text">
+                                Prefer RSS? <a href="{{ atom_url }}">Subscribe to the feed</a>.
                             </p>
                         </div>
                     </details>

@@ -26,6 +26,7 @@ pub struct IndexTemplate {
     pub query: IndexQuery,
     pub prev_day_link: Option<String>,
     pub next_day_link: Option<String>,
+    pub atom_url: String,
     pub webcal_url: String,
     pub https_url: String,
     pub google_cal_link: String,
@@ -325,6 +326,11 @@ pub async fn index_with_now(
             let config = Config::from_env();
             // Construct subscription URLs
             let query_str = query.to_query_string();
+            let atom_url = if query_str.is_empty() {
+                "/events.atom".to_string()
+            } else {
+                format!("/events.atom?{}", query_str)
+            };
             let https_url = if query_str.is_empty() {
                 format!("{}/events.ics", config.public_url.trim_end_matches('/'))
             } else {
@@ -378,6 +384,7 @@ pub async fn index_with_now(
                 query,
                 prev_day_link,
                 next_day_link,
+                atom_url,
                 webcal_url,
                 https_url,
                 google_cal_link,

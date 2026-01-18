@@ -9,6 +9,9 @@
     <meta name="description" content="Events in Camberville. Locally made, and locally focused.">
     {% endblock %}
     <title>{% block title %}Somerville Events{% endblock %}</title>
+    {% block feed_link %}
+    <link rel="alternate" type="application/atom+xml" title="Somerville Events" href="/events.atom">
+    {% endblock %}
     <style>
         {% include "common/index.css" %}
         {% block css %}{% endblock %}
