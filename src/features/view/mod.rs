@@ -68,7 +68,6 @@ struct AtomEntry {
 struct AtomFeedTemplate {
     title: String,
     subtitle: String,
-    feed_id: String,
     feed_url: String,
     site_url: String,
     updated: String,
@@ -600,7 +599,6 @@ pub async fn atom_feed(
                     let template = AtomFeedTemplate {
                         title,
                         subtitle,
-                        feed_id: feed_url.clone(),
                         feed_url,
                         site_url,
                         updated,
