@@ -1,10 +1,8 @@
 use crate::config::Config;
-use crate::features::view::IndexQuery;
 use crate::models::Event;
 use crate::AppState;
 use actix_web::{web, HttpResponse, Responder};
-use chrono::{DateTime, Duration, TimeZone, Utc};
-use chrono_tz::America::New_York;
+use chrono::{Duration, Utc};
 use serde::{Deserialize, Serialize};
 use url::Url;
 
@@ -17,6 +15,7 @@ pub struct WebfingerQuery {
 }
 
 #[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
 struct ActivityPubActor {
     #[serde(rename = "@context")]
     context: Vec<&'static str>,
@@ -27,21 +26,19 @@ struct ActivityPubActor {
     summary: String,
     inbox: String,
     outbox: String,
-    #[serde(rename = "preferredUsername")]
     preferred_username: String,
     url: String,
 }
 
 #[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
 struct OrderedCollection<T> {
     #[serde(rename = "@context")]
     context: Vec<&'static str>,
     id: String,
     #[serde(rename = "type")]
     kind: &'static str,
-    #[serde(rename = "totalItems")]
     total_items: usize,
-    #[serde(rename = "orderedItems")]
     ordered_items: Vec<T>,
 }
 
@@ -57,6 +54,7 @@ struct Activity<T> {
 }
 
 #[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
 struct ActivityPubEvent {
     id: String,
     #[serde(rename = "type")]
@@ -64,18 +62,15 @@ struct ActivityPubEvent {
     name: String,
     summary: String,
     content: String,
-    #[serde(rename = "mediaType")]
     media_type: &'static str,
-    #[serde(rename = "startTime")]
     start_time: String,
-    #[serde(rename = "endTime", skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     end_time: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     location: Option<ActivityPubPlace>,
     url: String,
     published: String,
     updated: String,
-    #[serde(rename = "attributedTo")]
     attributed_to: String,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     tag: Vec<ActivityPubTag>,
@@ -157,48 +152,6 @@ fn public_host(base_url: &str) -> String {
                 .and_then(|u| u.host_str().map(str::to_string))
         })
         .unwrap_or_else(|| base_url.to_string())
-}
-
-fn default_time_range(now_utc: DateTime<Utc>) -> (Option<DateTime<Utc>>, Option<DateTime<Utc>>) {
-    let index_query = IndexQuery::default();
-    let has_date_filter =
-        index_query.since.is_some() || index_query.until.is_some() || index_query.on.is_some();
-
-    let (since, until) = if let Some(on_date) = index_query.on {
-        let start = New_York
-            .from_local_datetime(&on_date.and_hms_opt(0, 0, 0).unwrap())
-            .single()
-            .unwrap()
-            .with_timezone(&Utc);
-        let end = New_York
-            .from_local_datetime(&on_date.and_hms_opt(23, 59, 59).unwrap())
-            .single()
-            .unwrap()
-            .with_timezone(&Utc);
-        (Some(start), Some(end))
-    } else if has_date_filter {
-        let start = index_query.since.map(|d| {
-            New_York
-                .from_local_datetime(&d.and_hms_opt(0, 0, 0).unwrap())
-                .single()
-                .unwrap()
-                .with_timezone(&Utc)
-        });
-        let end = index_query.until.map(|d| {
-            New_York
-                .from_local_datetime(&d.and_hms_opt(23, 59, 59).unwrap())
-                .single()
-                .unwrap()
-                .with_timezone(&Utc)
-        });
-        (start, end)
-    } else if index_query.past.unwrap_or(false) {
-        (None, Some(now_utc))
-    } else {
-        (Some(now_utc - Duration::days(2)), None)
-    };
-
-    (since, until)
 }
 
 fn event_location(event: &Event) -> Option<ActivityPubPlace> {
@@ -295,16 +248,12 @@ pub async fn actor() -> impl Responder {
 }
 
 pub async fn outbox(state: web::Data<AppState>) -> impl Responder {
-    let now_utc = Utc::now();
-    let (since, until) = default_time_range(now_utc);
+    let since = Some(Utc::now() - Duration::days(2));
+    let until = None;
     let base_url = base_url();
     let actor_id = actor_url(&base_url);
 
-    match state
-        .events_repo
-        .list_full(IndexQuery::default(), since, until)
-        .await
-    {
+    match state.events_repo.list_full_unfiltered(since, until).await {
         Ok(events) => {
             let ordered_items: Vec<Activity<ActivityPubEvent>> = events
                 .iter()

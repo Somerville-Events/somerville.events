@@ -19,6 +19,11 @@ pub trait EventsRepo: Send + Sync {
         since: Option<DateTime<Utc>>,
         until: Option<DateTime<Utc>>,
     ) -> Result<Vec<Event>>;
+    async fn list_full_unfiltered(
+        &self,
+        since: Option<DateTime<Utc>>,
+        until: Option<DateTime<Utc>>,
+    ) -> Result<Vec<Event>>;
     async fn get_distinct_locations(&self) -> Result<Vec<LocationOption>>;
     async fn get(&self, id: i64) -> Result<Option<Event>>;
     async fn claim_idempotency_key(&self, idempotency_key: uuid::Uuid) -> Result<bool>;
@@ -157,6 +162,55 @@ impl EventsRepo for sqlx::Pool<sqlx::Postgres> {
             &locations,
             free_only,
             name_query,
+            since,
+            until
+        )
+        .fetch_all(self)
+        .await?;
+
+        Ok(events)
+    }
+
+    async fn list_full_unfiltered(
+        &self,
+        since: Option<DateTime<Utc>>,
+        until: Option<DateTime<Utc>>,
+    ) -> Result<Vec<Event>> {
+        let events = sqlx::query_as!(
+            Event,
+            r#"
+            WITH filtered_events AS (
+                SELECT e.id
+                FROM app.events e
+                WHERE ($1::timestamptz IS NULL OR e.start_date >= $1)
+                AND ($2::timestamptz IS NULL OR e.start_date <= $2)
+            )
+            SELECT
+                e.id,
+                e.created_at,
+                e.updated_at,
+                e.name,
+                e.description,
+                e.full_text,
+                e.start_date,
+                e.end_date,
+                e.address,
+                e.original_location,
+                e.google_place_id,
+                e.location_name,
+                COALESCE(array_agg(et.event_type_name ORDER BY et.event_type_name) FILTER (WHERE et.event_type_name IS NOT NULL), '{}') as "event_types!: Vec<EventType>",
+                e.url,
+                e.confidence,
+                e.age_restrictions,
+                e.price,
+                e.source as "source: EventSource",
+                e.external_id
+            FROM app.events e
+            JOIN filtered_events fe ON e.id = fe.id
+            LEFT JOIN app.event_event_types et ON e.id = et.event_id
+            GROUP BY e.id
+            ORDER BY e.start_date ASC NULLS LAST
+            "#,
             since,
             until
         )
