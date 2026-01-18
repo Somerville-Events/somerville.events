@@ -158,22 +158,15 @@ impl IndexQuery {
     }
 }
 
-pub async fn index(
-    state: web::Data<AppState>,
-    query: actix_web_lab::extract::Query<IndexQuery>,
-) -> impl Responder {
-    index_with_now(state, Utc::now(), query.into_inner()).await
-}
-
-pub async fn index_with_now(
-    state: web::Data<AppState>,
+fn compute_time_range(
     now_utc: DateTime<Utc>,
-    query: IndexQuery,
-) -> impl Responder {
-    let is_past = query.past.unwrap_or(false);
-    let has_date_filter = query.since.is_some() || query.until.is_some() || query.on.is_some();
+    index_query: &IndexQuery,
+) -> (bool, bool, Option<DateTime<Utc>>, Option<DateTime<Utc>>) {
+    let is_past = index_query.past.unwrap_or(false);
+    let has_date_filter =
+        index_query.since.is_some() || index_query.until.is_some() || index_query.on.is_some();
 
-    let (since, until) = if let Some(on_date) = query.on {
+    let (since, until) = if let Some(on_date) = index_query.on {
         let start = New_York
             .from_local_datetime(&on_date.and_hms_opt(0, 0, 0).unwrap())
             .single()
@@ -186,14 +179,14 @@ pub async fn index_with_now(
             .with_timezone(&Utc);
         (Some(start), Some(end))
     } else if has_date_filter {
-        let start = query.since.map(|d| {
+        let start = index_query.since.map(|d| {
             New_York
                 .from_local_datetime(&d.and_hms_opt(0, 0, 0).unwrap())
                 .single()
                 .unwrap()
                 .with_timezone(&Utc)
         });
-        let end = query.until.map(|d| {
+        let end = index_query.until.map(|d| {
             New_York
                 .from_local_datetime(&d.and_hms_opt(23, 59, 59).unwrap())
                 .single()
@@ -202,14 +195,29 @@ pub async fn index_with_now(
         });
         (start, end)
     } else if is_past {
-        // For past events, we want events that started before now.
+        // Past events
         (None, Some(now_utc))
     } else {
-        // For upcoming events, we want events that started recently or are in the future.
-        // We have a buffer of 2 days ago because sometimes there are multi-day events
-        // with no specified end date.
+        // Upcoming events (default)
         (Some(now_utc - Duration::days(2)), None)
     };
+
+    (is_past, has_date_filter, since, until)
+}
+
+pub async fn index(
+    state: web::Data<AppState>,
+    query: actix_web_lab::extract::Query<IndexQuery>,
+) -> impl Responder {
+    index_with_now(state, Utc::now(), query.into_inner()).await
+}
+
+pub async fn index_with_now(
+    state: web::Data<AppState>,
+    now_utc: DateTime<Utc>,
+    query: IndexQuery,
+) -> impl Responder {
+    let (is_past, has_date_filter, since, until) = compute_time_range(now_utc, &query);
 
     // Fetch events and distinct locations
     let events_result = state.events_repo.list(query.clone(), since, until).await;
@@ -462,6 +470,26 @@ fn generate_calendar_metadata(
     (name, description)
 }
 
+async fn load_location_map(
+    state: &web::Data<AppState>,
+    index_query: &IndexQuery,
+) -> BTreeMap<String, String> {
+    if index_query.location.is_empty() {
+        return BTreeMap::new();
+    }
+
+    state
+        .events_repo
+        .get_distinct_locations()
+        .await
+        .map(|locs| {
+            locs.into_iter()
+                .map(|l| (l.id, l.name))
+                .collect::<BTreeMap<_, _>>()
+        })
+        .unwrap_or_default()
+}
+
 pub async fn ical_feed(
     state: web::Data<AppState>,
     query: actix_web_lab::extract::Query<IndexQuery>,
@@ -475,61 +503,10 @@ pub async fn ical_feed(
     // We'll reuse the logic from index_with_now to determine the time range,
     // but we need to compute it here.
     let now_utc = Utc::now();
-    let is_past = index_query.past.unwrap_or(false);
-    let has_date_filter =
-        index_query.since.is_some() || index_query.until.is_some() || index_query.on.is_some();
-
-    let (since, until) = if let Some(on_date) = index_query.on {
-        let start = New_York
-            .from_local_datetime(&on_date.and_hms_opt(0, 0, 0).unwrap())
-            .single()
-            .unwrap()
-            .with_timezone(&Utc);
-        let end = New_York
-            .from_local_datetime(&on_date.and_hms_opt(23, 59, 59).unwrap())
-            .single()
-            .unwrap()
-            .with_timezone(&Utc);
-        (Some(start), Some(end))
-    } else if has_date_filter {
-        let start = index_query.since.map(|d| {
-            New_York
-                .from_local_datetime(&d.and_hms_opt(0, 0, 0).unwrap())
-                .single()
-                .unwrap()
-                .with_timezone(&Utc)
-        });
-        let end = index_query.until.map(|d| {
-            New_York
-                .from_local_datetime(&d.and_hms_opt(23, 59, 59).unwrap())
-                .single()
-                .unwrap()
-                .with_timezone(&Utc)
-        });
-        (start, end)
-    } else if is_past {
-        // Past events
-        (None, Some(now_utc))
-    } else {
-        // Upcoming events (default)
-        (Some(now_utc - Duration::days(2)), None)
-    };
+    let (_is_past, _has_date_filter, since, until) = compute_time_range(now_utc, &index_query);
 
     // Fetch location names if we have location filters
-    let location_map = if !index_query.location.is_empty() {
-        state
-            .events_repo
-            .get_distinct_locations()
-            .await
-            .map(|locs| {
-                locs.into_iter()
-                    .map(|l| (l.id, l.name))
-                    .collect::<BTreeMap<_, _>>()
-            })
-            .unwrap_or_default()
-    } else {
-        BTreeMap::new()
-    };
+    let location_map = load_location_map(&state, &index_query).await;
 
     match state
         .events_repo
@@ -568,58 +545,9 @@ pub async fn atom_feed(
 ) -> impl Responder {
     let index_query = query.into_inner();
     let now_utc = Utc::now();
-    let is_past = index_query.past.unwrap_or(false);
-    let has_date_filter =
-        index_query.since.is_some() || index_query.until.is_some() || index_query.on.is_some();
+    let (is_past, _has_date_filter, since, until) = compute_time_range(now_utc, &index_query);
 
-    let (since, until) = if let Some(on_date) = index_query.on {
-        let start = New_York
-            .from_local_datetime(&on_date.and_hms_opt(0, 0, 0).unwrap())
-            .single()
-            .unwrap()
-            .with_timezone(&Utc);
-        let end = New_York
-            .from_local_datetime(&on_date.and_hms_opt(23, 59, 59).unwrap())
-            .single()
-            .unwrap()
-            .with_timezone(&Utc);
-        (Some(start), Some(end))
-    } else if has_date_filter {
-        let start = index_query.since.map(|d| {
-            New_York
-                .from_local_datetime(&d.and_hms_opt(0, 0, 0).unwrap())
-                .single()
-                .unwrap()
-                .with_timezone(&Utc)
-        });
-        let end = index_query.until.map(|d| {
-            New_York
-                .from_local_datetime(&d.and_hms_opt(23, 59, 59).unwrap())
-                .single()
-                .unwrap()
-                .with_timezone(&Utc)
-        });
-        (start, end)
-    } else if is_past {
-        (None, Some(now_utc))
-    } else {
-        (Some(now_utc - Duration::days(2)), None)
-    };
-
-    let location_map = if !index_query.location.is_empty() {
-        state
-            .events_repo
-            .get_distinct_locations()
-            .await
-            .map(|locs| {
-                locs.into_iter()
-                    .map(|l| (l.id, l.name))
-                    .collect::<BTreeMap<_, _>>()
-            })
-            .unwrap_or_default()
-    } else {
-        BTreeMap::new()
-    };
+    let location_map = load_location_map(&state, &index_query).await;
 
     match state
         .events_repo
