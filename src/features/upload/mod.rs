@@ -144,7 +144,7 @@ pub async fn success() -> impl Responder {
 }
 
 pub async fn hydrate_event_locations(
-    events: &mut [crate::models::Event],
+    events: &mut [crate::models::NewEvent],
     client: &awc::Client,
     api_key: &str,
 ) {
@@ -181,7 +181,7 @@ pub async fn hydrate_event_locations(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::models::{Event, EventSource};
+    use crate::models::{EventSource, NewEvent};
     use chrono::Utc;
 
     #[actix_rt::test]
@@ -194,7 +194,7 @@ mod tests {
         let client: awc::Client = awc::Client::default();
 
         let mut events = vec![
-            Event {
+            NewEvent {
                 name: "Davis Square Event".to_string(),
                 original_location: Some("Davis Square".to_string()),
                 description: "".to_string(),
@@ -207,13 +207,12 @@ mod tests {
                 event_types: vec![],
                 url: None,
                 confidence: 1.0,
-                id: None,
                 age_restrictions: None,
                 price: None,
                 source: EventSource::ImageUpload,
                 external_id: None,
             },
-            Event {
+            NewEvent {
                 name: "Somerville Theatre Event".to_string(),
                 original_location: Some("Somerville Theatre".to_string()),
                 description: "".to_string(),
@@ -226,13 +225,12 @@ mod tests {
                 event_types: vec![],
                 url: None,
                 confidence: 1.0,
-                id: None,
                 age_restrictions: None,
                 price: None,
                 source: EventSource::ImageUpload,
                 external_id: None,
             },
-            Event {
+            NewEvent {
                 name: "Unknown Place Event".to_string(),
                 original_location: Some("ThisPlaceDefinitelyDoesNotExist12345".to_string()),
                 description: "".to_string(),
@@ -245,13 +243,12 @@ mod tests {
                 event_types: vec![],
                 url: None,
                 confidence: 1.0,
-                id: None,
                 age_restrictions: None,
                 price: None,
                 source: EventSource::ImageUpload,
                 external_id: None,
             },
-            Event {
+            NewEvent {
                 name: "Another Davis Square Event".to_string(),
                 original_location: Some("Davis Square".to_string()),
                 description: "".to_string(),
@@ -264,7 +261,6 @@ mod tests {
                 event_types: vec![],
                 url: None,
                 confidence: 1.0,
-                id: None,
                 age_restrictions: None,
                 price: None,
                 source: EventSource::ImageUpload,

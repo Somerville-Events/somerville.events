@@ -49,6 +49,31 @@ pub struct ShowTemplate {
     pub event: EventViewModel,
 }
 
+#[derive(Template)]
+#[template(path = "view/atom_entry.html", escape = "none")]
+struct AtomEntryTemplate {
+    event: EventViewModel,
+}
+
+struct AtomEntry {
+    id: String,
+    title: String,
+    link: String,
+    updated: String,
+    content: String,
+}
+
+#[derive(Template)]
+#[template(path = "view/events.atom.xml")]
+struct AtomFeedTemplate {
+    title: String,
+    subtitle: String,
+    feed_url: String,
+    site_url: String,
+    updated: String,
+    entries: Vec<AtomEntry>,
+}
+
 pub struct DaySection {
     pub day_id: String,
     pub date_header: String,
@@ -132,22 +157,15 @@ impl IndexQuery {
     }
 }
 
-pub async fn index(
-    state: web::Data<AppState>,
-    query: actix_web_lab::extract::Query<IndexQuery>,
-) -> impl Responder {
-    index_with_now(state, Utc::now(), query.into_inner()).await
-}
-
-pub async fn index_with_now(
-    state: web::Data<AppState>,
+fn compute_time_range(
     now_utc: DateTime<Utc>,
-    query: IndexQuery,
-) -> impl Responder {
-    let is_past = query.past.unwrap_or(false);
-    let has_date_filter = query.since.is_some() || query.until.is_some() || query.on.is_some();
+    index_query: &IndexQuery,
+) -> (bool, bool, Option<DateTime<Utc>>, Option<DateTime<Utc>>) {
+    let is_past = index_query.past.unwrap_or(false);
+    let has_date_filter =
+        index_query.since.is_some() || index_query.until.is_some() || index_query.on.is_some();
 
-    let (since, until) = if let Some(on_date) = query.on {
+    let (since, until) = if let Some(on_date) = index_query.on {
         let start = New_York
             .from_local_datetime(&on_date.and_hms_opt(0, 0, 0).unwrap())
             .single()
@@ -160,14 +178,14 @@ pub async fn index_with_now(
             .with_timezone(&Utc);
         (Some(start), Some(end))
     } else if has_date_filter {
-        let start = query.since.map(|d| {
+        let start = index_query.since.map(|d| {
             New_York
                 .from_local_datetime(&d.and_hms_opt(0, 0, 0).unwrap())
                 .single()
                 .unwrap()
                 .with_timezone(&Utc)
         });
-        let end = query.until.map(|d| {
+        let end = index_query.until.map(|d| {
             New_York
                 .from_local_datetime(&d.and_hms_opt(23, 59, 59).unwrap())
                 .single()
@@ -176,7 +194,7 @@ pub async fn index_with_now(
         });
         (start, end)
     } else if is_past {
-        // For past events, we want events that started before now.
+        // Past events
         (None, Some(now_utc))
     } else {
         // For upcoming events, we want events that started recently or are in the future.
@@ -184,6 +202,23 @@ pub async fn index_with_now(
         // with no specified end date.
         (Some(now_utc - Duration::days(2)), None)
     };
+
+    (is_past, has_date_filter, since, until)
+}
+
+pub async fn index(
+    state: web::Data<AppState>,
+    query: actix_web_lab::extract::Query<IndexQuery>,
+) -> impl Responder {
+    index_with_now(state, Utc::now(), query.into_inner()).await
+}
+
+pub async fn index_with_now(
+    state: web::Data<AppState>,
+    now_utc: DateTime<Utc>,
+    query: IndexQuery,
+) -> impl Responder {
+    let (is_past, has_date_filter, since, until) = compute_time_range(now_utc, &query);
 
     // Fetch events and distinct locations
     let events_result = state.events_repo.list(query.clone(), since, until).await;
@@ -436,74 +471,36 @@ fn generate_calendar_metadata(
     (name, description)
 }
 
+async fn load_location_map(
+    state: &web::Data<AppState>,
+    index_query: &IndexQuery,
+) -> BTreeMap<String, String> {
+    if index_query.location.is_empty() {
+        return BTreeMap::new();
+    }
+
+    state
+        .events_repo
+        .get_distinct_locations()
+        .await
+        .map(|locs| {
+            locs.into_iter()
+                .map(|l| (l.id, l.name))
+                .collect::<BTreeMap<_, _>>()
+        })
+        .unwrap_or_default()
+}
+
 pub async fn ical_feed(
     state: web::Data<AppState>,
     query: actix_web_lab::extract::Query<IndexQuery>,
 ) -> impl Responder {
     let index_query = query.into_inner();
-    // Use similar logic to index_with_now for date filtering if needed,
-    // but typically a subscription feed should include "future" events.
-    // However, if the user filters by a specific date, they might expect only that date.
-    // The previous implementation of index_with_now handles "since/until/on" or defaults to "now - 2 days".
-
-    // We'll reuse the logic from index_with_now to determine the time range,
-    // but we need to compute it here.
     let now_utc = Utc::now();
-    let is_past = index_query.past.unwrap_or(false);
-    let has_date_filter =
-        index_query.since.is_some() || index_query.until.is_some() || index_query.on.is_some();
-
-    let (since, until) = if let Some(on_date) = index_query.on {
-        let start = New_York
-            .from_local_datetime(&on_date.and_hms_opt(0, 0, 0).unwrap())
-            .single()
-            .unwrap()
-            .with_timezone(&Utc);
-        let end = New_York
-            .from_local_datetime(&on_date.and_hms_opt(23, 59, 59).unwrap())
-            .single()
-            .unwrap()
-            .with_timezone(&Utc);
-        (Some(start), Some(end))
-    } else if has_date_filter {
-        let start = index_query.since.map(|d| {
-            New_York
-                .from_local_datetime(&d.and_hms_opt(0, 0, 0).unwrap())
-                .single()
-                .unwrap()
-                .with_timezone(&Utc)
-        });
-        let end = index_query.until.map(|d| {
-            New_York
-                .from_local_datetime(&d.and_hms_opt(23, 59, 59).unwrap())
-                .single()
-                .unwrap()
-                .with_timezone(&Utc)
-        });
-        (start, end)
-    } else if is_past {
-        // Past events
-        (None, Some(now_utc))
-    } else {
-        // Upcoming events (default)
-        (Some(now_utc - Duration::days(2)), None)
-    };
+    let (_is_past, _has_date_filter, since, until) = compute_time_range(now_utc, &index_query);
 
     // Fetch location names if we have location filters
-    let location_map = if !index_query.location.is_empty() {
-        state
-            .events_repo
-            .get_distinct_locations()
-            .await
-            .map(|locs| {
-                locs.into_iter()
-                    .map(|l| (l.id, l.name))
-                    .collect::<BTreeMap<_, _>>()
-            })
-            .unwrap_or_default()
-    } else {
-        BTreeMap::new()
-    };
+    let location_map = load_location_map(&state, &index_query).await;
 
     match state
         .events_repo
@@ -531,6 +528,95 @@ pub async fn ical_feed(
         }
         Err(e) => {
             log::error!("Failed to fetch events for ical feed: {e}");
+            HttpResponse::InternalServerError().body("Failed to fetch events")
+        }
+    }
+}
+
+pub async fn atom_feed(
+    state: web::Data<AppState>,
+    query: actix_web_lab::extract::Query<IndexQuery>,
+) -> impl Responder {
+    let index_query = query.into_inner();
+    let now_utc = Utc::now();
+    let (is_past, _has_date_filter, since, until) = compute_time_range(now_utc, &index_query);
+
+    let location_map = load_location_map(&state, &index_query).await;
+
+    match state
+        .events_repo
+        .list_full(index_query.clone(), since, until)
+        .await
+    {
+        Ok(events) => {
+            let config = Config::from_env();
+            let base_url = config.public_url.trim_end_matches('/');
+            let query_str = index_query.to_query_string();
+            let feed_url = if query_str.is_empty() {
+                format!("{}/events.atom", base_url)
+            } else {
+                format!("{}/events.atom?{}", base_url, query_str)
+            };
+            let site_url = if query_str.is_empty() {
+                base_url.to_string()
+            } else {
+                format!("{}/?{}", base_url, query_str)
+            };
+
+            let (title, subtitle) =
+                generate_calendar_metadata(&index_query, &location_map, &config.public_url);
+
+            let entries_result: Result<Vec<AtomEntry>, askama::Error> = events
+                .iter()
+                .map(|event| {
+                    let id = event.id;
+                    let link = format!("{}/event/{}", base_url, id);
+                    let updated = event.updated_at.to_rfc3339();
+                    let content = AtomEntryTemplate {
+                        event: EventViewModel::from_event(event, DateFormat::FullDate, is_past),
+                    }
+                    .render()?;
+
+                    Ok(AtomEntry {
+                        id: link.clone(),
+                        title: event.name.clone(),
+                        link,
+                        updated,
+                        content,
+                    })
+                })
+                .collect();
+
+            match entries_result {
+                Ok(entries) => {
+                    let updated = events
+                        .iter()
+                        .map(|event| event.updated_at)
+                        .max()
+                        .map(|dt| dt.to_rfc3339())
+                        .unwrap_or_else(|| now_utc.to_rfc3339());
+
+                    let template = AtomFeedTemplate {
+                        title,
+                        subtitle,
+                        feed_url,
+                        site_url,
+                        updated,
+                        entries,
+                    };
+
+                    HttpResponse::Ok()
+                        .content_type("application/atom+xml; charset=utf-8")
+                        .body(template.render().unwrap())
+                }
+                Err(e) => {
+                    log::error!("Failed to render Atom feed entries: {e}");
+                    HttpResponse::InternalServerError().body("Failed to render Atom feed")
+                }
+            }
+        }
+        Err(e) => {
+            log::error!("Failed to fetch events for Atom feed: {e}");
             HttpResponse::InternalServerError().body("Failed to fetch events")
         }
     }
@@ -598,9 +684,7 @@ impl From<&Event> for IcalEvent {
         }
 
         // Use event ID for UID to ensure updates are tracked correctly
-        if let Some(id) = event.id {
-            ical_event.uid(&format!("somerville-events-{}", id));
-        }
+        ical_event.uid(&format!("somerville-events-{}", event.id));
 
         ical_event
     }

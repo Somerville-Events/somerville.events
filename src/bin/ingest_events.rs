@@ -5,7 +5,7 @@ use somerville_events::{
     config::Config,
     database::save_event_to_db,
     geocoding::{canonicalize_address, GeocodedLocation},
-    models::{Event, EventSource, EventType},
+    models::{EventSource, EventType, NewEvent},
 };
 use sqlx::postgres::PgPoolOptions;
 use std::collections::{HashMap, HashSet};
@@ -319,8 +319,7 @@ async fn map_and_save_event(
         cleaned.parse::<f64>().ok()
     });
 
-    let event = Event {
-        id: None, // Let DB assign ID
+    let event = NewEvent {
         name: ext.title,
         description: ext.description.clone(),
         full_text: "".to_string(),
