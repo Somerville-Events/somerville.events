@@ -127,7 +127,7 @@ impl EventsRepo for sqlx::Pool<sqlx::Postgres> {
                 AND ($7::timestamptz IS NULL OR e.start_date <= $7)
             )
             SELECT
-                e.id as "id!",
+                e.id,
                 e.created_at,
                 e.updated_at,
                 e.name,
@@ -190,7 +190,7 @@ impl EventsRepo for sqlx::Pool<sqlx::Postgres> {
             Event,
             r#"
             SELECT
-                e.id as "id!",
+                e.id,
                 e.created_at,
                 e.updated_at,
                 e.name,
@@ -347,7 +347,7 @@ async fn find_duplicate(
             Event,
             r#"
             SELECT 
-                e.id as "id!",
+                e.id,
                 e.created_at,
                 e.updated_at,
                 e.name,
