@@ -30,6 +30,14 @@ Copy the sample environment file and set the real values in `.env`.
 cp .env.sample .env
 ```
 
+Add ActivityPub keys to `.env` for federation and delivery:
+
+```bash
+# RSA keypair used for ActivityPub HTTP signatures
+ACTIVITYPUB_PRIVATE_KEY_PEM="-----BEGIN PRIVATE KEY-----...-----END PRIVATE KEY-----"
+ACTIVITYPUB_PUBLIC_KEY_PEM="-----BEGIN PUBLIC KEY-----...-----END PUBLIC KEY-----"
+```
+
 ### Initialize the database
 
 ```bash
@@ -95,6 +103,14 @@ It can also be run in dry-run mode (no database writes, no API costs):
 
 ```bash
 cargo run --bin ingest_events -- --dry-run
+```
+
+## ActivityPub Testing (Lightweight)
+
+We ship a lightweight ActivityPub harness that exercises follow, accept, and delivery flows without a full Mastodon instance.
+
+```bash
+cargo test --test activitypub_harness
 ```
 
 ## UI Development (Storybook)

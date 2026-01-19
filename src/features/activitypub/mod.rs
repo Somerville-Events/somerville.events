@@ -8,12 +8,14 @@ use base64::Engine;
 use httpdate::fmt_http_date;
 use rsa::pkcs1v15::SigningKey;
 use rsa::pkcs8::DecodePrivateKey;
+use rsa::signature::{SignatureEncoding, Signer};
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
-use rsa::signature::{SignatureEncoding, Signer};
 use std::collections::HashSet;
+use std::time::Duration;
 use std::time::SystemTime;
-use serde::{Deserialize, Serialize};
+use tokio::sync::mpsc;
 use url::Url;
 
 const ACTIVITYPUB_USERNAME: &str = "events";
@@ -155,7 +157,10 @@ struct WebfingerLink {
 }
 
 fn activitypub_context() -> Vec<&'static str> {
-    vec!["https://www.w3.org/ns/activitystreams", ACTIVITYPUB_SECURITY_CONTEXT]
+    vec![
+        "https://www.w3.org/ns/activitystreams",
+        ACTIVITYPUB_SECURITY_CONTEXT,
+    ]
 }
 
 fn base_url() -> String {
@@ -320,7 +325,10 @@ fn value_as_string(value: &Value) -> Option<String> {
     if let Some(s) = value.as_str() {
         return Some(s.to_string());
     }
-    value.get("id").and_then(|v| v.as_str()).map(|s| s.to_string())
+    value
+        .get("id")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string())
 }
 
 fn parse_datetime(value: &Value) -> Option<chrono::DateTime<chrono::Utc>> {
@@ -398,8 +406,8 @@ fn sign_activity(
     private_key_pem: &str,
     key_id: &str,
 ) -> Result<Vec<(String, String)>, HttpResponse> {
-    let url = Url::parse(inbox_url)
-        .map_err(|_| HttpResponse::BadRequest().body("Invalid inbox URL"))?;
+    let url =
+        Url::parse(inbox_url).map_err(|_| HttpResponse::BadRequest().body("Invalid inbox URL"))?;
     let host = url
         .host_str()
         .ok_or_else(|| HttpResponse::BadRequest().body("Invalid inbox host"))?;
@@ -450,7 +458,12 @@ async fn deliver_signed_activity(
         log::error!("Failed to serialize ActivityPub activity: {e}");
         HttpResponse::InternalServerError().body("Failed to serialize activity")
     })?;
-    let signed_headers = sign_activity(inbox_url, &body, &config.activitypub_private_key_pem, &key_id)?;
+    let signed_headers = sign_activity(
+        inbox_url,
+        &body,
+        &config.activitypub_private_key_pem,
+        &key_id,
+    )?;
 
     let mut request = client
         .post(inbox_url)
@@ -643,7 +656,9 @@ pub async fn inbox(
         .and_then(|v| v.get("content"))
         .and_then(|v| v.as_str())
         .map(|s| s.to_string());
-    let object_published = object.and_then(|v| v.get("published")).and_then(parse_datetime);
+    let object_published = object
+        .and_then(|v| v.get("published"))
+        .and_then(parse_datetime);
     let in_reply_to = object
         .and_then(|v| v.get("inReplyTo"))
         .and_then(value_as_string);
@@ -716,8 +731,13 @@ pub async fn inbox(
                 "object": payload
             });
 
-            let inbox_target = remote_actor.shared_inbox_url.as_deref().unwrap_or(&remote_actor.inbox_url);
-            if let Err(response) = deliver_signed_activity(&client, inbox_target, &accept_activity).await {
+            let inbox_target = remote_actor
+                .shared_inbox_url
+                .as_deref()
+                .unwrap_or(&remote_actor.inbox_url);
+            if let Err(response) =
+                deliver_signed_activity(&client, inbox_target, &accept_activity).await
+            {
                 return response;
             }
 
@@ -729,7 +749,11 @@ pub async fn inbox(
                 .and_then(|v| v.as_str())
                 .unwrap_or_default();
             if object_type == "Follow" {
-                if let Err(e) = state.events_repo.remove_activitypub_follower(&actor_id).await {
+                if let Err(e) = state
+                    .events_repo
+                    .remove_activitypub_follower(&actor_id)
+                    .await
+                {
                     log::error!("Failed to remove ActivityPub follower: {e}");
                     return HttpResponse::InternalServerError().body("Failed to remove follower");
                 }
@@ -794,6 +818,33 @@ pub async fn webfinger(query: actix_web_lab::extract::Query<WebfingerQuery>) -> 
             HttpResponse::InternalServerError().body("Failed to render WebFinger response")
         }
     }
+}
+
+pub fn start_delivery_worker(
+    state: web::Data<AppState>,
+    timeout: Duration,
+    mut receiver: mpsc::Receiver<i64>,
+) {
+    std::thread::spawn(move || {
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("Failed to build ActivityPub delivery runtime");
+        runtime.block_on(async move {
+            let client = awc::ClientBuilder::new().timeout(timeout).finish();
+            while let Some(event_id) = receiver.recv().await {
+                if let Err(response) =
+                    deliver_event_to_followers(state.get_ref(), &client, event_id).await
+                {
+                    log::warn!(
+                        "Failed to deliver ActivityPub event {}: {}",
+                        event_id,
+                        response.status()
+                    );
+                }
+            }
+        });
+    });
 }
 
 pub async fn deliver_event_to_followers(

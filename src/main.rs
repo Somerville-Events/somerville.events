@@ -10,6 +10,7 @@ use actix_web_query_method_middleware::QueryMethod;
 use anyhow::Result;
 use somerville_events::{config::Config, features, AppState};
 use sqlx::postgres::PgPoolOptions;
+use tokio::sync::mpsc;
 
 async fn basic_auth_validator(
     req: ServiceRequest,
@@ -45,6 +46,9 @@ async fn main() -> Result<()> {
 
     let host = config.host.clone();
     let static_file_dir = config.static_file_dir.clone();
+    let (activitypub_sender, activitypub_receiver) = mpsc::channel(1000);
+    let (image_processing_sender, image_processing_receiver) = mpsc::channel(100);
+    let delivery_timeout = std::time::Duration::from_secs(120);
 
     let state = AppState {
         openai_api_key: config.openai_api_key.clone(),
@@ -52,12 +56,20 @@ async fn main() -> Result<()> {
         username: config.username.clone(),
         password: config.password.clone(),
         events_repo: Box::new(db_connection_pool),
+        activitypub_sender: activitypub_sender.clone(),
+        image_processing_sender: image_processing_sender.clone(),
     };
     let app_state = Data::new(state);
 
+    features::activitypub::start_delivery_worker(
+        app_state.clone(),
+        delivery_timeout,
+        activitypub_receiver,
+    );
+    features::upload::start_image_processing_worker(app_state.clone(), image_processing_receiver);
+
     HttpServer::new(move || {
         let auth_middleware = HttpAuthentication::basic(basic_auth_validator);
-
         let client = awc::ClientBuilder::new()
             .timeout(std::time::Duration::from_secs(120))
             .finish();
@@ -135,6 +147,7 @@ mod tests {
     };
     use somerville_events::AppState;
     use std::sync::{Arc, Mutex};
+    use tokio::sync::mpsc;
 
     #[derive(Clone, Default)]
     pub struct MockEventsRepo {
@@ -247,11 +260,7 @@ mod tests {
             self.list_full(IndexQuery::default(), since, until).await
         }
 
-        async fn list_full_unfiltered_paged(
-            &self,
-            limit: i64,
-            offset: i64,
-        ) -> Result<Vec<Event>> {
+        async fn list_full_unfiltered_paged(&self, limit: i64, offset: i64) -> Result<Vec<Event>> {
             let mut events = self.events.lock().unwrap().clone();
             events.sort_by(|a, b| {
                 b.created_at
@@ -316,10 +325,9 @@ mod tests {
             activity: &ActivityPubInboxActivityInsert,
         ) -> Result<()> {
             let mut activities = self.inbox_activities.lock().unwrap();
-            if activities
-                .iter()
-                .any(|v| v.get("activity_id").and_then(|v| v.as_str()) == Some(&activity.activity_id))
-            {
+            if activities.iter().any(|v| {
+                v.get("activity_id").and_then(|v| v.as_str()) == Some(&activity.activity_id)
+            }) {
                 return Ok(());
             }
 
@@ -369,7 +377,10 @@ mod tests {
                 map.insert(
                     "event_id".to_string(),
                     serde_json::Value::String(
-                        activity.event_id.map(|id| id.to_string()).unwrap_or_default(),
+                        activity
+                            .event_id
+                            .map(|id| id.to_string())
+                            .unwrap_or_default(),
                     ),
                 );
             }
@@ -578,6 +589,8 @@ mod tests {
             username: "user".to_string(),
             password: "pass".to_string(),
             events_repo: Box::new(MockEventsRepo::new(vec![art_event.clone(), music_event])),
+            activitypub_sender: mpsc::channel(10).0,
+            image_processing_sender: mpsc::channel(10).0,
         };
 
         let fixed_now_utc = now_utc;
@@ -782,6 +795,8 @@ mod tests {
             username: "user".to_string(),
             password: "pass".to_string(),
             events_repo: Box::new(mock_repo),
+            activitypub_sender: mpsc::channel(10).0,
+            image_processing_sender: mpsc::channel(10).0,
         };
 
         let fixed_now_utc = now_utc;
@@ -925,6 +940,8 @@ mod tests {
             username: "user".to_string(),
             password: "pass".to_string(),
             events_repo: Box::new(MockEventsRepo::new(vec![event])),
+            activitypub_sender: mpsc::channel(10).0,
+            image_processing_sender: mpsc::channel(10).0,
         };
 
         let app = test::init_service(App::new().app_data(Data::new(state)).route(
@@ -1017,6 +1034,8 @@ mod tests {
             username: "user".to_string(),
             password: "pass".to_string(),
             events_repo: Box::new(MockEventsRepo::new(vec![event])),
+            activitypub_sender: mpsc::channel(10).0,
+            image_processing_sender: mpsc::channel(10).0,
         };
 
         let fixed_now = Utc.with_ymd_and_hms(2025, 11, 8, 8, 0, 0).unwrap();
@@ -1111,6 +1130,8 @@ mod tests {
             username: "user".to_string(),
             password: "pass".to_string(),
             events_repo: Box::new(MockEventsRepo::new(vec![
+            activitypub_sender: mpsc::channel(10).0,
+            image_processing_sender: mpsc::channel(10).0,
                 aeronaut_event.clone(),
                 library_event,
             ])),
@@ -1158,6 +1179,8 @@ mod tests {
             username: "user".to_string(),
             password: "pass".to_string(),
             events_repo: Box::new(MockEventsRepo::new(vec![])),
+            activitypub_sender: mpsc::channel(10).0,
+            image_processing_sender: mpsc::channel(10).0,
         };
 
         let app = test::init_service(
@@ -1186,6 +1209,8 @@ mod tests {
             username: "user".to_string(),
             password: "pass".to_string(),
             events_repo: Box::new(MockEventsRepo::new(vec![])),
+            activitypub_sender: mpsc::channel(10).0,
+            image_processing_sender: mpsc::channel(10).0,
         };
 
         let app = test::init_service(
@@ -1283,6 +1308,8 @@ mod tests {
             username: "user".to_string(),
             password: "pass".to_string(),
             events_repo: Box::new(MockEventsRepo::new(vec![
+            activitypub_sender: mpsc::channel(10).0,
+            image_processing_sender: mpsc::channel(10).0,
                 art_event.clone(),
                 music_event.clone(),
                 food_event,
@@ -1333,6 +1360,8 @@ mod tests {
             username: "user".to_string(),
             password: "pass".to_string(),
             events_repo: Box::new(MockEventsRepo::new(vec![])),
+            activitypub_sender: mpsc::channel(10).0,
+            image_processing_sender: mpsc::channel(10).0,
         };
 
         let app = test::init_service(
@@ -1368,6 +1397,8 @@ mod tests {
             username: "user".to_string(),
             password: "pass".to_string(),
             events_repo: Box::new(MockEventsRepo::new(vec![])),
+            activitypub_sender: mpsc::channel(10).0,
+            image_processing_sender: mpsc::channel(10).0,
         };
 
         let app = test::init_service(
@@ -1441,6 +1472,8 @@ mod tests {
             username: "user".to_string(),
             password: "pass".to_string(),
             events_repo: Box::new(MockEventsRepo::new(vec![])),
+            activitypub_sender: mpsc::channel(10).0,
+            image_processing_sender: mpsc::channel(10).0,
         };
 
         let app = test::init_service(App::new().app_data(Data::new(state)).route(
@@ -1530,6 +1563,8 @@ mod tests {
             username: "user".to_string(),
             password: "pass".to_string(),
             events_repo: Box::new(pool),
+            activitypub_sender: mpsc::channel(10).0,
+            image_processing_sender: mpsc::channel(10).0,
         };
 
         // We also want to control "now" for consistency, although since we insert events at a fixed time,
@@ -1657,6 +1692,8 @@ mod tests {
             username: "user".to_string(),
             password: "pass".to_string(),
             events_repo: Box::new(MockEventsRepo::new(vec![
+            activitypub_sender: mpsc::channel(10).0,
+            image_processing_sender: mpsc::channel(10).0,
                 past_event,
                 target_event,
                 future_event,

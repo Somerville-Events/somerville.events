@@ -48,6 +48,7 @@ actix-web-lab = "0.24.3"
 rsa = { version = "0.9.10", features = ["pem"] }
 sha2 = "0.10.9"
 httpdate = "1.0.3"
+tokio = { version = "1.49.0", features = ["rt", "sync"] }
 [dev-dependencies]
 scraper = "0.25.0"
 

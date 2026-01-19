@@ -4,12 +4,15 @@ use serde::Deserialize;
 use somerville_events::{
     config::Config,
     database::save_event_to_db,
+    features::activitypub::start_delivery_worker,
     geocoding::{canonicalize_address, GeocodedLocation},
     models::{EventSource, EventType, NewEvent},
+    AppState,
 };
 use sqlx::postgres::PgPoolOptions;
 use std::collections::{HashMap, HashSet};
 use std::env;
+use tokio::sync::mpsc;
 
 #[derive(Debug, Deserialize, Clone)]
 #[allow(dead_code)]
@@ -69,6 +72,23 @@ async fn main() -> Result<()> {
         .map_err(|e| anyhow!("Failed to connect to database: {}", e))?;
 
     log::info!("Connected to database");
+
+    let (activitypub_sender, activitypub_receiver) = mpsc::channel(1000);
+    let (image_processing_sender, _image_processing_receiver) = mpsc::channel(1);
+    let app_state = actix_web::web::Data::new(AppState {
+        openai_api_key: config.openai_api_key.clone(),
+        google_maps_api_key: config.google_maps_api_key.clone(),
+        username: config.username.clone(),
+        password: config.password.clone(),
+        events_repo: Box::new(pool.clone()),
+        activitypub_sender: activitypub_sender.clone(),
+        image_processing_sender: image_processing_sender.clone(),
+    });
+    start_delivery_worker(
+        app_state,
+        std::time::Duration::from_secs(120),
+        activitypub_receiver,
+    );
 
     // Fetch existing external IDs to avoid re-processing and paying for geocoding
     // We fetch all external_ids that are not null.
@@ -190,7 +210,7 @@ async fn main() -> Result<()> {
             .as_ref()
             .and_then(|a| address_cache.get(a).cloned().flatten());
 
-        match map_and_save_event(&pool, ext_event, geocoded).await {
+        match map_and_save_event(&pool, &activitypub_sender, ext_event, geocoded).await {
             Ok(_) => success_count += 1,
             Err(e) => {
                 log::error!("Failed to save event: {}", e);
@@ -238,6 +258,7 @@ fn build_raw_address(ext: &ExternalEvent) -> Option<String> {
 
 async fn map_and_save_event(
     pool: &sqlx::Pool<sqlx::Postgres>,
+    activitypub_sender: &mpsc::Sender<i64>,
     ext: ExternalEvent,
     geocoded: Option<GeocodedLocation>,
 ) -> Result<()> {
@@ -338,7 +359,10 @@ async fn map_and_save_event(
         external_id: Some(ext.id),
     };
 
-    save_event_to_db(pool, &event).await?;
+    let id = save_event_to_db(pool, &event).await?;
+    if let Err(e) = activitypub_sender.send(id).await {
+        log::warn!("Failed to enqueue ActivityPub event delivery: {}", e);
+    }
 
     Ok(())
 }

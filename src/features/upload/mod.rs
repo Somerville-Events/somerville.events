@@ -1,5 +1,5 @@
 use crate::image_processing::parse_image;
-use crate::AppState;
+use crate::{AppState, ImageProcessingJob};
 use actix_multipart::form::{tempfile::TempFile, MultipartForm};
 use actix_web::{http::header::ContentType, web, HttpResponse, Responder};
 use askama::Template;
@@ -7,6 +7,7 @@ use awc::Client;
 use futures_util::future;
 use std::collections::{HashMap, HashSet};
 use std::fs;
+use tokio::sync::mpsc;
 use uuid::Uuid;
 
 #[derive(Template)]
@@ -35,7 +36,6 @@ pub async fn index() -> impl Responder {
 
 pub async fn save(
     state: web::Data<AppState>,
-    client: web::Data<Client>,
     MultipartForm(req): MultipartForm<UploadForm>,
 ) -> impl Responder {
     let idempotency_key = req.idempotency_key.0;
@@ -90,57 +90,15 @@ pub async fn save(
         }
     }
 
-    let state = state.into_inner();
-    let client = client.into_inner();
-
-    actix_web::rt::spawn(async move {
-        match parse_image(&dest_path, &client, &state.openai_api_key).await {
-            Ok(mut events) => {
-                if events.is_empty() {
-                    log::info!("Image processed but no events found");
-                } else {
-                    hydrate_event_locations(&mut events, &client, &state.google_maps_api_key).await;
-
-                    for event in &mut events {
-                        match state.events_repo.insert(event).await {
-                            Ok(id) => {
-                                log::info!(
-                                    "Saved event '{}' to database with id: {}",
-                                    event.name,
-                                    id
-                                );
-                                if let Err(e) =
-                                    crate::features::activitypub::deliver_event_to_followers(
-                                        &state, &client, id,
-                                    )
-                                    .await
-                                {
-                                    log::warn!(
-                                        "Failed to deliver ActivityPub event: {}",
-                                        e.status()
-                                    );
-                                }
-                            }
-                            Err(e) => {
-                                log::error!(
-                                    "Failed to save event '{}' to database: {e:#}",
-                                    event.name
-                                );
-                            }
-                        }
-                    }
-                }
-            }
-            Err(e) => {
-                log::error!("parse_image failed: {e:#}");
-            }
-        }
-
-        let path_to_remove = dest_path.clone();
-        if let Err(e) = web::block(move || fs::remove_file(path_to_remove)).await {
-            log::warn!("Failed to remove temp file {:?}: {}", dest_path, e);
-        }
-    });
+    if let Err(e) = state
+        .image_processing_sender
+        .send(ImageProcessingJob {
+            path: dest_path.clone(),
+        })
+        .await
+    {
+        log::warn!("Failed to queue image processing job: {}", e);
+    }
 
     HttpResponse::SeeOther()
         .insert_header((actix_web::http::header::LOCATION, "/upload-success"))
@@ -185,6 +143,73 @@ pub async fn hydrate_event_locations(
                 event.google_place_id = Some(canon.place_id.clone());
                 event.location_name = Some(canon.name.clone());
             }
+        }
+    }
+}
+
+pub fn start_image_processing_worker(
+    state: web::Data<AppState>,
+    receiver: mpsc::Receiver<ImageProcessingJob>,
+) {
+    std::thread::spawn(move || {
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("Failed to build image processing runtime");
+        runtime.block_on(async move {
+            let client = awc::ClientBuilder::new()
+                .timeout(std::time::Duration::from_secs(120))
+                .finish();
+            process_image_jobs(state, client, receiver).await;
+        });
+    });
+}
+
+async fn process_image_jobs(
+    state: web::Data<AppState>,
+    client: awc::Client,
+    mut receiver: mpsc::Receiver<ImageProcessingJob>,
+) {
+    while let Some(job) = receiver.recv().await {
+        match parse_image(&job.path, &client, &state.openai_api_key).await {
+            Ok(mut events) => {
+                if events.is_empty() {
+                    log::info!("Image processed but no events found");
+                } else {
+                    hydrate_event_locations(&mut events, &client, &state.google_maps_api_key).await;
+
+                    for event in &mut events {
+                        match state.events_repo.insert(event).await {
+                            Ok(id) => {
+                                log::info!(
+                                    "Saved event '{}' to database with id: {}",
+                                    event.name,
+                                    id
+                                );
+                                if let Err(e) = state.activitypub_sender.send(id).await {
+                                    log::warn!(
+                                        "Failed to enqueue ActivityPub event delivery: {}",
+                                        e
+                                    );
+                                }
+                            }
+                            Err(e) => {
+                                log::error!(
+                                    "Failed to save event '{}' to database: {e:#}",
+                                    event.name
+                                );
+                            }
+                        }
+                    }
+                }
+            }
+            Err(e) => {
+                log::error!("parse_image failed: {e:#}");
+            }
+        }
+
+        if let Err(e) = fs::remove_file(&job.path) {
+            log::warn!("Failed to remove temp file {:?}: {}", job.path, e);
         }
     }
 }
